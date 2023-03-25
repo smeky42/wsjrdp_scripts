@@ -1,1 +1,7 @@
 config.yml
+*.csv
+*.csv#
+*.txt
+*.xls
+*.xlsx
+.DS_Store
