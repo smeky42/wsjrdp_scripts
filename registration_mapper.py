@@ -36,3 +36,7 @@ def gender(gender):
       return 'F'
     case _:
       return 'O'
+
+def nationality():
+  # ToDo all
+  return '49'
