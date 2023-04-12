@@ -2,6 +2,7 @@ from openpyxl import load_workbook
 from mysql.connector import (connection)
 from datetime import date
 import yaml
+import registration_mapper
 
 
 with open("config.yml", "r") as yamlfile:
@@ -14,7 +15,7 @@ cnx = connection.MySQLConnection(user=config['username'], password=config['passw
                                  port=config['port'],
                                  database=config['database'])
 cursor = cnx.cursor()
-query =   ("select first_name, last_name, gender, primary_group_id, zip_code, status from people where id=2;")
+query =   ("select role_wish first_name, last_name, gender, primary_group_id, zip_code, status from people where id=2;")
 cursor.execute(query)
 #load excel file
 workbook = load_workbook(filename="wsj_insert_en.xlsx")
@@ -23,12 +24,12 @@ workbook = load_workbook(filename="wsj_insert_en.xlsx")
 sheet = workbook.active
 
 counter = 5
-for (first_name, last_name, gender, primary_group_id, zip_code, status) in cursor:
+for (role_wish, first_name, last_name, gender, primary_group_id, zip_code, status) in cursor:
     row = str(counter)
     sheet["A" + row] = "-" # No. 
-    sheet["A" + row] = "-" # "Type - (Youth participant, Adult participant)"
+    sheet["A" + row] = registration_mapper.type(role_wish) # "Type - (Youth participant, Adult participant)"
     sheet["A" + row] = "-" # Name of NSO
-    sheet["A" + row] = "-" # Position
+    sheet["A" + row] = registration_mapper.position(role_wish) # Position
     sheet["A" + row] = "-" # Nationality
     sheet["A" + row] = "-" # Hangeul
     sheet["A" + row] = "-" # Roman alphabet
