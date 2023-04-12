@@ -1,0 +1,24 @@
+# See https://EditorConfig.org
+#
+# Visual Studio Code:
+# - https://marketplace.visualstudio.com/items?itemName=EditorConfig.EditorConfig
+# - https://github.com/editorconfig/editorconfig-vscode
+
+# top-most EditorConfig file
+root = true
+
+[*.{cfg,ini,py,pyi,pyx,sh}]
+charset = utf-8
+indent_style = space
+indent_size = 4
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[{.editorconfig,Dockerfile,MANIFEST.in,Pipfile}]
+charset = utf-8
+indent_style = space
+indent_size = 4
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true

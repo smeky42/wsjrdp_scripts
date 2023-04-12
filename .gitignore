@@ -5,3 +5,6 @@ config.yml
 *.xls
 *.xlsx
 .DS_Store
+!requirements.txt
+.envrc
+__pycache__
