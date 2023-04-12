@@ -37,6 +37,45 @@ def gender(gender):
     case _:
       return 'O'
 
-def nationality():
-  # ToDo all
-  return '49'
+def nationality(passport_nationality):
+  if "Deu" in passport_nationality or passport_nationality  == "D":
+    return '49'
+  elif "Öster" in passport_nationality or "Oester" in passport_nationality:
+    return '43'
+  elif "Belg" in passport_nationality:
+    return '32'
+  elif "Pol" in passport_nationality:
+    return '48'
+  elif "Franz" in passport_nationality:
+    return '33'
+  elif "Finn" in passport_nationality:
+    return '358'
+  elif "Syr" in passport_nationality:
+    return '963'
+  elif "Südkorea" in passport_nationality:
+    return '82'
+  elif "Span" in passport_nationality:
+    return '34'
+  elif "Filip" in passport_nationality:
+    return '63'
+  elif "Türk" in passport_nationality:
+    return '90'
+  elif "Nied" in passport_nationality:
+    return '31'
+  elif "Ungar" in passport_nationality:
+    return '36'
+  elif "Brit" in passport_nationality:
+    return '44'
+  elif "Bol" in passport_nationality:
+    return '591'
+  elif "Ital" in passport_nationality:
+    return '39'
+  elif "Port" in passport_nationality:
+    return '351'
+  elif "Aserb" in passport_nationality:
+    return '994'
+  elif "Russ" in passport_nationality:
+    return '7'
+  else:
+    print ("Error: Konnte Nationalität #{passport_nationality} nicht mappen.")
+    return '-'

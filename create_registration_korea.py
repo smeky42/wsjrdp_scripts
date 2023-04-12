@@ -17,7 +17,7 @@ cnx = connection.MySQLConnection(user=config['username'], password=config['passw
                                  port=config['port'],
                                  database=config['database'])
 cursor = cnx.cursor()
-query =   ("select role_wish, first_name, last_name, gender, primary_group_id, zip_code, status from people where id=2;")
+query =   ("select role_wish, passport_nationality, first_name, last_name, gender, primary_group_id, zip_code, status from people where id=2;")
 cursor.execute(query)
 #load excel file
 workbook = load_workbook(filename="wsj_insert_en.xlsx")
@@ -26,13 +26,13 @@ workbook = load_workbook(filename="wsj_insert_en.xlsx")
 sheet = workbook.active
 
 counter = 5
-for (role_wish, first_name, last_name, gender, primary_group_id, zip_code, status) in cursor:
+for (role_wish, passport_nationality, first_name, last_name, gender, primary_group_id, zip_code, status) in cursor:
     row = str(counter)
     sheet["A" + row] = str(counter + 7) # No.
     sheet["B" + row] = registration_mapper.type(role_wish) # "Type - (Youth participant, Adult participant)"
     sheet["C" + row] = "57" # Name of NSO
     sheet["D" + row] = registration_mapper.position(role_wish) # Position
-    sheet["E" + row] = "-" # Nationality
+    sheet["E" + row] = registration_mapper.nationality(passport_nationality) # Nationality
     sheet["F" + row] = "-" # Hangeul
     sheet["G" + row] = "-" # Roman alphabet
     sheet["H" + row] = "-" # Surname
