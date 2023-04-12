@@ -1,3 +1,5 @@
+
+import os
 from openpyxl import load_workbook
 from mysql.connector import (connection)
 from datetime import date
@@ -26,7 +28,7 @@ sheet = workbook.active
 counter = 5
 for (role_wish, first_name, last_name, gender, primary_group_id, zip_code, status) in cursor:
     row = str(counter)
-    sheet["A" + row] = str(counter + 7) # No. 
+    sheet["A" + row] = str(counter + 7) # No.
     sheet["B" + row] = registration_mapper.type(role_wish) # "Type - (Youth participant, Adult participant)"
     sheet["C" + row] = "57" # Name of NSO
     sheet["D" + row] = registration_mapper.position(role_wish) # Position
@@ -55,7 +57,7 @@ for (role_wish, first_name, last_name, gender, primary_group_id, zip_code, statu
     sheet["AA" + row] = "-" # SNS URL
     sheet["AB" + row] = "-" # Name of legal guardian
     sheet["AC" + row] = "-" # Phone number of legal guardian
-    sheet["AD" + row] = "-" # Email address of legal guardian 
+    sheet["AD" + row] = "-" # Email address of legal guardian
     sheet["AE" + row] = "-" # Primart emergency contact name
     sheet["AF" + row] = "-" # "Relationship with primary  - emergency contact"
     sheet["AG" + row] = "-" # "Primary emergency  - contact phone number"
@@ -77,16 +79,16 @@ for (role_wish, first_name, last_name, gender, primary_group_id, zip_code, statu
     sheet["AW" + row] = "-" # Date of departure
     sheet["AX" + row] = "-" # departure time
     sheet["AY" + row] = "-" # Blood type
-    sheet["AZ" + row] = "-" # Blood type - Other 
+    sheet["AZ" + row] = "-" # Blood type - Other
     sheet["BA" + row] = "-" # Underlying health conditions
     sheet["BC" + row] = "-" # Underlying health conditions - Other
     sheet["BD" + row] = "-" # History of surgery or hospitalization
-    sheet["BE" + row] = "-" # Name of medication 
+    sheet["BE" + row] = "-" # Name of medication
     sheet["BF" + row] = "-" # Dosage
     sheet["BG" + row] = "-" # Frequency
-    sheet["BH" + row] = "-" # Reason for medication intake 
+    sheet["BH" + row] = "-" # Reason for medication intake
     sheet["BI" + row] = "-" # Allergies
-    sheet["BJ" + row] = "-" # Allergies � Other 
+    sheet["BJ" + row] = "-" # Allergies � Other
     sheet["BK" + row] = "-" # Allergies � specific details
     sheet["BL" + row] = "-" # Food allergies
     sheet["BM" + row] = "-" # Food allergies - Other
@@ -103,8 +105,8 @@ for (role_wish, first_name, last_name, gender, primary_group_id, zip_code, statu
     sheet["BX" + row] = "-" # Pertussis
     sheet["BY" + row] = "-" # Hepatitis B
     sheet["BZ" + row] = "-" # Diphtheria
-    sheet["CA" + row] = "-" # Encephalomeningitis 
-    sheet["CB" + row] = "-" # Measles/Mumps/Rubella 
+    sheet["CA" + row] = "-" # Encephalomeningitis
+    sheet["CB" + row] = "-" # Measles/Mumps/Rubella
     sheet["CC" + row] = "-" # Influenza
     sheet["CD" + row] = "-" # Polio
     sheet["CE" + row] = "-" # Chickenpox
@@ -113,20 +115,20 @@ for (role_wish, first_name, last_name, gender, primary_group_id, zip_code, statu
     sheet["CH" + row] = "-" # Dietary needs
     sheet["CI" + row] = "-" # Dietary needs - Other
     sheet["CJ" + row] = "-" # The mobility aids that are being brought
-    sheet["CK" + row] = "-" # Mobility needs - Other 
-    sheet["CL" + row] = "-" # Special needs  
+    sheet["CK" + row] = "-" # Mobility needs - Other
+    sheet["CL" + row] = "-" # Special needs
     sheet["CM" + row] = "-" # Religion
     sheet["CN" + row] = "-" # Religion - Other
-    sheet["CO" + row] = "-" # Languages spoken 
-    sheet["CP" + row] = "-" # Languages spoken � Other 
+    sheet["CO" + row] = "-" # Languages spoken
+    sheet["CP" + row] = "-" # Languages spoken � Other
     sheet["CQ" + row] = "-" # "Langauges spoken  - (advanced, intermediate, beginner)"
     sheet["CR" + row] = "-" # Insurance
     sheet["CS" + row] = "-" # Name of insurance company
-    sheet["CT" + row] = "-" # Phone number of insurance company 
-    sheet["CU" + row] = "-" # Insurance certificate 
-    sheet["CV" + row] = "-" # Prior experience of participating in a WSJ (World Scout Jamboree) 
+    sheet["CT" + row] = "-" # Phone number of insurance company
+    sheet["CU" + row] = "-" # Insurance certificate
+    sheet["CV" + row] = "-" # Prior experience of participating in a WSJ (World Scout Jamboree)
     sheet["CW" + row] = "-" # Prior experience of participating in a WSJ - Other
-    sheet["CX" + row] = "-" # Past WSJ role(s) 
+    sheet["CX" + row] = "-" # Past WSJ role(s)
     sheet["CY" + row] = "-" # Participation in the Pre-Jamboree Activities
     sheet["CZ" + row] = "-" # Boarding the official Jamboree shuttle bus
     sheet["DA" + row] = "-" # Preferred time to arrive at the Jamboree site(Date)
@@ -135,7 +137,7 @@ for (role_wish, first_name, last_name, gender, primary_group_id, zip_code, statu
     sheet["DD" + row] = "-" # Boarding the official Jamboree shuttle bus
     sheet["DE" + row] = "-" # Preferred departure time from Jamboree site(Date)
     sheet["DF" + row] = "-" # Preferred departure time from Jamboree site(Time)
-    sheet["DG" + row] = "-" # Name of legal guardian 
+    sheet["DG" + row] = "-" # Name of legal guardian
     sheet["DH" + row] = "-" # Relationship of legal guardian with the participant
     sheet["DI" + row] = "-" # Date of parental/guardian consent
 
@@ -143,5 +145,5 @@ for (role_wish, first_name, last_name, gender, primary_group_id, zip_code, statu
 cursor.close()
 
 #save the file
+os.makedirs("upload_korea", exist_ok=True)
 workbook.save(filename="upload_korea/" + today + "--wsj_insert_de.xlsx")
-
