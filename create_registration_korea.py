@@ -17,7 +17,23 @@ cnx = connection.MySQLConnection(user=config['username'], password=config['passw
                                  port=config['port'],
                                  database=config['database'])
 cursor = cnx.cursor()
-query =   ("select role_wish, passport_nationality, first_name, last_name, gender, primary_group_id, zip_code, status from people where id=2;")
+query =   ("select role_wish, " 
+           "passport_nationality, " 
+           "first_name, "
+           "last_name, "
+           "nickname, " 
+           "gender, "
+           "birthday, "
+           "email, "
+           "address, "
+           "town, "
+           "country, "
+           "zip_code, "
+           "primary_group_id, "
+           "status "
+           "from people "
+           "where id=2;")
+
 cursor.execute(query)
 #load excel file
 workbook = load_workbook(filename="wsj_insert_en.xlsx")
@@ -26,30 +42,43 @@ workbook = load_workbook(filename="wsj_insert_en.xlsx")
 sheet = workbook.active
 
 counter = 5
-for (role_wish, passport_nationality, first_name, last_name, gender, primary_group_id, zip_code, status) in cursor:
+for (role_wish, 
+     passport_nationality, 
+     first_name, 
+     last_name, 
+     nickname, 
+     gender, 
+     birthday,
+     email,
+     address,
+     town,
+     country,
+     primary_group_id, 
+     zip_code, 
+     status) in cursor:
     row = str(counter)
     sheet["A" + row] = str(counter + 7) # No.
     sheet["B" + row] = registration_mapper.type(role_wish) # "Type - (Youth participant, Adult participant)"
     sheet["C" + row] = "57" # Name of NSO
     sheet["D" + row] = registration_mapper.position(role_wish) # Position
     sheet["E" + row] = registration_mapper.nationality(passport_nationality) # Nationality
-    sheet["F" + row] = "-" # Hangeul
-    sheet["G" + row] = "-" # Roman alphabet
-    sheet["H" + row] = "-" # Surname
-    sheet["I" + row] = "-" # Middle Name
-    sheet["J" + row] = "-" # Given Name
-    sheet["K" + row] = "-" # Name on ID card
-    sheet["L" + row] = "-" # Gender
-    sheet["M" + row] = "-" # Date of birth
-    sheet["N" + row] = "-" # Participant's email
-    sheet["O" + row] = "-" # Your affiliation(Scouting)
-    sheet["P" + row] = "-" # Job/position
-    sheet["Q" + row] = "-" # Current position within the NSO
-    sheet["R" + row] = "-" # Home address
-    sheet["S" + row] = "-" # City
-    sheet["T" + row] = "-" # State/Province
-    sheet["U" + row] = "-" # Nationality(City)
-    sheet["V" + row] = "-" # Zip code
+    sheet["F" + row] = "" # Hangeul
+    sheet["G" + row] = "" # Roman alphabet
+    sheet["H" + row] = last_name # Surname
+    sheet["I" + row] = "" # Middle Name
+    sheet["J" + row] = first_name # Given Name
+    sheet["K" + row] = registration_mapper.name(first_name, nickname) # Name on ID card
+    sheet["L" + row] = registration_mapper.gender(gender) # Gender
+    sheet["M" + row] = birthday # Date of birth
+    sheet["N" + row] = email # Participant's email
+    sheet["O" + row] = '1' # Your affiliation(Scouting)
+    sheet["P" + row] = "" # Job/position
+    sheet["Q" + row] = "" # Current position within the NSO
+    sheet["R" + row] = address # Home address
+    sheet["S" + row] = town # City
+    sheet["T" + row] = "" # State/Province
+    sheet["U" + row] = registration_mapper.nationality(country) # Nationality(City)
+    sheet["V" + row] = zip_code # Zip code
     sheet["W" + row] = "-" # Home phone number
     sheet["X" + row] = "-" # "Mobile phone number - (Country code)"
     sheet["Y" + row] = "-" # "Mobile phone number - (phone number)"

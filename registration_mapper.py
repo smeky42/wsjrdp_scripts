@@ -18,12 +18,12 @@ def position(role_wish):
     case 'IST':
       return 'S'
     case _:
-      print("Rolle ist #{role_wish}")
+      print("Rolle ist {role_wish}")
       ' '
   
 def name(first_name, nickname):
   name = first_name
-  if nickname is not None and nickname.len() > 2:
+  if nickname and len(nickname) > 2:
     name = nickname 
 
   return name
@@ -38,15 +38,15 @@ def gender(gender):
       return 'O'
 
 def nationality(passport_nationality):
-  if "Deu" in passport_nationality or passport_nationality  == "D":
+  if "Deu" in passport_nationality or passport_nationality  == "D" or passport_nationality == "DE":
     return '49'
-  elif "Öster" in passport_nationality or "Oester" in passport_nationality:
+  elif "Öster" in passport_nationality or "Oester" in passport_nationality or passport_nationality == "AT":
     return '43'
   elif "Belg" in passport_nationality:
     return '32'
   elif "Pol" in passport_nationality:
     return '48'
-  elif "Franz" in passport_nationality:
+  elif "Franz" in passport_nationality or passport_nationality == "FR":
     return '33'
   elif "Finn" in passport_nationality:
     return '358'
@@ -60,7 +60,7 @@ def nationality(passport_nationality):
     return '63'
   elif "Türk" in passport_nationality:
     return '90'
-  elif "Nied" in passport_nationality:
+  elif "Nied" in passport_nationality or passport_nationality == "NL":
     return '31'
   elif "Ungar" in passport_nationality:
     return '36'
@@ -68,7 +68,7 @@ def nationality(passport_nationality):
     return '44'
   elif "Bol" in passport_nationality:
     return '591'
-  elif "Ital" in passport_nationality:
+  elif "Ital" in passport_nationality or passport_nationality == "IT":
     return '39'
   elif "Port" in passport_nationality:
     return '351'
@@ -76,6 +76,10 @@ def nationality(passport_nationality):
     return '994'
   elif "Russ" in passport_nationality:
     return '7'
+  elif "CH" == passport_nationality:
+    return '41'
+  elif "IE" == passport_nationality:
+    return '353'
   else:
-    print ("Error: Konnte Nationalität #{passport_nationality} nicht mappen.")
+    print (f"Error: Konnte Nationalität {passport_nationality} nicht mappen.")
     return '-'
