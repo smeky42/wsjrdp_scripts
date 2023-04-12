@@ -1,3 +1,4 @@
-pyyaml
-openpyxl
 mysql-connector-python
+openpyxl
+pyyaml
+types-openpyxl
