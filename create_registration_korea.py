@@ -17,21 +17,21 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d: dict[str, typing.Any] = {}
     # fmt: off
     d["A"] = str(no)  # No.
-    d["B"] = registration_mapper.type(p.role_wish)  # "Type - (Youth participant, Adult participant)"
-    d["C"] = "57"  # Name of NSO
-    d["D"] = registration_mapper.position(p.role_wish)  # Position
-    d["E"] = p.k_reg_nationality  # Nationality
+    d["B"] = registration_mapper.type(p.role_wish)  # "Type - (Youth participant, Adult participant)" X
+    d["C"] = "57"  # Name of NSO X
+    d["D"] = registration_mapper.position(p.role_wish)  # Position X 
+    d["E"] = p.k_reg_nationality  # Nationality X
     d["F"] = ""  # Hangeul
     d["G"] = ""  # Roman alphabet
-    d["H"] = p.last_name  # Surname
+    d["H"] = p.last_name  # Surname X
     d["I"] = ""  # Middle Name
-    d["J"] = p.first_name  # Given Name
-    d["K"] = p.name_on_id_card  # Name on ID card
-    d["L"] = registration_mapper.gender(p.gender)  # Gender
-    d["M"] = p.birthday  # Date of birth
+    d["J"] = p.first_name  # Given Name X
+    d["K"] = p.name_on_id_card  # Name on ID card X
+    d["L"] = registration_mapper.gender(p.gender)  # Gender X
+    d["M"] = p.birthday  # Date of birth X
     d["N"] = p.email  # Participant's email
-    d["O"] = "1"  # Your affiliation(Scouting)
-    d["P"] = ""  # Job/position
+    d["O"] = "1"  # Your affiliation(Scouting) X
+    d["P"] = ""  # Job/position X
     d["Q"] = ""  # Current position within the NSO
     d["R"] = p.address  # Home address
     d["S"] = p.town  # City
@@ -125,7 +125,7 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["DC"] = "-"  # Boarding the official Jamboree shuttle bus
     d["DD"] = "-"  # Preferred departure time from Jamboree site(Date)
     d["DE"] = "-"  # Preferred departure time from Jamboree site(Time)
-    d["DF"] = p.name_of_legal_guardian  # Name of legal guardian
+    d["DF"] = p.hr  # Name of legal guardian
     d["DG"] = p.relationship_of_legal_guardian_with_the_participant  # Relationship of legal guardian with the participant
     d["DH"] = p.date_of_guardian_consent  # Date of parental/guardian consent
     # fmt: on
