@@ -19,7 +19,9 @@ class RegistrationPerson:
 
     id: int
     role_wish: str | None
+    passport_number: str
     passport_nationality: str
+    passport_valid: datetime.date
     first_name: str
     last_name: str
     nickname: str

@@ -52,10 +52,10 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["AH"] = "-"  # "secondart emergency  - contact name"
     d["AI"] = "-"  # Relationship with secondary emergency contact
     d["AJ"] = "-"  # Secondary emergency contact phone number
-    d["AK"] = "-"  # Passport number
-    d["AL"] = "-"  # Date of issue
-    d["AM"] = "-"  # Valid until
-    d["AN"] = "-"  # Passport issuing country
+    d["AK"] = p.passport_number  # Passport number
+    d["AL"] = ""  # Date of issue
+    d["AM"] = p.passport_valid  # Valid until
+    d["AN"] = p.k_reg_nationality  # Passport issuing country
     d["AO"] = "-"  # Means of transportation
     d["AP"] = "-"  # Ariline
     d["AQ"] = "-"  # Date of departure
