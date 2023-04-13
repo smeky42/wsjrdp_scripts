@@ -1,178 +1,192 @@
-
+#!/usr/bin/env python
 import os
-from openpyxl import load_workbook
-from mysql.connector import (connection)
+import sys
+import typing
+import warnings
 from datetime import date
+
 import yaml
+from mysql.connector import connection
+from openpyxl import load_workbook
+
 import registration_mapper
+from registration_person import RegistrationPerson
 
 
-with open("config.yml", "r") as yamlfile:
-    config = yaml.load(yamlfile, Loader=yaml.FullLoader)
-    print("Read successful")
+def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
+    d: dict[str, typing.Any] = {}
+    # fmt: off
+    d["A"] = str(no)  # No.
+    d["B"] = registration_mapper.type(p.role_wish)  # "Type - (Youth participant, Adult participant)"
+    d["C"] = "57"  # Name of NSO
+    d["D"] = registration_mapper.position(p.role_wish)  # Position
+    d["E"] = p.k_reg_nationality  # Nationality
+    d["F"] = ""  # Hangeul
+    d["G"] = ""  # Roman alphabet
+    d["H"] = p.last_name  # Surname
+    d["I"] = ""  # Middle Name
+    d["J"] = p.first_name  # Given Name
+    d["K"] = p.name_on_id_card  # Name on ID card
+    d["L"] = registration_mapper.gender(p.gender)  # Gender
+    d["M"] = p.birthday  # Date of birth
+    d["N"] = p.email  # Participant's email
+    d["O"] = "1"  # Your affiliation(Scouting)
+    d["P"] = ""  # Job/position
+    d["Q"] = ""  # Current position within the NSO
+    d["R"] = p.address  # Home address
+    d["S"] = p.town  # City
+    d["T"] = ""  # State/Province
+    d["U"] = p.k_reg_nationality_city_of_residence  # Nationality(City)
+    d["V"] = p.zip_code  # Zip code
+    d["W"] = "-"  # Home phone number
+    d["X"] = "-"  # "Mobile phone number - (Country code)"
+    d["Y"] = "-"  # "Mobile phone number - (phone number)"
+    d["Z"] = "-"  # "SNS ID - (social media account)"
+    d["AA"] = "-"  # SNS URL
+    d["AB"] = "-"  # Name of legal guardian
+    d["AC"] = "-"  # Phone number of legal guardian
+    d["AD"] = "-"  # Email address of legal guardian
+    d["AE"] = "-"  # Primart emergency contact name
+    d["AF"] = "-"  # "Relationship with primary  - emergency contact"
+    d["AG"] = "-"  # "Primary emergency  - contact phone number"
+    d["AH"] = "-"  # "secondart emergency  - contact name"
+    d["AI"] = "-"  # Relationship with secondary emergency contact
+    d["AJ"] = "-"  # Secondary emergency contact phone number
+    d["AK"] = "-"  # Passport number
+    d["AL"] = "-"  # Date of issue
+    d["AM"] = "-"  # Valid until
+    d["AN"] = "-"  # Passport issuing country
+    d["AO"] = "-"  # Means of transportation
+    d["AP"] = "-"  # Ariline
+    d["AQ"] = "-"  # Date of departure
+    d["AR"] = "-"  # Arrival airport
+    d["AS"] = "-"  # Date of arrival
+    d["AT"] = "-"  # Time of arrival
+    d["AU"] = "-"  # Flight number
+    d["AV"] = "-"  # Origin point / Last city of boarding
+    d["AW"] = "-"  # Date of departure
+    d["AX"] = "-"  # departure time
+    d["AY"] = "-"  # Blood type
+    d["AZ"] = "-"  # Blood type - Other
+    d["BA"] = "-"  # Underlying health conditions
+    d["BB"] = "-"  # Underlying health conditions - Other
+    d["BC"] = "-"  # History of surgery or hospitalization
+    d["BD"] = "-"  # Name of medication
+    d["BE"] = "-"  # Dosage
+    d["BF"] = "-"  # Frequency
+    d["BG"] = "-"  # Reason for medication intake
+    d["BH"] = "-"  # Allergies
+    d["BI"] = "-"  # Allergies � Other
+    d["BJ"] = "-"  # Allergies � specific details
+    d["BK"] = "-"  # Food allergies
+    d["BL"] = "-"  # Food allergies - Other
+    d["BM"] = "-"  # "Types of COVID-19 vaccines �  - first dose"
+    d["BN"] = "-"  # "Types of COVID-19 vaccines �  - Second dose"
+    d["BO"] = "-"  # "Types of COVID-19 vaccines �  - Third dose"
+    d["BP"] = "-"  # "Types of COVID-19 vaccines �  - Fourth dose"
+    d["BQ"] = "-"  # Dates vaccinated � First dose
+    d["BR"] = "-"  # Dates vaccinated � Seconf dose
+    d["BS"] = "-"  # Dates vaccinated � Third dose
+    d["BT"] = "-"  # Dates vaccinated � Fourth dose
+    d["BU"] = "-"  # Tetanus
+    d["BV"] = "-"  # Hepatitis A
+    d["BW"] = "-"  # Pertussis
+    d["BX"] = "-"  # Hepatitis B
+    d["BY"] = "-"  # Diphtheria
+    d["BZ"] = "-"  # Encephalomeningitis
+    d["CA"] = "-"  # Measles/Mumps/Rubella
+    d["CB"] = "-"  # Influenza
+    d["CC"] = "-"  # Polio
+    d["CD"] = "-"  # Chickenpox
+    d["CE"] = "-"  # Other
+    d["CF"] = "-"  # Shirt Size
+    d["CG"] = "-"  # Dietary needs
+    d["CH"] = "-"  # Dietary needs - Other
+    d["CI"] = "-"  # The mobility aids that are being brought
+    d["CJ"] = "-"  # Mobility needs - Other
+    d["CK"] = "-"  # Special needs
+    d["CL"] = "-"  # Religion
+    d["CM"] = "-"  # Religion - Other
+    d["CN"] = "-"  # Languages spoken
+    d["CO"] = "-"  # Languages spoken � Other
+    d["CP"] = "-"  # "Langauges spoken  - (advanced, intermediate, beginner)"
+    d["CQ"] = "-"  # Insurance
+    d["CR"] = "-"  # Name of insurance company
+    d["CS"] = "-"  # Phone number of insurance company
+    d["CT"] = "-"  # Insurance certificate
+    d["CU"] = "-"  # Prior experience of participating in a WSJ (World Scout Jamboree)
+    d["CV"] = "-"  # Prior experience of participating in a WSJ - Other
+    d["CW"] = "-"  # Past WSJ role(s)
+    d["CX"] = "N"  # Participation in the Pre-Jamboree Activities
+    d["CY"] = "-"  # Boarding the official Jamboree shuttle bus
+    d["CZ"] = "-"  # Preferred time to arrive at the Jamboree site(Date)
+    d["DA"] = "-"  # Preferred time to arrive at the Jamboree site(Time)
+    d["DB"] = "-"  # Participation in the Post-Jamboree Activities
+    d["DC"] = "-"  # Boarding the official Jamboree shuttle bus
+    d["DD"] = "-"  # Preferred departure time from Jamboree site(Date)
+    d["DE"] = "-"  # Preferred departure time from Jamboree site(Time)
+    d["DF"] = p.name_of_legal_guardian  # Name of legal guardian
+    d["DG"] = p.relationship_of_legal_guardian_with_the_participant  # Relationship of legal guardian with the participant
+    d["DH"] = p.date_of_guardian_consent  # Date of parental/guardian consent
+    # fmt: on
+    return d
 
-today = str(date.today())
-cnx = connection.MySQLConnection(user=config['username'], password=config['password'],
-                                 host='anmeldung.worldscoutjamboree.de',
-                                 port=config['port'],
-                                 database=config['database'])
-cursor = cnx.cursor()
-query =   ("select role_wish, " 
-           "passport_nationality, " 
-           "first_name, "
-           "last_name, "
-           "nickname, " 
-           "gender, "
-           "birthday, "
-           "email, "
-           "address, "
-           "town, "
-           "country, "
-           "zip_code, "
-           "primary_group_id, "
-           "status "
-           "from people "
-           "where id=2;")
 
-cursor.execute(query)
-#load excel file
-workbook = load_workbook(filename="wsj_insert_en.xlsx")
+def main():
+    with open("config.yml", "r") as yamlfile:
+        config = yaml.load(yamlfile, Loader=yaml.FullLoader)
+        print("Read successful")
 
-#open workbook
-sheet = workbook.active
+    today = str(date.today())
+    cnx = connection.MySQLConnection(
+        user=config["username"],
+        password=config["password"],
+        host="anmeldung.worldscoutjamboree.de",
+        port=config["port"],
+        database=config["database"],
+    )
 
-counter = 5
-for (role_wish, 
-     passport_nationality, 
-     first_name, 
-     last_name, 
-     nickname, 
-     gender, 
-     birthday,
-     email,
-     address,
-     town,
-     country,
-     primary_group_id, 
-     zip_code, 
-     status) in cursor:
-    row = str(counter)
-    sheet["A" + row] = str(counter + 7) # No.
-    sheet["B" + row] = registration_mapper.type(role_wish) # "Type - (Youth participant, Adult participant)"
-    sheet["C" + row] = "57" # Name of NSO
-    sheet["D" + row] = registration_mapper.position(role_wish) # Position
-    sheet["E" + row] = registration_mapper.nationality(passport_nationality) # Nationality
-    sheet["F" + row] = "" # Hangeul
-    sheet["G" + row] = "" # Roman alphabet
-    sheet["H" + row] = last_name # Surname
-    sheet["I" + row] = "" # Middle Name
-    sheet["J" + row] = first_name # Given Name
-    sheet["K" + row] = registration_mapper.name(first_name, nickname) # Name on ID card
-    sheet["L" + row] = registration_mapper.gender(gender) # Gender
-    sheet["M" + row] = birthday # Date of birth
-    sheet["N" + row] = email # Participant's email
-    sheet["O" + row] = '1' # Your affiliation(Scouting)
-    sheet["P" + row] = "" # Job/position
-    sheet["Q" + row] = "" # Current position within the NSO
-    sheet["R" + row] = address # Home address
-    sheet["S" + row] = town # City
-    sheet["T" + row] = "" # State/Province
-    sheet["U" + row] = registration_mapper.nationality(country) # Nationality(City)
-    sheet["V" + row] = zip_code # Zip code
-    sheet["W" + row] = "-" # Home phone number
-    sheet["X" + row] = "-" # "Mobile phone number - (Country code)"
-    sheet["Y" + row] = "-" # "Mobile phone number - (phone number)"
-    sheet["Z" + row] = "-" # "SNS ID - (social media account)"
-    sheet["AA" + row] = "-" # SNS URL
-    sheet["AB" + row] = "-" # Name of legal guardian
-    sheet["AC" + row] = "-" # Phone number of legal guardian
-    sheet["AD" + row] = "-" # Email address of legal guardian
-    sheet["AE" + row] = "-" # Primart emergency contact name
-    sheet["AF" + row] = "-" # "Relationship with primary  - emergency contact"
-    sheet["AG" + row] = "-" # "Primary emergency  - contact phone number"
-    sheet["AH" + row] = "-" # "secondart emergency  - contact name"
-    sheet["AI" + row] = "-" # Relationship with secondary emergency contact
-    sheet["AJ" + row] = "-" # Secondary emergency contact phone number
-    sheet["AK" + row] = "-" # Passport number
-    sheet["AL" + row] = "-" # Date of issue
-    sheet["AM" + row] = "-" # Valid until
-    sheet["AN" + row] = "-" # Passport issuing country
-    sheet["AO" + row] = "-" # Means of transportation
-    sheet["AP" + row] = "-" # Ariline
-    sheet["AQ" + row] = "-" # Date of departure
-    sheet["AR" + row] = "-" # Arrival airport
-    sheet["AS" + row] = "-" # Date of arrival
-    sheet["AT" + row] = "-" # Time of arrival
-    sheet["AU" + row] = "-" # Flight number
-    sheet["AV" + row] = "-" # Origin point / Last city of boarding
-    sheet["AW" + row] = "-" # Date of departure
-    sheet["AX" + row] = "-" # departure time
-    sheet["AY" + row] = "-" # Blood type
-    sheet["AZ" + row] = "-" # Blood type - Other
-    sheet["BA" + row] = "-" # Underlying health conditions
-    sheet["BC" + row] = "-" # Underlying health conditions - Other
-    sheet["BD" + row] = "-" # History of surgery or hospitalization
-    sheet["BE" + row] = "-" # Name of medication
-    sheet["BF" + row] = "-" # Dosage
-    sheet["BG" + row] = "-" # Frequency
-    sheet["BH" + row] = "-" # Reason for medication intake
-    sheet["BI" + row] = "-" # Allergies
-    sheet["BJ" + row] = "-" # Allergies � Other
-    sheet["BK" + row] = "-" # Allergies � specific details
-    sheet["BL" + row] = "-" # Food allergies
-    sheet["BM" + row] = "-" # Food allergies - Other
-    sheet["BN" + row] = "-" # "Types of COVID-19 vaccines �  - first dose"
-    sheet["BO" + row] = "-" # "Types of COVID-19 vaccines �  - Second dose"
-    sheet["BP" + row] = "-" # "Types of COVID-19 vaccines �  - Third dose"
-    sheet["BQ" + row] = "-" # "Types of COVID-19 vaccines �  - Fourth dose"
-    sheet["BR" + row] = "-" # Dates vaccinated � First dose
-    sheet["BS" + row] = "-" # Dates vaccinated � Seconf dose
-    sheet["BT" + row] = "-" # Dates vaccinated � Third dose
-    sheet["BU" + row] = "-" # Dates vaccinated � Fourth dose
-    sheet["BV" + row] = "-" # Tetanus
-    sheet["BW" + row] = "-" # Hepatitis A
-    sheet["BX" + row] = "-" # Pertussis
-    sheet["BY" + row] = "-" # Hepatitis B
-    sheet["BZ" + row] = "-" # Diphtheria
-    sheet["CA" + row] = "-" # Encephalomeningitis
-    sheet["CB" + row] = "-" # Measles/Mumps/Rubella
-    sheet["CC" + row] = "-" # Influenza
-    sheet["CD" + row] = "-" # Polio
-    sheet["CE" + row] = "-" # Chickenpox
-    sheet["CF" + row] = "-" # Other
-    sheet["CG" + row] = "-" # Shirt Size
-    sheet["CH" + row] = "-" # Dietary needs
-    sheet["CI" + row] = "-" # Dietary needs - Other
-    sheet["CJ" + row] = "-" # The mobility aids that are being brought
-    sheet["CK" + row] = "-" # Mobility needs - Other
-    sheet["CL" + row] = "-" # Special needs
-    sheet["CM" + row] = "-" # Religion
-    sheet["CN" + row] = "-" # Religion - Other
-    sheet["CO" + row] = "-" # Languages spoken
-    sheet["CP" + row] = "-" # Languages spoken � Other
-    sheet["CQ" + row] = "-" # "Langauges spoken  - (advanced, intermediate, beginner)"
-    sheet["CR" + row] = "-" # Insurance
-    sheet["CS" + row] = "-" # Name of insurance company
-    sheet["CT" + row] = "-" # Phone number of insurance company
-    sheet["CU" + row] = "-" # Insurance certificate
-    sheet["CV" + row] = "-" # Prior experience of participating in a WSJ (World Scout Jamboree)
-    sheet["CW" + row] = "-" # Prior experience of participating in a WSJ - Other
-    sheet["CX" + row] = "-" # Past WSJ role(s)
-    sheet["CY" + row] = "-" # Participation in the Pre-Jamboree Activities
-    sheet["CZ" + row] = "-" # Boarding the official Jamboree shuttle bus
-    sheet["DA" + row] = "-" # Preferred time to arrive at the Jamboree site(Date)
-    sheet["DB" + row] = "-" # Preferred time to arrive at the Jamboree site(Time)
-    sheet["DC" + row] = "-" # Participation in the Pre-Jamboree Activities
-    sheet["DD" + row] = "-" # Boarding the official Jamboree shuttle bus
-    sheet["DE" + row] = "-" # Preferred departure time from Jamboree site(Date)
-    sheet["DF" + row] = "-" # Preferred departure time from Jamboree site(Time)
-    sheet["DG" + row] = "-" # Name of legal guardian
-    sheet["DH" + row] = "-" # Relationship of legal guardian with the participant
-    sheet["DI" + row] = "-" # Date of parental/guardian consent
+    # where_clause = "role_wish = 'Teilnehmende*r' limit 200"
+    # where_clause = ""
+    where_clause = "id=2"
 
-    counter += 1
-cursor.close()
+    cursor = cnx.cursor(dictionary=True)
+    cursor.execute(RegistrationPerson.get_db_query(where_clause))
 
-#save the file
-os.makedirs("upload_korea", exist_ok=True)
-workbook.save(filename="upload_korea/" + today + "--wsj_insert_de.xlsx")
+    # load excel file
+    workbook = load_workbook(filename="wsj_insert_en.xlsx")
+
+    # open workbook
+    sheet: typing.Any = workbook.active
+
+    counter = 0
+    for counter, row_dict in enumerate(cursor, start=1):
+        p = RegistrationPerson(**row_dict)
+
+        # Catch all warnings generated while collecting the data for
+        # the next row in the sheet.
+        with warnings.catch_warnings(record=True) as warnings_list:
+            sheet_row_dict = to_sheet_row_dict(p, no=counter + 11)
+
+        # If we got some warnings, print them
+        if warnings_list:
+            print(f"Error(s): id={p.id} {p.first_name} {p.last_name}")
+            for warning_item in warnings_list:
+                print(f"  - {warning_item.message}")
+
+        # write row data into sheet
+        row = str(counter + 4)
+        for col, val in sheet_row_dict.items():
+            if val is not None:
+                sheet[col + row] = val
+
+    cursor.close()
+
+    # save the file
+    os.makedirs("upload_korea", exist_ok=True)
+    workbook.save(filename="upload_korea/" + today + "--wsj_insert_de.xlsx")
+    print(f"Wrote {counter} rows")
+
+
+if __name__ == "__main__":
+    sys.exit(main())
