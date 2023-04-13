@@ -32,7 +32,9 @@ class RegistrationPerson:
     zip_code: str
     primary_group_id: int
     additional_contact_name_a: str
+    additional_contact_adress_a: str
     additional_contact_name_b: str
+    additional_contact_adress_b: str
     additional_contact_single: bool
     generated_registration_pdf: str
     status: str
@@ -64,9 +66,9 @@ class RegistrationPerson:
     @functools.cached_property
     def is_participant(self) -> bool:
         return registration_mapper.is_participant(self.role_wish)
-
+    
     @property
-    def additional_contact_names(self) -> list[str]:
+    def additional_contact_adress(self) -> list[str]:
         """List of additional contact names.
 
         Returned list contains only non-empty names.
@@ -75,6 +77,19 @@ class RegistrationPerson:
             name
             for name in [self.additional_contact_name_a, self.additional_contact_name_b]
             if name
+        ]
+
+
+    @property
+    def additional_contact_names(self) -> list[str]:
+        """List of additional contact names.
+
+        Returned list contains only non-empty names.
+        """
+        return [
+            adress
+            for adress in [self.additional_contact_adress_a, self.additional_contact_adress_b]
+            if adress
         ]
 
     @property
@@ -98,6 +113,16 @@ class RegistrationPerson:
             return names[0]
         else:
             return " AND ".join(names)
+        
+    @property
+    def adress_of_legal_guardian(self) -> str:
+        adress = self.additional_contact_adress
+        if not self.is_participant or not adress:
+            return ""
+        if self.additional_contact_single:
+            return adress[0]
+        else:
+            return " AND ".join(adress)
 
     @property
     def relationship_of_legal_guardian_with_the_participant(self) -> str | None:
