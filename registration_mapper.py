@@ -136,6 +136,12 @@ def dietary_needs(medicine_eating_disorders: str | None):
     else:
       return "6"
     
+def allergies(medicine_allergies: str | None):
+    if not medicine_allergies or "keine" in medicine_allergies.lower() or len(medicine_allergies) < 3:
+        return "1"
+    else:
+      return "2|3|4|5"
+    
 def mobility_needs(medicine_mobility_needs: str | None):
     if not medicine_mobility_needs or "keine" in medicine_mobility_needs.lower() or len(medicine_mobility_needs) < 5:
         return "1"

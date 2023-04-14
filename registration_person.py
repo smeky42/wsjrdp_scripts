@@ -215,7 +215,44 @@ class RegistrationPerson:
              return ""
         except ValueError as exc:
             warnings.warn(
-                f"{str(exc)}: passport_nationality={self.medicine_eating_disorders!r}"
+                f"{str(exc)}: medicine_eating_disorders={self.medicine_eating_disorders!r}"
+            )
+            return ""
+        
+    @functools.cached_property
+    def k_allergies(self) -> str | None:
+        """Korean WSJ registartion system allergie need codes 
+        
+        Valid Values:
+        
+        1 No allergy
+        2 Drug
+        3 Plants
+        4 Insects
+        5 Other
+
+        If there is a value in our System we return "2|3|4|5" as we are not able to specify.
+        """
+        try:
+            return registration_mapper.allergies(self.medicine_allergies)
+        except ValueError as exc:
+            warnings.warn(f"{str(exc)}: country={self.country!r}")
+            return "-"
+    
+    @functools.cached_property
+    def k_allergies_other(self) -> str | None:
+        """Korean WSJ registration system dietary needs.
+        
+        As there is the possibility to have multiple dietary needs we return the needs
+        no matter what is stated in k_dietary_needs exept it is 1"""
+        try:
+            if not self.k_allergies == "1":
+              return self.medicine_allergies
+            else: 
+             return ""
+        except ValueError as exc:
+            warnings.warn(
+                f"{str(exc)}: medicine_allergies={self.medicine_allergies!r}"
             )
             return ""
         
@@ -252,7 +289,7 @@ class RegistrationPerson:
              return ""
         except ValueError as exc:
             warnings.warn(
-                f"{str(exc)}: passport_nationality={self.medicine_mobility_needs!r}"
+                f"{str(exc)}: medicine_mobility_needs={self.medicine_mobility_needs!r}"
             )
             return ""
 
