@@ -255,7 +255,53 @@ class RegistrationPerson:
                 f"{str(exc)}: medicine_allergies={self.medicine_allergies!r}"
             )
             return ""
+
+    @functools.cached_property
+    def k_food_allergies(self) -> str | None:
+        """Korean WSJ registartion system allergie need codes 
         
+        Valid Values:
+        
+        1 No food allergy
+        2 Fish
+        3 Lactose
+        4 Seafood
+        5 Gluten
+        6 Nuts
+        7 Wheat
+        8 Fruits
+        9 Egg
+        10 Other
+
+        If there is a value in our System but we are not able to identify a need,  
+        we return "10 Other"
+        """
+        try:
+            return registration_mapper.food_allergies(self.medicine_allergies, self.medicine_eating_disorders)
+        except ValueError as exc:
+            warnings.warn(f"{str(exc)}: medicine_allergies={self.medicine_allergies!r}  {self.medicine_eating_disorders!r}")
+            return "-"
+    
+    @functools.cached_property
+    def k_food_allergies_other(self) -> str | None:
+        """Korean WSJ registration system food allergies.
+        
+        As there is the possibility to have multiple food allergies we return the needs
+        no matter what is stated in k_food_allergies exept it is 1"""
+        try:
+            if not self.k_food_allergies == "1":
+              return self.medicine_allergies + " " + self.medicine_eating_disorders
+            else: 
+             return ""
+        except ValueError as exc:
+            warnings.warn(
+                f"{str(exc)}: medicine_allergies={self.medicine_allergies!r}  {self.medicine_eating_disorders!r}"
+            )
+            return "-"
+
+
+
+
     @functools.cached_property
     def k_mobility_needs(self) -> str | None:
         """Korean WSJ registartion system mobility need codes 

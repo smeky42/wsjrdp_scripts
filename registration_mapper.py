@@ -141,6 +141,34 @@ def allergies(medicine_allergies: str | None):
         return "1"
     else:
       return "2|3|4|5"
+  
+def food_allergies(medicine_allergies: str | None, medicine_eating_disorders: str | None):
+    if dietary_needs(medicine_eating_disorders) == "1" and allergies(medicine_allergies) == "1":
+        return "1"
+    
+    food_allergies_str = medicine_eating_disorders.lower() + medicine_allergies.lower()
+    food_allergies_map = "10"
+
+    if "fisch" in food_allergies_str or "meer" in food_allergies_str: 
+        food_allergies_map += "|2|4"
+
+    if "lactose" in food_allergies_str: 
+        food_allergies_map += "|3"
+    
+    if "gluten" in food_allergies_str: 
+        food_allergies_map += "|5"
+    
+    if "weizen" in food_allergies_str or "getreide" in food_allergies_str: 
+        food_allergies_map += "|7"
+    
+    if "früchte" in food_allergies_str: 
+        food_allergies_map += "|8"
+    
+    if "eier" in food_allergies_str or "egg" in food_allergies_str: 
+        food_allergies_map += "|2"
+
+    return food_allergies_map
+
     
 def mobility_needs(medicine_mobility_needs: str | None):
     if not medicine_mobility_needs or "keine" in medicine_mobility_needs.lower() or len(medicine_mobility_needs) < 5:

@@ -78,8 +78,8 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["BH"] = p.k_allergies  # Allergies
     d["BI"] = p.k_allergies_other  # Allergies � Other
     d["BJ"] = ""  # Allergies � specific details
-    d["BK"] = "-"  # Food allergies
-    d["BL"] = "-"  # Food allergies - Other
+    d["BK"] = p.k_food_allergies  # Food allergies
+    d["BL"] = p.k_food_allergies_other  # Food allergies - Other
     d["BM"] = "-"  # "Types of COVID-19 vaccines �  - first dose"
     d["BN"] = "-"  # "Types of COVID-19 vaccines �  - Second dose"
     d["BO"] = "-"  # "Types of COVID-19 vaccines �  - Third dose"
