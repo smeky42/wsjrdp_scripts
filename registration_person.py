@@ -42,6 +42,7 @@ class RegistrationPerson:
     additional_contact_adress_b: str
     additional_contact_single: bool
     generated_registration_pdf: str
+    shirt_size: str
     status: str
 
     def __post_init__(self) -> None:

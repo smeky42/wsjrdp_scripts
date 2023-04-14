@@ -98,8 +98,8 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["CB"] = "-"  # Influenza
     d["CC"] = "-"  # Polio
     d["CD"] = "-"  # Chickenpox
-    d["CE"] = "-"  # Other
-    d["CF"] = "-"  # Shirt Size
+    d["CE"] = "For information on medication or health status contact the german contingent medical team on an individual level. "  # Other
+    d["CF"] = p.shirt_size  # Shirt Size
     d["CG"] = p.k_dietary_needs  # Dietary needs
     d["CH"] = p.k_dietary_needs_other  # Dietary needs - Other
     d["CI"] = p.k_mobility_needs  # The mobility aids that are being brought
