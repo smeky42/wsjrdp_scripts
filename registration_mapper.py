@@ -135,3 +135,13 @@ def dietary_needs(medicine_eating_disorders: str | None):
         return "5"
     else:
       return "6"
+    
+def mobility_needs(medicine_mobility_needs: str | None):
+    if not medicine_mobility_needs or "keine" in medicine_mobility_needs.lower() or len(medicine_mobility_needs) < 5:
+        return "1"
+    elif "krücken" in medicine_mobility_needs.lower():
+        return "2"
+    elif "rollstuhl" in medicine_mobility_needs.lower():
+        return "3"
+    else:
+        return "4"

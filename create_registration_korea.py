@@ -102,8 +102,8 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["CF"] = "-"  # Shirt Size
     d["CG"] = p.k_dietary_needs  # Dietary needs
     d["CH"] = p.k_dietary_needs_other  # Dietary needs - Other
-    d["CI"] = "-"  # The mobility aids that are being brought
-    d["CJ"] = "-"  # Mobility needs - Other
+    d["CI"] = p.k_mobility_needs  # The mobility aids that are being brought
+    d["CJ"] = p.k_mobility_needs_other  # Mobility needs - Other
     d["CK"] = "-"  # Special needs
     d["CL"] = "-"  # Religion
     d["CM"] = "-"  # Religion - Other

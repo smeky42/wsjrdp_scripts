@@ -34,6 +34,7 @@ class RegistrationPerson:
     zip_code: str
     primary_group_id: int
     medicine_allergies: str
+    medicine_mobility_needs: str
     medicine_eating_disorders: str 
     additional_contact_name_a: str
     additional_contact_adress_a: str
@@ -210,6 +211,43 @@ class RegistrationPerson:
         except ValueError as exc:
             warnings.warn(
                 f"{str(exc)}: passport_nationality={self.medicine_eating_disorders!r}"
+            )
+            return ""
+        
+    @functools.cached_property
+    def k_mobility_needs(self) -> str | None:
+        """Korean WSJ registartion system mobility need codes 
+        
+        Valid Values:
+        
+        1 None applicable
+        2 Cranes or Crutches
+        3 Wheelchairs
+        4 Other
+
+        If thre is a value in our System but we are not able to identify a need,  
+        we return "4 Other".
+        """
+        try:
+            return registration_mapper.mobility_needs(self.medicine_mobility_needs)
+        except ValueError as exc:
+            warnings.warn(f"{str(exc)}: country={self.country!r}")
+            return "4"
+    
+    @functools.cached_property
+    def k_mobility_needs_other(self) -> str | None:
+        """Korean WSJ registration mobiltity dietary needs.
+        
+        As there is the possibility to have multiple mobility needs we return the needs
+        no matter what is stated in k_mobility_needs exept it is 1"""
+        try:
+            if not self.k_mobility_needs == "1":
+              return self.medicine_mobility_needs
+            else: 
+             return ""
+        except ValueError as exc:
+            warnings.warn(
+                f"{str(exc)}: passport_nationality={self.medicine_mobility_needs!r}"
             )
             return ""
 
