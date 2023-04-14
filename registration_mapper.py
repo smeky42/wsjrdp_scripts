@@ -121,3 +121,17 @@ def get_date_from_generated_file_name(filename: str | None) -> datetime.date | N
         return datetime.date.fromisoformat(date_string)
     else:
         return None
+
+def dietary_needs(medicine_eating_disorders: str | None):
+    if not medicine_eating_disorders or "keine" in medicine_eating_disorders.lower() or len(medicine_eating_disorders) < 3:
+        return "1"
+    elif "vegan" in medicine_eating_disorders.lower():
+        return "2"
+    elif "vege" in medicine_eating_disorders.lower():
+        return "3"
+    elif "kosher" in medicine_eating_disorders.lower():
+        return "4"
+    elif "halal" in medicine_eating_disorders.lower():
+        return "5"
+    else:
+      return "6"

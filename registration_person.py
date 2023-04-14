@@ -33,6 +33,8 @@ class RegistrationPerson:
     country: str
     zip_code: str
     primary_group_id: int
+    medicine_allergies: str
+    medicine_eating_disorders: str 
     additional_contact_name_a: str
     additional_contact_adress_a: str
     additional_contact_name_b: str
@@ -172,6 +174,44 @@ class RegistrationPerson:
             warnings.warn(f"{str(exc)}: country={self.country!r}")
             return "-"
 
+    @functools.cached_property
+    def k_dietary_needs(self) -> str | None:
+        """Korean WSJ registartion system dietary need codes 
+        
+        Valid Values:
+        
+        1 No dietary needs
+        2 Vegan
+        3 Vegetarian
+        4 Kosher
+        5 Halal
+        6 Other
+
+        If thre is a value in our System but we are not able to identify a need,  
+        we return "6 Other".
+        """
+        try:
+            return registration_mapper.dietary_needs(self.medicine_eating_disorders)
+        except ValueError as exc:
+            warnings.warn(f"{str(exc)}: country={self.country!r}")
+            return "6"
+    
+    @functools.cached_property
+    def k_dietary_needs_other(self) -> str | None:
+        """Korean WSJ registration system dietary needs.
+        
+        As there is the possibility to have multiple dietary needs we return the needs
+        no matter what is stated in k_dietary_needs exept it is 1"""
+        try:
+            if not self.k_dietary_needs == "1":
+              return self.medicine_eating_disorders
+            else: 
+             return ""
+        except ValueError as exc:
+            warnings.warn(
+                f"{str(exc)}: passport_nationality={self.medicine_eating_disorders!r}"
+            )
+            return ""
 
 RegistrationPerson.COLUMN_NAMES = [
     field.name for field in dataclasses.fields(RegistrationPerson)

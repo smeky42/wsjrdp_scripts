@@ -100,8 +100,8 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["CD"] = "-"  # Chickenpox
     d["CE"] = "-"  # Other
     d["CF"] = "-"  # Shirt Size
-    d["CG"] = "-"  # Dietary needs
-    d["CH"] = "-"  # Dietary needs - Other
+    d["CG"] = p.k_dietary_needs  # Dietary needs
+    d["CH"] = p.k_dietary_needs_other  # Dietary needs - Other
     d["CI"] = "-"  # The mobility aids that are being brought
     d["CJ"] = "-"  # Mobility needs - Other
     d["CK"] = "-"  # Special needs
@@ -125,7 +125,7 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["DC"] = "-"  # Boarding the official Jamboree shuttle bus
     d["DD"] = "-"  # Preferred departure time from Jamboree site(Date)
     d["DE"] = "-"  # Preferred departure time from Jamboree site(Time)
-    d["DF"] = p.hr  # Name of legal guardian
+    d["DF"] = p.name_of_legal_guardian  # Name of legal guardian
     d["DG"] = p.relationship_of_legal_guardian_with_the_participant  # Relationship of legal guardian with the participant
     d["DH"] = p.date_of_guardian_consent  # Date of parental/guardian consent
     # fmt: on
@@ -148,7 +148,8 @@ def main():
 
     # where_clause = "role_wish = 'Teilnehmende*r' limit 200"
     # where_clause = ""
-    where_clause = "id=2"
+    # where_clause = "id=2"
+    where_clause = "id > 2 and (status = 'bestätigt durch KT' or status = 'bestätigt durch Leitung' or status = 'vollständig')"
 
     cursor = cnx.cursor(dictionary=True)
     cursor.execute(RegistrationPerson.get_db_query(where_clause))
