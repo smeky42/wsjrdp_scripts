@@ -72,6 +72,11 @@ class RegistrationPerson:
     def is_participant(self) -> bool:
         return registration_mapper.is_participant(self.role_wish)
     
+    @functools.cached_property
+    def hitobito_link(self) -> str | None:
+        """Link to hitobito profile on worldscoutjamboree.de"""
+        return f"https://anmeldung.worldscoutjamboree.de/groups/{self.primary_group_id}/people/{self.id}.html"
+    
     @property
     def additional_contact_adress(self) -> list[str]:
         """List of additional contact names.

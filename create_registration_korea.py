@@ -41,8 +41,8 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["W"] = "-"  # Home phone number
     d["X"] = "-"  # "Mobile phone number - (Country code)"
     d["Y"] = "-"  # "Mobile phone number - (phone number)"
-    d["Z"] = ""  # "SNS ID - (social media account)"
-    d["AA"] = ""  # SNS URL
+    d["Z"] = "7"  # "SNS ID - (social media account)"
+    d["AA"] = p.hitobito_link  # SNS URL
     d["AB"] = p.name_of_legal_guardian  # Name of legal guardian
     d["AC"] = "-"  # Phone number of legal guardian
     d["AD"] = p.adress_of_legal_guardian  # Email address of legal guardian
