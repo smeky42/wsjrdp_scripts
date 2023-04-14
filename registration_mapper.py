@@ -29,10 +29,10 @@ def position(role_wish):
             return "S"
         case None:
             warnings.warn("Keine Rolle: role_wish=None")
-            return " "
+            return "-"
         case _:
             warnings.warn(f"Ungültige Rolle: role_wish={role_wish!r}")
-            return " "
+            return "-"
 
 
 def name(first_name, nickname):

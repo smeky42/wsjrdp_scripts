@@ -119,7 +119,7 @@ class RegistrationPerson:
     def name_of_legal_guardian(self) -> str:
         names = self.additional_contact_names
         if not self.is_participant or not names:
-            return ""
+            return "-"
         if self.additional_contact_single:
             return names[0]
         else:
@@ -129,7 +129,7 @@ class RegistrationPerson:
     def adress_of_legal_guardian(self) -> str:
         adress = self.additional_contact_adress
         if not self.is_participant or not adress:
-            return ""
+            return "-"
         if self.additional_contact_single:
             return adress[0]
         else:
@@ -213,12 +213,12 @@ class RegistrationPerson:
             if not self.k_dietary_needs == "1":
               return self.medicine_eating_disorders
             else: 
-             return ""
+             return "-"
         except ValueError as exc:
             warnings.warn(
                 f"{str(exc)}: medicine_eating_disorders={self.medicine_eating_disorders!r}"
             )
-            return ""
+            return "-"
         
     @functools.cached_property
     def k_allergies(self) -> str | None:
@@ -250,12 +250,12 @@ class RegistrationPerson:
             if not self.k_allergies == "1":
               return self.medicine_allergies
             else: 
-             return ""
+             return "-"
         except ValueError as exc:
             warnings.warn(
                 f"{str(exc)}: medicine_allergies={self.medicine_allergies!r}"
             )
-            return ""
+            return "-"
 
     @functools.cached_property
     def k_food_allergies(self) -> str | None:
@@ -293,7 +293,7 @@ class RegistrationPerson:
             if not self.k_food_allergies == "1":
               return self.medicine_allergies + " " + self.medicine_eating_disorders
             else: 
-             return ""
+             return "-"
         except ValueError as exc:
             warnings.warn(
                 f"{str(exc)}: medicine_allergies={self.medicine_allergies!r}  {self.medicine_eating_disorders!r}"
@@ -333,12 +333,12 @@ class RegistrationPerson:
             if not self.k_mobility_needs == "1":
               return self.medicine_mobility_needs
             else: 
-             return ""
+             return "-"
         except ValueError as exc:
             warnings.warn(
                 f"{str(exc)}: medicine_mobility_needs={self.medicine_mobility_needs!r}"
             )
-            return ""
+            return "-"
 
 RegistrationPerson.COLUMN_NAMES = [
     field.name for field in dataclasses.fields(RegistrationPerson)

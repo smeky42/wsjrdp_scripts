@@ -21,21 +21,21 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["C"] = "57"  # Name of NSO X
     d["D"] = registration_mapper.position(p.role_wish)  # Position X 
     d["E"] = p.k_reg_nationality  # Nationality X
-    d["F"] = ""  # Hangeul
-    d["G"] = ""  # Roman alphabet
+    d["F"] = "-"  # Hangeul
+    d["G"] = "-"  # Roman alphabet
     d["H"] = p.last_name  # Surname X
-    d["I"] = ""  # Middle Name
+    d["I"] = "-"  # Middle Name
     d["J"] = p.first_name  # Given Name X
     d["K"] = p.name_on_id_card  # Name on ID card X
     d["L"] = registration_mapper.gender(p.gender)  # Gender X
     d["M"] = p.birthday  # Date of birth X
     d["N"] = p.email  # Participant's email
     d["O"] = "1"  # Your affiliation(Scouting) X
-    d["P"] = ""  # Job/position X
-    d["Q"] = ""  # Current position within the NSO
+    d["P"] = "-"  # Job/position X
+    d["Q"] = "-"  # Current position within the NSO
     d["R"] = p.address  # Home address
     d["S"] = p.town  # City
-    d["T"] = ""  # State/Province
+    d["T"] = "-"  # State/Province
     d["U"] = p.k_reg_nationality_city_of_residence  # Nationality(City)
     d["V"] = p.zip_code  # Zip code
     d["W"] = "-"  # Home phone number
@@ -53,7 +53,7 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["AI"] = "-"  # Relationship with secondary emergency contact
     d["AJ"] = "-"  # Secondary emergency contact phone number
     d["AK"] = p.passport_number  # Passport number
-    d["AL"] = ""  # Date of issue
+    d["AL"] = "-"  # Date of issue
     d["AM"] = p.passport_valid  # Valid until
     d["AN"] = p.k_reg_nationality  # Passport issuing country
     d["AO"] = "-"  # Means of transportation
@@ -77,7 +77,7 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["BG"] = "-"  # Reason for medication intake
     d["BH"] = p.k_allergies  # Allergies
     d["BI"] = p.k_allergies_other  # Allergies � Other
-    d["BJ"] = ""  # Allergies � specific details
+    d["BJ"] = "-"  # Allergies � specific details
     d["BK"] = p.k_food_allergies  # Food allergies
     d["BL"] = p.k_food_allergies_other  # Food allergies - Other
     d["BM"] = "-"  # "Types of COVID-19 vaccines �  - first dose"
@@ -147,9 +147,13 @@ def main():
     )
 
     # where_clause = "role_wish = 'Teilnehmende*r' limit 200"
-    # where_clause = ""
+    # where_clause = ""and id not in (2, 2432, 2428, 2413, 2386, 2375, 2360, 1912, 1810, 626, 625, 312)""
     # where_clause = "id=2"
-    where_clause = "id > 2 and (status = 'bestätigt durch KT' or status = 'bestätigt durch Leitung' or status = 'vollständig')"
+    # where_clause = "id > 2 and (status = 'bestätigt durch KT' or status = 'bestätigt durch Leitung' or status = 'vollständig')"
+    where_clause = ("id > 1 "
+                    "and role_wish <> '' "
+                    "and id not in (2, 2432, 2428, 2413, 2386, 2375, 2360, 1912, 1810, 626, 625, 312) "
+                    "and status not in ('abgemeldet', 'Abmeldung Vermerkt', 'in Überprüfung durch KT', '')")
 
     cursor = cnx.cursor(dictionary=True)
     cursor.execute(RegistrationPerson.get_db_query(where_clause))
@@ -167,7 +171,7 @@ def main():
         # Catch all warnings generated while collecting the data for
         # the next row in the sheet.
         with warnings.catch_warnings(record=True) as warnings_list:
-            sheet_row_dict = to_sheet_row_dict(p, no=counter + 12)
+            sheet_row_dict = to_sheet_row_dict(p, no=counter)
 
         # If we got some warnings, print them
         if warnings_list:
