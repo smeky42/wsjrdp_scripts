@@ -172,7 +172,7 @@ def main():
         # Catch all warnings generated while collecting the data for
         # the next row in the sheet.
         with warnings.catch_warnings(record=True) as warnings_list:
-            sheet_row_dict = to_sheet_row_dict(p, no=counter+10)
+            sheet_row_dict = to_sheet_row_dict(p, no=counter)
 
         # If we got some warnings, print them
         if warnings_list:

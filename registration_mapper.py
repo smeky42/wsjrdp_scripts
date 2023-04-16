@@ -26,7 +26,7 @@ def position(role_wish):
         case "Kontingentsteam":
             return "C"
         case "IST":
-            return "S"
+            return "I"
         case None:
             warnings.warn("Keine Rolle: role_wish=None")
             return "-"
