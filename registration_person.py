@@ -3,6 +3,7 @@ import datetime
 import functools
 import typing
 import warnings
+from dateutil.relativedelta import relativedelta
 
 import registration_mapper
 
@@ -79,7 +80,7 @@ class RegistrationPerson:
         return f"https://anmeldung.worldscoutjamboree.de/groups/{self.primary_group_id}/people/{self.id}.html"
     
     @property
-    def additional_contact_adress(self) -> list[str]:
+    def additional_contact_name(self) -> list[str]:
         """List of additional contact names.
 
         Returned list contains only non-empty names.
@@ -92,10 +93,10 @@ class RegistrationPerson:
 
 
     @property
-    def additional_contact_names(self) -> list[str]:
-        """List of additional contact names.
+    def additional_contact_adress(self) -> list[str]:
+        """List of additional contact adress.
 
-        Returned list contains only non-empty names.
+        Returned list contains only non-empty adress.
         """
         return [
             adress
@@ -115,9 +116,25 @@ class RegistrationPerson:
             self.generated_registration_pdf
         )
 
+    @functools.cached_property
+    def k_birthday(self) -> datetime.date | None:
+        """Birthday fitting to Role"""
+
+        if self.is_participant and self.birthday < datetime.date(2005,7,22):
+          new_birthday = self.birthday + relativedelta(years=1)
+          warnings.warn(f"age_of_partithipant={self.birthday} corrected to {new_birthday} should be younger than 2005-07-22")
+          return new_birthday
+        
+        if not self.is_participant and self.birthday > datetime.date(2005,7,22):
+          warnings.warn(f"age_of_partithipant={self.birthday} should be older than 2005-07-22")
+
+         
+        return self.birthday
+
+
     @property
     def name_of_legal_guardian(self) -> str:
-        names = self.additional_contact_names
+        names = self.additional_contact_name
         if not self.is_participant or not names:
             return "-"
         if self.additional_contact_single:

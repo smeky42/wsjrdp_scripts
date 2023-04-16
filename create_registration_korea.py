@@ -28,16 +28,16 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["J"] = p.first_name  # Given Name X
     d["K"] = p.name_on_id_card  # Name on ID card X
     d["L"] = registration_mapper.gender(p.gender)  # Gender X
-    d["M"] = p.birthday  # Date of birth X
+    d["M"] = p.k_birthday  # Date of birth X
     d["N"] = p.email  # Participant's email
     d["O"] = "1"  # Your affiliation(Scouting) X
     d["P"] = "-"  # Job/position X
     d["Q"] = "-"  # Current position within the NSO
-    d["R"] = p.address  # Home address
-    d["S"] = p.town  # City
+    d["R"] = p.address or "-" # Home address
+    d["S"] = p.town or "-" # City
     d["T"] = "-"  # State/Province
     d["U"] = p.k_reg_nationality_city_of_residence  # Nationality(City)
-    d["V"] = p.zip_code  # Zip code
+    d["V"] = p.zip_code or "-" # Zip code
     d["W"] = "-"  # Home phone number
     d["X"] = "-"  # "Mobile phone number - (Country code)"
     d["Y"] = "-"  # "Mobile phone number - (phone number)"
@@ -52,9 +52,9 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["AH"] = "-"  # "secondart emergency  - contact name"
     d["AI"] = "-"  # Relationship with secondary emergency contact
     d["AJ"] = "-"  # Secondary emergency contact phone number
-    d["AK"] = p.passport_number  # Passport number
+    d["AK"] = p.passport_number or "-"  # Passport number
     d["AL"] = "-"  # Date of issue
-    d["AM"] = p.passport_valid  # Valid until
+    d["AM"] = p.passport_valid or "-" # Valid until
     d["AN"] = p.k_reg_nationality  # Passport issuing country
     d["AO"] = "-"  # Means of transportation
     d["AP"] = "-"  # Ariline
@@ -99,7 +99,7 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["CC"] = "-"  # Polio
     d["CD"] = "-"  # Chickenpox
     d["CE"] = "For information on medication or health status contact the german contingent medical team on an individual level. "  # Other
-    d["CF"] = p.shirt_size  # Shirt Size
+    d["CF"] = p.shirt_size or "-" # Shirt Size
     d["CG"] = p.k_dietary_needs  # Dietary needs
     d["CH"] = p.k_dietary_needs_other  # Dietary needs - Other
     d["CI"] = p.k_mobility_needs  # The mobility aids that are being brought
@@ -125,9 +125,9 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["DC"] = "-"  # Boarding the official Jamboree shuttle bus
     d["DD"] = "-"  # Preferred departure time from Jamboree site(Date)
     d["DE"] = "-"  # Preferred departure time from Jamboree site(Time)
-    d["DF"] = p.name_of_legal_guardian  # Name of legal guardian
-    d["DG"] = p.relationship_of_legal_guardian_with_the_participant  # Relationship of legal guardian with the participant
-    d["DH"] = p.date_of_guardian_consent  # Date of parental/guardian consent
+    d["DF"] = p.name_of_legal_guardian or "-" # Name of legal guardian
+    d["DG"] = p.relationship_of_legal_guardian_with_the_participant or "-" # Relationship of legal guardian with the participant
+    d["DH"] = p.date_of_guardian_consent or "-" # Date of parental/guardian consent
     # fmt: on
     return d
 
@@ -152,11 +152,12 @@ def main():
     # where_clause = "id > 2 and (status = 'bestätigt durch KT' or status = 'bestätigt durch Leitung' or status = 'vollständig')"
     where_clause = ("id > 1 "
                     "and role_wish <> '' "
-                    "and id not in (2, 2432, 2428, 2413, 2386, 2375, 2360, 1912, 1810, 626, 625, 312) "
                     "and status not in ('abgemeldet', 'Abmeldung Vermerkt', 'in Überprüfung durch KT', '')")
 
     cursor = cnx.cursor(dictionary=True)
     cursor.execute(RegistrationPerson.get_db_query(where_clause))
+
+    print("Read database")
 
     # load excel file
     workbook = load_workbook(filename="wsj_insert_en.xlsx")
@@ -171,7 +172,7 @@ def main():
         # Catch all warnings generated while collecting the data for
         # the next row in the sheet.
         with warnings.catch_warnings(record=True) as warnings_list:
-            sheet_row_dict = to_sheet_row_dict(p, no=counter)
+            sheet_row_dict = to_sheet_row_dict(p, no=counter+10)
 
         # If we got some warnings, print them
         if warnings_list:
