@@ -189,8 +189,8 @@ def main():
     cursor.close()
 
     # save the file
-    os.makedirs("upload_korea", exist_ok=True)
-    workbook.save(filename="upload_korea/" + today + "--wsj_insert_de.xlsx")
+    # os.makedirs("upload_korea", exist_ok=True)
+    workbook.save(filename=today + "--wsj_insert_de.xlsx")
     print(f"Wrote {counter} rows")
 
 
