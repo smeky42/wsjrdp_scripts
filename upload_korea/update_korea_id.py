@@ -26,7 +26,7 @@ def main():
         database=config["database"],
     )
 
-    cursor = cnx.cursor(dictionary=True)
+    cursor = cnx.cursor()
     
     # load excel file
     workbook = load_workbook(filename="2023-04-20--Download-Korea.xlsx")
@@ -39,9 +39,11 @@ def main():
     for row in worksheet.iter_rows():
         korea_id = row[k_id_column].value
         id = str(row[url_column].value).split("/")[-1].replace(".html","")
-        cursor.execute(f"update people set korea_id = '#{korea_id}' where id='#{id}'")
-        print(f"Updated id=#{id} with korea_id=#{korea_id}  ")
-    
+        update = f"update people set korea_id='{korea_id}' where id='{id}'"
+        print(update)
+        cursor.execute(update)
+        cnx.commit()
+        print (cursor.rowcount, "record(s) affected")
 
 if __name__ == "__main__":
     sys.exit(main())
