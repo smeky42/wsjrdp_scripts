@@ -44,6 +44,7 @@ class RegistrationPerson:
     additional_contact_single: bool
     generated_registration_pdf: str
     shirt_size: str
+    korea_id: str
     status: str
 
     def __post_init__(self) -> None:

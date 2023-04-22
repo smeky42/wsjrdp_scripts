@@ -34,8 +34,6 @@ def main():
     k_id_column = 3
     url_column = 27
  
-    print(worksheet.cell(column=28, row=4).value)
-
     for row in worksheet.iter_rows():
         korea_id = row[k_id_column].value
         id = str(row[url_column].value).split("/")[-1].replace(".html","")

@@ -40,7 +40,18 @@ def name(first_name, nickname):
     if nickname and len(nickname) > 2:
         name = nickname
 
+    if contains_special_char(name):
+      warnings.warn(f"Name enthält ungültige Zeichen: name={name!r}")
+    
     return name
+
+
+def contains_special_char(string):
+    special_chars = "!@#$%^&*()-+?_=,<>/äöüÄÖÜß"
+    for char in string:
+        if char in special_chars:
+            return True
+    return False
 
 
 def gender(gender):

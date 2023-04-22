@@ -14,6 +14,21 @@ import json
 import registration_mapper
 from registration_person import RegistrationPerson
 
+def get_department(choice):
+    if choice.startswith("PL"):
+        return "1"
+    if choice.startswith("PG"):
+        return "2"
+    if choice.startswith("SP"):
+        return "3"
+    if choice.startswith("SF"):
+        return "4"
+    if choice.startswith("IN"):
+        return "5"
+    if choice.startswith("OT"):
+        return "6"
+    
+    return ""
 
 def to_sheet_row_dict(p: RegistrationPerson, j: dict, no: int) -> dict[str, dict, typing.Any]:
     
@@ -27,17 +42,17 @@ def to_sheet_row_dict(p: RegistrationPerson, j: dict, no: int) -> dict[str, dict
     d: dict[str, typing.Any] = {}
     # fmt: off
     d["A"] = str(no)  # No.
-    d["B"] = p.id #ID Number
+    d["B"] = p.korea_id #ID Number
     d["C"] = p.name_on_id_card  # Name on ID card X
     d["D"] = "57"  # Name of NSO X
-    d["E"] = "-" # First job preference (Department)	
-    d["F"] = job_entry.get("first_choice")  # First job preference (Team)
+    d["E"] = get_department(job_entry.get("first_choice")) # First job preference (Department)	
+    d["F"] = job_entry.get("first_choice").split("\t")[0].split(" ")[0]  # First job preference (Team)
     d["G"] = job_entry.get("first_specialization")  # specialization(1st) (Major, Experience and Certificate)
-    d["H"] = "-" # Second job preference (Department)	
-    d["I"] = job_entry.get("second_choice")  # Second job preference (Team)
+    d["H"] = get_department(job_entry.get("second_choice")) # Second job preference (Department)	
+    d["I"] = job_entry.get("second_choice").split("\t")[0].split(" ")[0]  # Second job preference (Team)
     d["J"] = job_entry.get("second_specialization")  # specialization(2nd) (Major, Experience and Certificate)
-    d["K"] = "-" # Third job preference (Department)	
-    d["L"] = job_entry.get("third_choice")  # Third job preference (Team)
+    d["K"] = get_department(job_entry.get("third_choice")) # Third job preference (Department)	
+    d["L"] = job_entry.get("third_choice").split("\t")[0].split(" ")[0]  # Third job preference (Team)
     d["M"] = job_entry.get("third_specialization")  # specialization(3rd) (Major, Experience and Certificate)
     # fmt: on
     return d
@@ -100,7 +115,7 @@ def main():
                 print(f"  - {warning_item.message}")
 
         # write row data into sheet
-        row = str(counter + 4)
+        row = str(counter + 3)
         for col, val in sheet_row_dict.items():
             if val is not None:
                 sheet[col + row] = val

@@ -133,7 +133,7 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
 
 
 def main():
-    with open("config.yml", "r") as yamlfile:
+    with open("../config.yml", "r") as yamlfile:
         config = yaml.load(yamlfile, Loader=yaml.FullLoader)
         print("Read successful")
 
