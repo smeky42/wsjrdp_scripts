@@ -41,7 +41,7 @@ def main():
     counter = 1
     for row in rows:
       if row[1] == 60: #Foodhouse 60 / GDV 59
-        update = f"insert into ist_jobs (id,subject_id, author_id, first_choice, first_specialization, second_choice, second_specialization, third_choice, third_specialization, created_at) values ({(593 + counter)},'{row[0]}',2, 'IN-7-2 Food House', 'German Black Tent Foodhouse Prealloc', 'IN-7-2 Food House', 'German Black Tent Foodhouse Prealloc', 'IN-7-2 Food House', 'German Black Tent Foodhouse Prealloc', '2023-04-22 14:23:42')"
+        update = f"insert into ist_jobs (id,subject_id, author_id, first_choice, first_specialization, second_choice, second_specialization, third_choice, third_specialization, created_at) values ({(645 + counter)},'{row[0]}',2, 'OT-1-1 Preallocated ISTs', 'German Black Tent Foodhouse Prealloc', 'OT-1-1 Preallocated ISTs', 'German Black Tent Foodhouse Prealloc', 'OT-1-1 Preallocated ISTs', 'German Black Tent Foodhouse Prealloc', '2023-04-22 14:23:42')"
         # update = f"insert into ist_jobs (id,subject_id, author_id, first_choice, first_specialization, second_choice, second_specialization, third_choice, third_specialization, created_at) values ({(585 + counter)},'{row[0]}',2, 'OT-1-1 Preallocated ISTs', 'GDV', 'OT-1-1 Preallocated ISTs', 'GDV', 'OT-1-1 Preallocated ISTs', 'GDV', '2023-04-22 13:42:23')"
         counter += 1
         print(update)
