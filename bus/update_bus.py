@@ -39,17 +39,21 @@ def main():
        'Zusätzliches Material Gepäck': 'zusätzliches_material_gepaeck', 'Hinweise': 'hinweise'})
 
   df = pd.merge(df, df_bus, left_on='id', right_on='tn_id',how='left')
+  df['missmatch'] = 0
   #print(df.columns)
 
   cursor = cnx.cursor()
   rows_affected = 0
+  rows_missmatch = 0
   for row in df.itertuples():
-    #print(row)
     if pd.isna(row.abfahrtszeit):
        bus_travel = "Für dich ist keine Busanreise zum KoLa geplant."
     else:
       bus_travel = f"""Hinfahrt: {row.abfahrtszeit} {row.definitiver_abfahrtsort} -> {row.ankunftszeit_immenhausen} Immenhausen \n 
       Rückfahrt: {row.abfahrt_immenhausen_am_sonntag} Immenhausen -> {row.ankunftszeit_rueckfahrt} {row.ankunftsort_rueckfahrt}"""
+      if not row.kola_participation or not row.kola_bus:
+         df.at[row.Index, "missmatch"] = 1
+         rows_missmatch += 1
     
     update = f"update people set bus_travel='{bus_travel}' where id='{row.id}'"
     #print(update)
@@ -57,6 +61,7 @@ def main():
     cnx.commit()
     rows_affected += cursor.rowcount
   print (rows_affected, "record(s) affected")
+  print (rows_missmatch, "record(s) have a missmatch")
 
   df.to_excel(f"{str(date.today())}--Bus-Immenhausen.xlsx", sheet_name="Busreise", index=False)
 
