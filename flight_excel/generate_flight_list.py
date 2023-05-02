@@ -4,7 +4,7 @@ from datetime import date
 import yaml
 
 
-with open("config.yml", "r") as yamlfile:
+with open("../config.yml", "r") as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
     print("Read successful")
 
@@ -25,7 +25,7 @@ for (id, name, short_name) in groups:
         continue
      
     cursor = cnx.cursor()
-    query =   ("select first_name, last_name, gender, primary_group_id, zip_code, status from people where primary_group_id=" + str(id) + ";")
+    query =   ("select first_name, last_name, gender, primary_group_id, zip_code, status, rail_and_fly,rail_and_fly_reason from people where primary_group_id=" + str(id) + ";")
     cursor.execute(query)
     #load excel file
     workbook = load_workbook(filename="CT-Namenserfassung-Gruppen.xlsm")
@@ -34,15 +34,17 @@ for (id, name, short_name) in groups:
     sheet = workbook.active
 
     counter = 5
-    for (first_name, last_name, gender, primary_group_id, zip_code, status) in cursor:
+    for (first_name, last_name, gender, primary_group_id, zip_code, status, rail_and_fly,rail_and_fly_reason ) in cursor:
         sheet["G" + str(counter)] = gender.replace("m","Mr").replace("w","Mrs")
         sheet["H" + str(counter)] = first_name
         sheet["I" + str(counter)] = last_name
+        sheet["M" + str(counter)] = rail_and_fly
+        sheet["N" + str(counter)] = rail_and_fly_reason
         counter += 1
     cursor.close()
     
     #save the file
-    workbook.save(filename="flight_excel/" + today + "--" + str(id) + "-Flight-" + short_name.replace(" ", "-") + ".xlsx")
+    workbook.save(filename=today + "--" + str(id) + "-Flight-" + short_name.replace(" ", "-") + ".xlsx")
 
 
 cnx.close()
