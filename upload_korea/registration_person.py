@@ -110,6 +110,13 @@ class RegistrationPerson:
         """The name on the ID card."""
         return registration_mapper.name(self.first_name, self.nickname)
 
+
+    @property
+    def k_passport_number(self) -> str | None:
+        """The name on the ID card."""
+        return self.passport_number.replace(" ","")[:15]
+
+
     @functools.cached_property
     def generated_registration_date(self) -> datetime.date | None:
         """Date when the registration PDF was generated."""
@@ -131,6 +138,31 @@ class RegistrationPerson:
 
          
         return self.birthday
+    
+    @functools.cached_property
+    def k_shirt_size(self) -> str | None:
+        """Return - if we are not able to map the size.
+
+        Valid values:
+
+        XS
+        S
+        M
+        L
+        XL
+        2XL
+        3XL
+        4XL 
+       
+        """
+
+        if self.shirt_size in [ "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"]:
+            return self.shirt_size
+
+        warnings.warn(f"shirt_size={self.shirt_size} not valid using -")
+        
+        return "-"
+
 
 
     @property
@@ -139,19 +171,24 @@ class RegistrationPerson:
         if not self.is_participant or not names:
             return "-"
         if self.additional_contact_single:
-            return names[0]
+            return registration_mapper.replace_invalid(names[0])
         else:
-            return " AND ".join(names)
+            return registration_mapper.replace_invalid(" AND ".join(names))
         
     @property
     def adress_of_legal_guardian(self) -> str:
         adress = self.additional_contact_adress
         if not self.is_participant or not adress:
-            return self.email 
+            return self.address 
         if self.additional_contact_single:
             return adress[0]
         else:
             return " AND ".join(adress)
+    
+    @property
+    def email_adress_of_legal_guardian(self) -> str:
+        return self.email
+
 
     @property
     def relationship_of_legal_guardian_with_the_participant(self) -> str | None:
@@ -229,7 +266,7 @@ class RegistrationPerson:
         no matter what is stated in k_dietary_needs exept it is 1"""
         try:
             if not self.k_dietary_needs == "1":
-              return self.medicine_eating_disorders
+              return registration_mapper.replace_invalid(self.medicine_eating_disorders)
             else: 
              return "-"
         except ValueError as exc:
@@ -255,7 +292,7 @@ class RegistrationPerson:
         try:
             return registration_mapper.allergies(self.medicine_allergies)
         except ValueError as exc:
-            warnings.warn(f"{str(exc)}: country={self.country!r}")
+            warnings.warn(f"{str(exc)}: medicine_allergies={self.medicine_allergies!r}")
             return "-"
     
     @functools.cached_property
@@ -266,7 +303,7 @@ class RegistrationPerson:
         no matter what is stated in k_dietary_needs exept it is 1"""
         try:
             if not self.k_allergies == "1":
-              return self.medicine_allergies
+              return registration_mapper.replace_invalid(self.medicine_allergies)
             else: 
              return ""
         except ValueError as exc:
@@ -309,7 +346,7 @@ class RegistrationPerson:
         no matter what is stated in k_food_allergies exept it is 1"""
         try:
             if not self.k_food_allergies == "1":
-              return self.medicine_eating_disorders
+              return registration_mapper.replace_invalid(self.medicine_eating_disorders)
             else: 
              return ""
         except ValueError as exc:
@@ -349,7 +386,7 @@ class RegistrationPerson:
         no matter what is stated in k_mobility_needs exept it is 1"""
         try:
             if not self.k_mobility_needs == "1":
-              return self.medicine_mobility_needs
+              return registration_mapper.replace_invalid(self.medicine_mobility_needs)
             else: 
              return "-"
         except ValueError as exc:

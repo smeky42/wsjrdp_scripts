@@ -46,14 +46,14 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["N"] = p.hitobito_link  # SNS URL
     d["O"] = p.name_of_legal_guardian  # Name of legal guardian
     d["P"] = "49|12345678"  # Phone number of legal guardian
-    d["Q"] = p.adress_of_legal_guardian  # Email address of legal guardian
+    d["Q"] = p.email_adress_of_legal_guardian  # Email address of legal guardian
     d["R"] = "German HoC"  # Primart emergency contact name
     d["S"] = "9"  # "Relationship with primary  - emergency contact"
     d["T"] = "49|12345678"  # "Primary emergency  - contact phone number"
     d["U"] = "German CMT"  # "secondart emergency  - contact name"
     d["V"] = "9"  # Relationship with secondary emergency contact
     d["W"] = "49|12345678"  # Secondary emergency contact phone number
-    d["X"] = p.passport_number or "-"  # Passport number
+    d["X"] = p.k_passport_number or "-"  # Passport number
     d["Y"] = "1900-01-01"  # Date of issue
     d["Z"] = p.passport_valid or "-" # Valid until
     d["AA"] = p.k_reg_nationality  # Passport issuing country # Left blank: gemarny is mapped do monaco 
@@ -100,7 +100,7 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["BP"] = "1900-01-01"  # Polio
     d["BQ"] = "1900-01-01"  # Chickenpox
     d["BR"] = "For information on medication or health status contact the german contingent medical team on an individual level. "  # Other
-    d["BS"] = p.shirt_size or "-" # Shirt Size
+    d["BS"] = p.k_shirt_size or "-" # Shirt Size
     d["BT"] = p.k_dietary_needs  # Dietary needs
     d["BU"] = p.k_dietary_needs_other  # Dietary needs - Other
     d["BV"] = p.k_mobility_needs + "|" # The mobility aids that are being brought
@@ -147,53 +147,60 @@ def main():
         database=config["database"],
     )
 
-    # where_clause = "role_wish = 'Teilnehmende*r' limit 200"
-    # where_clause = ""and id not in (2, 2432, 2428, 2413, 2386, 2375, 2360, 1912, 1810, 626, 625, 312)""
-    # where_clause = "id=2"
-    # where_clause = "id > 2 and (status = 'bestätigt durch KT' or status = 'bestätigt durch Leitung' or status = 'vollständig')"
-    where_clause = ("id > 1 "
-                    "and role_wish <> '' "
-                    "and status not in ('abgemeldet', 'Abmeldung Vermerkt', 'in Überprüfung durch KT', '')"
-                    "limit 1")
+    for id_range in ["2-1207", "1207-2119", "2119-3000"]: 
+      # id: 894 -> 500 
+      # id: 1207 -> 750 
+      # id: 2119 -> 1500
+      # where_clause = "role_wish = 'Teilnehmende*r' limit 200"
+      # where_clause = ""and id not in (2, 2432, 2428, 2413, 2386, 2375, 2360, 1912, 1810, 626, 625, 312)""
+      # where_clause = "id=2"
+      # where_clause = "id > 2 and (status = 'bestätigt durch KT' or status = 'bestätigt durch Leitung' or status = 'vollständig')"
+      start_id = id_range.split("-")[0]
+      end_id = id_range.split("-")[1]
 
-    cursor = cnx.cursor(dictionary=True)
-    cursor.execute(RegistrationPerson.get_db_query(where_clause))
+      where_clause = (f"id >= {start_id} and id < {end_id} "
+                      "and role_wish <> '' and korea_id <> '' "
+                      "and status not in ('abgemeldet', 'Abmeldung Vermerkt', 'in Überprüfung durch KT', '')"
+                      " limit 3000")
 
-    print("Read database")
+      cursor = cnx.cursor(dictionary=True)
+      cursor.execute(RegistrationPerson.get_db_query(where_clause))
 
-    # load excel file
-    workbook = load_workbook(filename="wsj_update_en.xlsx")
+      print("Read database")
 
-    # open workbook
-    sheet: typing.Any = workbook.active
+      # load excel file
+      workbook = load_workbook(filename="wsj_update_en.xlsx")
 
-    counter = 0
-    for counter, row_dict in enumerate(cursor, start=1):
-        p = RegistrationPerson(**row_dict)
+      # open workbook
+      sheet: typing.Any = workbook.active
 
-        # Catch all warnings generated while collecting the data for
-        # the next row in the sheet.
-        with warnings.catch_warnings(record=True) as warnings_list:
-            sheet_row_dict = to_sheet_row_dict(p, no=counter)
+      counter = 0
+      for counter, row_dict in enumerate(cursor, start=1):
+          p = RegistrationPerson(**row_dict)
 
-        # If we got some warnings, print them
-        if warnings_list:
-            print(f"Error(s): id={p.id} {p.first_name} {p.last_name}")
-            for warning_item in warnings_list:
-                print(f"  - {warning_item.message}")
+          # Catch all warnings generated while collecting the data for
+          # the next row in the sheet.
+          with warnings.catch_warnings(record=True) as warnings_list:
+              sheet_row_dict = to_sheet_row_dict(p, no=counter)
 
-        # write row data into sheet
-        row = str(counter + 4)
-        for col, val in sheet_row_dict.items():
-            if val is not None:
-                sheet[col + row] = val
+          # If we got some warnings, print them
+          if warnings_list:
+              print(f"Error(s): id={p.id} {p.first_name} {p.last_name}")
+              for warning_item in warnings_list:
+                  print(f"  - {warning_item.message}")
 
-    cursor.close()
+          # write row data into sheet
+          row = str(counter + 4)
+          for col, val in sheet_row_dict.items():
+              if val is not None:
+                  sheet[col + row] = val
 
-    # save the file
-    # os.makedirs("upload_korea", exist_ok=True)
-    workbook.save(filename=today + "--wsj_update_de.xlsx")
-    print(f"Wrote {counter} rows")
+      cursor.close()
+
+      # save the file
+      # os.makedirs("upload_korea", exist_ok=True)
+      workbook.save(filename=today + f"--wsj_update_de_{start_id}-{end_id}.xlsx")
+      print(f"Wrote {counter} rows")
 
 
 if __name__ == "__main__":
