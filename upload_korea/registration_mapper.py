@@ -72,53 +72,53 @@ def nationality(passport_nationality):
         or passport_nationality == "D"
         or passport_nationality == "DE"
     ):
-        return "49"
+        return "28" #"49"
     elif (
         "Öster" in passport_nationality
         or "Oester" in passport_nationality
         or passport_nationality == "AT"
     ):
-        return "43"
+        return "123" #"43"
     elif "Belg" in passport_nationality:
-        return "32"
+        return "71" #"32"
     elif "Pol" in passport_nationality:
-        return "48"
+        return "196" #"48"
     elif "Franz" in passport_nationality or passport_nationality == "FR":
-        return "33"
+        return "197" #"33"
     elif "Finn" in passport_nationality:
-        return "358"
+        return "199" #"358"
     elif "Syr" in passport_nationality:
-        return "963"
+        return "105" #"963"
     elif "Südkorea" in passport_nationality:
-        return "82"
+        return "24" #"82"
     elif "Span" in passport_nationality:
-        return "34"
+        return "102" #"34"
     elif "Filip" in passport_nationality:
-        return "63"
+        return "200" #"63"
     elif "Türk" in passport_nationality:
-        return "90"
+        return "180" #"90"
     elif "Nied" in passport_nationality or passport_nationality == "NL":
-        return "31"
+        return "16" #"31"
     elif "Ungar" in passport_nationality:
-        return "36"
+        return "201" #"36"
     elif "Brit" in passport_nationality:
-        return "44"
+        return "129" #"44"
     elif "Bol" in passport_nationality:
-        return "591"
+        return "76" #"591"
     elif "Ital" in passport_nationality or passport_nationality == "IT":
-        return "39"
+        return "143" #"39"
     elif "Port" in passport_nationality:
-        return "351"
+        return "195" #"351"
     elif "Aserb" in passport_nationality:
-        return "994"
+        return "116" #"994"
     elif "Russ" in passport_nationality:
-        return "7"
+        return "33" #"7"
     elif "CH" == passport_nationality:
-        return "41"
+        return "101" #"41"
     elif "IE" == passport_nationality:
-        return "353"
+        return "115" #"353"
     elif "SE" == passport_nationality:
-        return "100"
+        return "100" #"100"
     else:
         raise ValueError("Konnte Nationalität nicht mappen")
 
