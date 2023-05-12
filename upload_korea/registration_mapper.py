@@ -154,7 +154,7 @@ def allergies(medicine_allergies: str | None):
       return "2|3|4|5"
   
 def food_allergies(medicine_allergies: str | None, medicine_eating_disorders: str | None):
-    if dietary_needs(medicine_eating_disorders) == "1" and allergies(medicine_allergies) == "1":
+    if dietary_needs(medicine_eating_disorders) == "1":
         return "1"
     
     food_allergies_str = medicine_eating_disorders.lower() + medicine_allergies.lower()

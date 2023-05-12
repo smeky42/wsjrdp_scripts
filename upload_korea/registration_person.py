@@ -147,7 +147,7 @@ class RegistrationPerson:
     def adress_of_legal_guardian(self) -> str:
         adress = self.additional_contact_adress
         if not self.is_participant or not adress:
-            return "-"
+            return self.email 
         if self.additional_contact_single:
             return adress[0]
         else:
@@ -268,12 +268,12 @@ class RegistrationPerson:
             if not self.k_allergies == "1":
               return self.medicine_allergies
             else: 
-             return "-"
+             return ""
         except ValueError as exc:
             warnings.warn(
                 f"{str(exc)}: medicine_allergies={self.medicine_allergies!r}"
             )
-            return "-"
+            return ""
 
     @functools.cached_property
     def k_food_allergies(self) -> str | None:
@@ -309,14 +309,14 @@ class RegistrationPerson:
         no matter what is stated in k_food_allergies exept it is 1"""
         try:
             if not self.k_food_allergies == "1":
-              return self.medicine_allergies + " " + self.medicine_eating_disorders
+              return self.medicine_eating_disorders
             else: 
-             return "-"
+             return ""
         except ValueError as exc:
             warnings.warn(
                 f"{str(exc)}: medicine_allergies={self.medicine_allergies!r}  {self.medicine_eating_disorders!r}"
             )
-            return "-"
+            return ""
 
 
 
