@@ -20,7 +20,7 @@ def main():
       database=config["database"],
   )
 
-  db_people = pd.read_sql_query("""SELECT id, primary_group_id, first_name, last_name, role_wish, birthday, kola_participation, kola_bus, kola_reason FROM people 
+  db_people = pd.read_sql_query("""SELECT id, primary_group_id, email, first_name, last_name, role_wish, birthday, kola_participation, kola_bus, kola_reason FROM people 
                                     WHERE status not in ('abgemeldet', 'Abmeldung Vermerkt', 'in Überprüfung durch KT', '')
                                     and role_wish <> '' """, cnx)
   df_people = pd.DataFrame(db_people)
@@ -87,12 +87,12 @@ def main():
        
     df.at[row.Index, "bus_info_in_db"] = bus_info_in_db
 
-    update = f"update people set bus_travel='{bus_info_in_db}' where id='{row.id}'"
-    #print(update)
-    cursor.execute(update)
-    cnx.commit()
-    rows_affected += cursor.rowcount
-  print (rows_affected, "record(s) affected")
+  #   update = f"update people set bus_travel='{bus_info_in_db}' where id='{row.id}'"
+  #   #print(update)
+  #   cursor.execute(update)
+  #   cnx.commit()
+  #   rows_affected += cursor.rowcount
+  # print (rows_affected, "record(s) affected")
   print (rows_bus_planned_not_needed, "record(s) have a bus_planned_not_needed")
   print (rows_bus_not_planned_but_needed, "record(s) have a rows_bus_not_planned_but_needed")
 
