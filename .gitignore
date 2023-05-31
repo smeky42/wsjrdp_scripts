@@ -4,6 +4,7 @@ config.yml
 *.txt
 *.xls
 *.xlsx
+*.xlsm
 .DS_Store
 !requirements.txt
 .envrc
