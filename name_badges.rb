@@ -78,7 +78,7 @@ CSV.open("#{date}Name-Badges-KT.csv", 'w') do |csv|
 
     group = groups.select { |group| group['id'] == account['primary_group_id'] }.first
     csv << [group['id'], group['name'], account['id'], name(account['first_name'], account['nickname']),
-            account['pronoun'], account['role_wish']]
+            account['pronoun'], account['role_wish'], account['last_name']]
   end
 end
 
