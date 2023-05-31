@@ -60,13 +60,13 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["AB"] = "1"  # Means of transportation
     d["AC"] = "Airline"  # Airline
     d["AD"] = "2023-01-01"  # Date of departure
-    d["AE"] = "Arrival airport"  # Arrival airport
+    d["AE"] = "INC"  # Arrival airport
     d["AF"] = "2023-01-01"  # Date of arrival
     d["AG"] = "1"  # Time of arrival
     d["AH"] = "1234"  # Flight number
-    d["AI"] = "Last city of boarding"  # Origin point / Last city of boarding
-    d["AJ"] = "2023-12-31"  # Date of departure
-    d["AK"] = "1"  # departure time
+    d["AI"] = "INC"  # Origin point / Last city of boarding
+    d["AJ"] = p.k_date_of_departure #"2023-12-31"  # Date of departure
+    d["AK"] = p.k_departure_time # "1"  # departure time
     d["AL"] = "ETC"  # Blood type
     d["AM"] = "-"  # Blood type - Other
     d["AN"] = "23|1"  # Underlying health conditions
@@ -122,10 +122,10 @@ def to_sheet_row_dict(p: RegistrationPerson, no: int) -> dict[str, typing.Any]:
     d["CL"] = "N"  # Boarding the official Jamboree shuttle bus
     d["CM"] = "-"  # Preferred time to arrive at the Jamboree site(Date)
     d["CN"] = "-"  # Preferred time to arrive at the Jamboree site(Time)
-    d["CO"] = "-"  # Participation in the Post-Jamboree Activities
-    d["CP"] = "-"  # Boarding the official Jamboree shuttle bus
-    d["CQ"] = "-"  # Preferred departure time from Jamboree site(Date)
-    d["CR"] = "-"  # Preferred departure time from Jamboree site(Time)
+    d["CO"] = "N"  # Participation in the Post-Jamboree Activities
+    d["CP"] = p.k_shuttle  # Boarding the official Jamboree shuttle bus
+    d["CQ"] = p.k_shuttle_date  # Preferred departure time from Jamboree site(Date)
+    d["CR"] = p.k_shuttle_time  # Preferred departure time from Jamboree site(Time)
     d["CS"] = p.name_of_legal_guardian or "-" # Name of legal guardian
     d["CT"] = p.relationship_of_legal_guardian_with_the_participant or "-" # Relationship of legal guardian with the participant
     d["CU"] = p.date_of_guardian_consent or "-" # Date of parental/guardian consent
@@ -199,7 +199,7 @@ def main():
 
       # save the file
       # os.makedirs("upload_korea", exist_ok=True)
-      workbook.save(filename=today + f"--wsj_update_de_{start_id}-{end_id}.xlsx")
+      workbook.save(filename=f"update/{today}--wsj_update_de_{start_id}-{end_id}.xlsx")
       print(f"Wrote {counter} rows")
 
 

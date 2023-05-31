@@ -159,7 +159,7 @@ class RegistrationPerson:
         if self.shirt_size in [ "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"]:
             return self.shirt_size
 
-        warnings.warn(f"shirt_size={self.shirt_size} not valid using -")
+        # warnings.warn(f"shirt_size={self.shirt_size} not valid using -")
         
         return "-"
 
@@ -394,6 +394,87 @@ class RegistrationPerson:
                 f"{str(exc)}: medicine_mobility_needs={self.medicine_mobility_needs!r}"
             )
             return "-"
+        
+    @functools.cached_property
+    def k_shuttle(self) -> str | None:
+      """Korean WSJ registration shuttle departure from jamboree
+         Echter Flug: C1 (17:55Uhr, EY857), C2 (17:55 Uhr, EY857) und C4 (12:35 Uhr, CI161)
+
+         Transfer zu Nachtour: C3, C5, C6, C7, C8, D8, E5, D4, D5, E7 (im Zweifel 17:55 mit EY857)
+          14: C1 Schwarze Teufelskralle - 40
+          15: C2 Großer Hufeisenklee - 39
+          16: C3 Zwerg Goldstern - 40
+          17: C4 Hibiskus - 40
+          18: C5 Sonnentau - 40
+          19: C6 Schöner Blaustern - 40
+          20: C7 Pyrenäen Drachenmaul - 35
+          10: D4 Meeresleuchten - 38
+          11: D5 Kornrade - 38
+          54: D8 Schlangenäuglein - 27
+          34: E5 Schachblume - 39
+          36: E7 Waldmeister - 40
+      """
+
+      if self.primary_group_id in [14,15,16,17,18,19,20,10,11,54,34,36]:
+          return "Y"
+
+      return "N"
+    
+    @functools.cached_property
+    def k_shuttle_date(self) -> str | None:
+        """Korean WSJ registration shuttle departure date is 12.8.
+           Scout 12.8. -> 1
+           Unit Leader 12.8. -> 3
+      """
+        if self.k_shuttle == "Y": 
+          if registration_mapper.position(self.role_wish) == "S":
+              return "1"
+          if registration_mapper.position(self.role_wish) == "L":
+              return "3" 
+        
+        return "-"
+    
+    @functools.cached_property
+    def k_shuttle_time(self) -> str | None:
+        """Korean WSJ registration shuttle departure date is 12.8.
+          C4 -> 17: 4:00-5:00 -> 5
+          Other -> 10:00-11:00 -> 11
+          
+      """
+        if self.k_shuttle == "Y":
+          if self.primary_group_id == 17:
+              return "5"
+          
+          return "11" 
+        
+        return "-"
+    
+    @functools.cached_property
+    def k_date_of_departure(self) -> str | None:
+        """Korean WSJ registration shuttle departure date is 12.8.
+          C4 -> 17: 4:00-5:00 -> 5
+          Other -> 10:00-11:00 -> 11
+          
+      """
+        if self.k_shuttle == "Y":
+          return "2023-12-08" 
+        
+        return "2023-12-31"
+
+
+    @functools.cached_property
+    def k_departure_time(self) -> str | None:
+        """Korean WSJ registration shuttle departure date is 12.8.
+          C4 -> 17: 4:00-5:00 -> 5
+          Other -> 10:00-11:00 -> 11
+          
+      """
+        if self.k_shuttle == "Y":
+          if self.primary_group_id == 17:
+              return "12"
+          return "18" 
+        
+        return "1"
 
 RegistrationPerson.COLUMN_NAMES = [
     field.name for field in dataclasses.fields(RegistrationPerson)

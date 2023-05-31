@@ -43,14 +43,14 @@ def name(first_name, nickname):
     if contains_special_char(name):
       warnings.warn(f"Name enthält ungültige Zeichen: name={name!r}")
     
-    return replace_invalid(name)
+    return replace_invalid(name)[:24]
 
 
 def replace_invalid(string):
-    return re.sub("[\!\@\#\$\%\^\*\(\)\-\+\?\_\=\,\<\>\/]", "", string).strip()[:65]
+    return re.sub("[\!\@\#\$\%\^\*\(\)\+\?\_\=\,\<\>\/]", "", string).strip()[:65]
 
 def contains_special_char(string):
-    special_chars = "!@#$%^&*()-+?_=,<>/"
+    special_chars = "!@#$%^&*()+?_=,<>/"
     for char in string:
         if char in special_chars:
             return True
