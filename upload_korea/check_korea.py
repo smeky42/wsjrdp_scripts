@@ -27,7 +27,8 @@ def main():
   dfh = pd.DataFrame(db_h)
   # print(dfh.columns)
 
-  dfk = pd.read_excel("korea_data/Apply_Basic(2023-05-28)-format.xls", header=1)
+  dfk = pd.read_excel("korea_data/Apply_Basic(2023-06-01)-format.xls", header=1)
+  dfk = dfk[dfk['Status'] != 'Cancelled']
   # print(dfk.columns)
 
   print("== anmeldung vs. korea data ==")
