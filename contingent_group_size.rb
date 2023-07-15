@@ -22,7 +22,7 @@ client = Mysql2::Client.new(host: 'anmeldung.worldscoutjamboree.de', username: c
                             password: config['password'], database: config['database'], port: config['port'])
 
 # all participants
-query = 'select id, first_name, last_name, primary_group_id, role_wish, status
+query = 'select id, first_name, last_name, primary_group_id, role_wish, status, medicine_eating_disorders
           from people
           where (status = "bestätigt durch KT" or status = "bestätigt durch Leitung" or status = "vollständig");'
 people = client.query(query)
@@ -49,5 +49,17 @@ puts 'davon TN: ' + tn.count.to_s
 
 groups.each do |group|
   group_accounts = people.select { |participant| participant['primary_group_id'] == group['id'] }
-  puts "#{group['id']}: #{group['short_name']} - #{group_accounts.size}"
+
+  ul = group_accounts.select { |participant| (participant['role_wish'] == 'Unit Leitung') }
+  tn = group_accounts.select { |participant| (participant['role_wish'] == 'Teilnehmende*r') }
+
+  vegan_accounts = group_accounts.select do |participant|
+    participant['medicine_eating_disorders'].downcase.include?('vegan')
+  end
+
+  vegetarian_accounts = group_accounts.select do |participant|
+    participant['medicine_eating_disorders'].downcase.include?('veget')
+  end
+
+  puts "#{group['id']}: #{group['short_name']} - #{group_accounts.size} - UL: #{ul.size} - TN: #{tn.size} - Vegetarier: #{vegetarian_accounts.size} - Veganer: #{vegan_accounts.size}"
 end
