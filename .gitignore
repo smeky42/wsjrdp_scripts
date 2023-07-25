@@ -5,6 +5,7 @@ config.yml
 *.xls
 *.xlsx
 *.xlsm
+qr_code/*/*.png
 .DS_Store
 !requirements.txt
 .envrc
