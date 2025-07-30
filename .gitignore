@@ -10,3 +10,5 @@ qr_code/*/*.png
 !requirements.txt
 .envrc
 __pycache__
+*.sql
+*sepa.xml
