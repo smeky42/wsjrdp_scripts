@@ -1,0 +1,17 @@
+[project]
+name = "wsjrdp-scripts"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pandas>=2.3.1",
+    "psycopg2>=2.9.10",
+    "pyyaml>=6.0.2",
+    "sepadd>=2.0.0",
+    "sshtunnel>=0.4.0",
+]
+
+[tool.uv]
+default-groups = ["dev"]
