@@ -6,12 +6,19 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "openpyxl>=3.1.5",
     "pandas>=2.3.1",
+    "paramiko>=3.5.1",
     "psycopg2>=2.9.10",
     "pyyaml>=6.0.2",
-    "sepadd>=2.0.0",
+    "ruff>=0.12.7",
+    "sepaxml>=2.6.2",
     "sshtunnel>=0.4.0",
+    "ty>=0.0.1a16",
+    "xlsxwriter>=3.2.5",
 ]
 
 [tool.uv]
+# paramiko 4 breaks sshtunnel 0.4.0
+constraint-dependencies = ["paramiko<4"]
 default-groups = ["dev"]
