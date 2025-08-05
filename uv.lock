@@ -6,6 +6,9 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 
+[manifest]
+constraints = [{ name = "paramiko", specifier = "<4" }]
+
 [[package]]
 name = "bcrypt"
 version = "4.3.0"
@@ -156,6 +159,15 @@ wheels = [
 ]
 
 [[package]]
+name = "et-xmlfile"
+version = "2.0.0"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/dab/3f4764309081c/et_xmlfile-2.0.0.tar.gz", hash = "sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/7a9/1720bc7568435/et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa" },
+]
+
+[[package]]
 name = "numpy"
 version = "2.3.2"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -234,6 +246,18 @@ wheels = [
     { url = "http://localhost:3141/root/pypi/+f/844/6acd11fe3dc18/numpy-2.3.2-pp311-pypy311_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:8446acd11fe3dc1830568c941d44449fd5cb83068e5c70bd5a470d323d448296" },
     { url = "http://localhost:3141/root/pypi/+f/aa0/98a5ab53fa407/numpy-2.3.2-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:aa098a5ab53fa407fded5870865c6275a5cd4101cfdef8d6fafc48286a96e981" },
     { url = "http://localhost:3141/root/pypi/+f/693/6aff90dda378c/numpy-2.3.2-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:6936aff90dda378c09bea075af0d9c675fe3a977a9d2402f95a87f440f59f619" },
+]
+
+[[package]]
+name = "openpyxl"
+version = "3.1.5"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+dependencies = [
+    { name = "et-xmlfile" },
+]
+sdist = { url = "http://localhost:3141/root/pypi/+f/cf0/e3cf561420391/openpyxl-3.1.5.tar.gz", hash = "sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/528/2c12b107bffee/openpyxl-3.1.5-py2.py3-none-any.whl", hash = "sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2" },
 ]
 
 [[package]]
@@ -390,15 +414,28 @@ wheels = [
 ]
 
 [[package]]
-name = "sepadd"
-version = "2.0.0"
+name = "ruff"
+version = "0.12.7"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
-dependencies = [
-    { name = "sepaxml" },
-]
-sdist = { url = "http://localhost:3141/root/pypi/+f/499/d8bff1e979be0/sepadd-2.0.0.tar.gz", hash = "sha256:499d8bff1e979be0c54356111b4051dbdfbc3b4efda2faf33364d24ed2593dcb" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/1fc/3193f238bc2d7/ruff-0.12.7.tar.gz", hash = "sha256:1fc3193f238bc2d7968772c82831a4ff69252f673be371fb49663f0068b7ec71" }
 wheels = [
-    { url = "http://localhost:3141/root/pypi/+f/ed5/186bab2a85529/sepadd-2.0.0-py3-none-any.whl", hash = "sha256:ed5186bab2a85529ade67011aab195a702dd0ac9066b2c147001c56b11c21cb0" },
+    { url = "http://localhost:3141/root/pypi/+f/76e/4f31529899b8c/ruff-0.12.7-py3-none-linux_armv6l.whl", hash = "sha256:76e4f31529899b8c434c3c1dede98c4483b89590e15fb49f2d46183801565303" },
+    { url = "http://localhost:3141/root/pypi/+f/789/b7a03e72507c5/ruff-0.12.7-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:789b7a03e72507c54fb3ba6209e4bb36517b90f1a3569ea17084e3fd295500fb" },
+    { url = "http://localhost:3141/root/pypi/+f/2e1/c2a3b8626339b/ruff-0.12.7-py3-none-macosx_11_0_arm64.whl", hash = "sha256:2e1c2a3b8626339bb6369116e7030a4cf194ea48f49b64bb505732a7fce4f4e3" },
+    { url = "http://localhost:3141/root/pypi/+f/32d/ec41817623d38/ruff-0.12.7-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:32dec41817623d388e645612ec70d5757a6d9c035f3744a52c7b195a57e03860" },
+    { url = "http://localhost:3141/root/pypi/+f/47e/f751f722053a5/ruff-0.12.7-py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:47ef751f722053a5df5fa48d412dbb54d41ab9b17875c6840a58ec63ff0c247c" },
+    { url = "http://localhost:3141/root/pypi/+f/a82/8a5fc25a3efd3/ruff-0.12.7-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:a828a5fc25a3efd3e1ff7b241fd392686c9386f20e5ac90aa9234a5faa12c423" },
+    { url = "http://localhost:3141/root/pypi/+f/572/6f59b171111fa/ruff-0.12.7-py3-none-manylinux_2_17_ppc64.manylinux2014_ppc64.whl", hash = "sha256:5726f59b171111fa6a69d82aef48f00b56598b03a22f0f4170664ff4d8298efb" },
+    { url = "http://localhost:3141/root/pypi/+f/74e/6f5c04c4dd4ab/ruff-0.12.7-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:74e6f5c04c4dd4aba223f4fe6e7104f79e0eebf7d307e4f9b18c18362124bccd" },
+    { url = "http://localhost:3141/root/pypi/+f/5d0/bfe4e77fba61b/ruff-0.12.7-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:5d0bfe4e77fba61bf2ccadf8cf005d6133e3ce08793bbe870dd1c734f2699a3e" },
+    { url = "http://localhost:3141/root/pypi/+f/06b/fb01e1623bf7f/ruff-0.12.7-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:06bfb01e1623bf7f59ea749a841da56f8f653d641bfd046edee32ede7ff6c606" },
+    { url = "http://localhost:3141/root/pypi/+f/e41/df94a957d5008/ruff-0.12.7-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:e41df94a957d50083fd09b916d6e89e497246698c3f3d5c681c8b3e7b9bb4ac8" },
+    { url = "http://localhost:3141/root/pypi/+f/400/0623300563c70/ruff-0.12.7-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:4000623300563c709458d0ce170c3d0d788c23a058912f28bbadc6f905d67afa" },
+    { url = "http://localhost:3141/root/pypi/+f/69f/fe0e5f9b2cf2b/ruff-0.12.7-py3-none-musllinux_1_2_i686.whl", hash = "sha256:69ffe0e5f9b2cf2b8e289a3f8945b402a1b19eff24ec389f45f23c42a3dd6fb5" },
+    { url = "http://localhost:3141/root/pypi/+f/a07/a5c8ffa2611a5/ruff-0.12.7-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:a07a5c8ffa2611a52732bdc67bf88e243abd84fe2d7f6daef3826b59abbfeda4" },
+    { url = "http://localhost:3141/root/pypi/+f/c92/8f1b2ec59fb77/ruff-0.12.7-py3-none-win32.whl", hash = "sha256:c928f1b2ec59fb77dfdf70e0419408898b63998789cc98197e15f560b9e77f77" },
+    { url = "http://localhost:3141/root/pypi/+f/9c1/8f3d707ee9edf/ruff-0.12.7-py3-none-win_amd64.whl", hash = "sha256:9c18f3d707ee9edf89da76131956aba1270c6348bfee8f6c647de841eac7194f" },
+    { url = "http://localhost:3141/root/pypi/+f/dfc/e05101dbd1183/ruff-0.12.7-py3-none-win_arm64.whl", hash = "sha256:dfce05101dbd11833a0776716d5d1578641b7fddb537fe7fa956ab85d1769b69" },
 ]
 
 [[package]]
@@ -445,6 +482,31 @@ wheels = [
 ]
 
 [[package]]
+name = "ty"
+version = "0.0.1a16"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/9ad/e26904870dc9b/ty-0.0.1a16.tar.gz", hash = "sha256:9ade26904870dc9bd988e58bad4382857f75ae05edb682ee0ba2f26fcc2d4c0f" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/dfb/55d28df78ca40/ty-0.0.1a16-py3-none-linux_armv6l.whl", hash = "sha256:dfb55d28df78ca40f8aff91ec3ae01f4b7bc23aa04c72ace7ec00fbc5e0468c0" },
+    { url = "http://localhost:3141/root/pypi/+f/5a0/e9917efadf2ec/ty-0.0.1a16-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:5a0e9917efadf2ec173ee755db3653243b64fa8b26fa4d740dea68e969a99898" },
+    { url = "http://localhost:3141/root/pypi/+f/925/3cb8b5c405233/ty-0.0.1a16-py3-none-macosx_11_0_arm64.whl", hash = "sha256:9253cb8b5c4052337b1600f581ecd8e6929e635a07ec9e8dc5cc2fa4008e6b3b" },
+    { url = "http://localhost:3141/root/pypi/+f/374/c059e184f8abc/ty-0.0.1a16-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:374c059e184f8abc969e07965355ddbbf7205a713721d3867ee42f976249c9ac" },
+    { url = "http://localhost:3141/root/pypi/+f/c53/64c6d1a1a3d5b/ty-0.0.1a16-py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:c5364c6d1a1a3d5b8e765a730303f8e07094ab9e63682aa82f73755d92749852" },
+    { url = "http://localhost:3141/root/pypi/+f/f20/1ff0ab3267123/ty-0.0.1a16-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:f201ff0ab3267123b9e42cc8584a193aa76e6e0865003d1b0a41bd025f08229e" },
+    { url = "http://localhost:3141/root/pypi/+f/57f/14207d88043ba/ty-0.0.1a16-py3-none-manylinux_2_17_ppc64.manylinux2014_ppc64.whl", hash = "sha256:57f14207d88043ba27f4b84d84dfdaa1bfbcc5170d5f50814d2997cbc3d75366" },
+    { url = "http://localhost:3141/root/pypi/+f/950/c45e1d6c58e61/ty-0.0.1a16-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:950c45e1d6c58e61ad77ed5d2d04f091e44b0d13e6d5d79143bb81078ab526b1" },
+    { url = "http://localhost:3141/root/pypi/+f/ad1/33d0eac5291d7/ty-0.0.1a16-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:ad133d0eac5291d738e40052df98ca9f194e0f0433d6086a4890fd6733217969" },
+    { url = "http://localhost:3141/root/pypi/+f/3e5/9f877ef8b967c/ty-0.0.1a16-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3e59f877ef8b967c06173a7a663271a6e66edb049f0db00f7873be5e41d61d5b" },
+    { url = "http://localhost:3141/root/pypi/+f/4e9/73b8cb2c38226/ty-0.0.1a16-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:4e973b8cb2c382263aaf77a40889ad236bd06ddca671cc973f9e33e8e02f0af1" },
+    { url = "http://localhost:3141/root/pypi/+f/4a8/2d9c4b76a73af/ty-0.0.1a16-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:4a82d9c4b76a73aff60cab93b71f2dd83952c2eb68a86578e1db56aee8f7e338" },
+    { url = "http://localhost:3141/root/pypi/+f/799/3f48def35f170/ty-0.0.1a16-py3-none-musllinux_1_2_i686.whl", hash = "sha256:7993f48def35f1707a2dc675bf7d08906cc5f26204b0b479746664301eda15b9" },
+    { url = "http://localhost:3141/root/pypi/+f/d98/87ec65984e7db/ty-0.0.1a16-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:d9887ec65984e7dbf3b5e906ef44e8f47ff5351c7ac04d49e793b324d744050f" },
+    { url = "http://localhost:3141/root/pypi/+f/411/3a176a8343196/ty-0.0.1a16-py3-none-win32.whl", hash = "sha256:4113a176a8343196d73145668460873d26ccef8766ff4e5287eec2622ce8754d" },
+    { url = "http://localhost:3141/root/pypi/+f/508/ba4c50bc88f1a/ty-0.0.1a16-py3-none-win_amd64.whl", hash = "sha256:508ba4c50bc88f1a7c730d40f28d6c679696ee824bc09630c7c6763911de862a" },
+    { url = "http://localhost:3141/root/pypi/+f/36f/53e430b5e0231/ty-0.0.1a16-py3-none-win_arm64.whl", hash = "sha256:36f53e430b5e0231d6b6672160c981eaf7f9390162380bcd1096941b2c746b5d" },
+]
+
+[[package]]
 name = "tzdata"
 version = "2025.2"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -460,22 +522,41 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "openpyxl" },
     { name = "pandas" },
+    { name = "paramiko" },
     { name = "psycopg2" },
     { name = "pyyaml" },
-    { name = "sepadd" },
+    { name = "ruff" },
+    { name = "sepaxml" },
     { name = "sshtunnel" },
+    { name = "ty" },
+    { name = "xlsxwriter" },
 ]
 
 [package.metadata]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3.1" },
+    { name = "paramiko", specifier = ">=3.5.1" },
     { name = "psycopg2", specifier = ">=2.9.10" },
     { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "sepadd", specifier = ">=2.0.0" },
+    { name = "ruff", specifier = ">=0.12.7" },
+    { name = "sepaxml", specifier = ">=2.6.2" },
     { name = "sshtunnel", specifier = ">=0.4.0" },
+    { name = "ty", specifier = ">=0.0.1a16" },
+    { name = "xlsxwriter", specifier = ">=3.2.5" },
+]
+
+[[package]]
+name = "xlsxwriter"
+version = "3.2.5"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/7e8/8469d607cdc92/xlsxwriter-3.2.5.tar.gz", hash = "sha256:7e88469d607cdc920151c0ab3ce9cf1a83992d4b7bc730c5ffdd1a12115a7dbe" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/4f4/824234e1eaf9d/xlsxwriter-3.2.5-py3-none-any.whl", hash = "sha256:4f4824234e1eaf9d95df9a8fe974585ff91d0f5e3d3f12ace5b71e443c1c6abd" },
 ]
 
 [[package]]
