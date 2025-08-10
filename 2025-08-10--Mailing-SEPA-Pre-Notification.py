@@ -9,7 +9,7 @@ import sys
 
 import wsjrdp2027
 
-COLLECTION_DATE = datetime.date(2025, 8, 14)
+COLLECTION_DATE = datetime.date(2025, 8, 15)
 
 
 SIGNATURE = """World Scout Jamboree 2027 Poland
@@ -55,6 +55,12 @@ def main():
 
     collection_date_de = COLLECTION_DATE.strftime("%d.%m.%Y")
 
+    if ctx.config.is_production:
+        prompt = f"Do you want to send messages via SMTP server {ctx.config.smtp_server}:{ctx.config.smtp_port}"
+        if not wsjrdp2027.console_confirm(prompt, default=False):
+            print("Ending script - not sending messages")
+            return
+
     now_str = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = pathlib.Path(f"data/sepa_direct_debit.{now_str}")
     out_dir.mkdir(exist_ok=True)
@@ -84,13 +90,14 @@ def main():
 
 wir werden den verzögerten SEPA Lastschrifteinzug ab dem {collection_date_de} durchführen.
 
-Du nimmst mit folgendem Konto am Lastschriftverfahren teil:
+Du nimmst mit folgenden Daten am Lastschriftverfahren teil:
 
+Teilnehmer*in: {full_name}
 Betrag: {amount_eur} €
+
 Kontoinhaber*in: {row["sepa_name"]}
 IBAN: {row["sepa_iban"]}
 Mandats-ID: {mandate_id}
-Teilnehmer*in: {full_name}
 
 
 Falls du Fragen hast, schau auf unserer Homepage https://worldscoutjamboree.de/ vorbei oder wende dich an info@worldscoutjamboree.de.
@@ -105,7 +112,7 @@ Daffi und Peter
 
             eml_file = out_dir / f"{row['id']}.pre_notification.eml"
             print(
-                f"To: {msg['To']}; Cc: msg['Cc']; Amount: {amount_eur} € -> {eml_file}"
+                f"id: {row['id']}; To: {msg['To']}; Cc: {msg['Cc']}; payment_role: {row['payment_role']}; Amount: {amount_eur} €"
             )
 
             with open(eml_file, "wb") as f:
