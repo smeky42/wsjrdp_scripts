@@ -1,0 +1,10 @@
+use_ssh_tunnel: false
+
+db_host: "localhost"
+db_port: 5432
+db_username: "hitobito"
+db_password: "hitobito"
+db_name: "hitobito_development"
+
+smtp_server: "localhost"
+smtp_port: 1025

@@ -11,4 +11,10 @@ authors = [
     { name = "David Fritzsche", email = "david.fritzsche@worldscoutjamboree.de" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "kontocheck>=6.15.0",
+    "paramiko<4",
+    "psycopg2>=2.9.10",
+    "pyyaml>=6.0.2",
+    "sshtunnel>=0.4.0",
+]

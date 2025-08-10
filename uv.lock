@@ -82,6 +82,15 @@ wheels = [
 ]
 
 [[package]]
+name = "colorama"
+version = "0.4.6"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/086/95f5cb7ed6e05/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44" }
+wheels = [
+    { url = "http://localhost:3141/root/wheels/+f/4f1/d9991f5acc0ca/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6" },
+]
+
+[[package]]
 name = "cryptography"
 version = "45.0.5"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -133,6 +142,21 @@ sdist = { url = "http://localhost:3141/root/pypi/+f/dab/3f4764309081c/et_xmlfile
 wheels = [
     { url = "http://localhost:3141/root/pypi/+f/7a9/1720bc7568435/et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa" },
 ]
+
+[[package]]
+name = "iniconfig"
+version = "2.1.0"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/3ab/bd2e30b36733f/iniconfig-2.1.0.tar.gz", hash = "sha256:3abbd2e30b36733fee78f9c7f7308f2d0050e88f0087fd25c2645f63c773e1c7" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/9de/ba5723312380e/iniconfig-2.1.0-py3-none-any.whl", hash = "sha256:9deba5723312380e77435581c6bf4935c94cbfab9b1ed33ef8d238ea168eb760" },
+]
+
+[[package]]
+name = "kontocheck"
+version = "6.15.0"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/172/a4dbd436ded44/kontocheck-6.15.0.tar.gz", hash = "sha256:172a4dbd436ded44ea0f56927207c678fc7bdbb05539eabe03dadf0f0f27d84e" }
 
 [[package]]
 name = "numpy"
@@ -199,6 +223,15 @@ wheels = [
 ]
 
 [[package]]
+name = "packaging"
+version = "25.0"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/d44/3872c98d677bf/packaging-25.0.tar.gz", hash = "sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/295/72ef2b1f17581/packaging-25.0-py3-none-any.whl", hash = "sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484" },
+]
+
+[[package]]
 name = "pandas"
 version = "2.3.1"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -226,6 +259,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pandas-stubs"
+version = "2.3.0.250703"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "types-pytz" },
+]
+sdist = { url = "http://localhost:3141/root/pypi/+f/fb6/a8478327b16ed/pandas_stubs-2.3.0.250703.tar.gz", hash = "sha256:fb6a8478327b16ed65c46b1541de74f5c5947f3601850caf3e885e0140584717" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/a92/65fc69909f0f7/pandas_stubs-2.3.0.250703-py3-none-any.whl", hash = "sha256:a9265fc69909f0f7a9cabc5f596d86c9d531499fed86b7838fd3278285d76b81" },
+]
+
+[[package]]
 name = "paramiko"
 version = "3.5.1"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -237,6 +283,15 @@ dependencies = [
 sdist = { url = "http://localhost:3141/root/pypi/+f/b2c/665bc45b2b215/paramiko-3.5.1.tar.gz", hash = "sha256:b2c665bc45b2b215bd7d7f039901b14b067da00f3a11e6640995fd58f2664822" }
 wheels = [
     { url = "http://localhost:3141/root/pypi/+f/43b/9a0501fc2b5e7/paramiko-3.5.1-py3-none-any.whl", hash = "sha256:43b9a0501fc2b5e70680388d9346cf252cfb7d00b0667c39e80eb43a408b8f61" },
+]
+
+[[package]]
+name = "pluggy"
+version = "1.6.0"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/7dc/c130b76258d33/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/e92/0276dd6813095/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746" },
 ]
 
 [[package]]
@@ -258,6 +313,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pygments"
+version = "2.19.2"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/636/cb2477cec7f89/pygments-2.19.2.tar.gz", hash = "sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/865/40386c03d588b/pygments-2.19.2-py3-none-any.whl", hash = "sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b" },
+]
+
+[[package]]
 name = "pynacl"
 version = "1.5.0"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -275,6 +339,22 @@ wheels = [
     { url = "http://localhost:3141/root/pypi/+f/61f/642bf2378713e/PyNaCl-1.5.0-cp36-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:61f642bf2378713e2c2e1de73444a3778e5f0a38be6fee0fe532fe30060282ff" },
     { url = "http://localhost:3141/root/pypi/+f/e46/dae94e34b0851/PyNaCl-1.5.0-cp36-abi3-win32.whl", hash = "sha256:e46dae94e34b085175f8abb3b0aaa7da40767865ac82c928eeb9e57e1ea8a543" },
     { url = "http://localhost:3141/root/pypi/+f/20f/42270d27e1b6a/PyNaCl-1.5.0-cp36-abi3-win_amd64.whl", hash = "sha256:20f42270d27e1b6a29f54032090b972d97f0a1b0948cc52392041ef7831fee93" },
+]
+
+[[package]]
+name = "pytest"
+version = "8.4.1"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
+]
+sdist = { url = "http://localhost:3141/root/pypi/+f/7c6/7fd6917487735/pytest-8.4.1.tar.gz", hash = "sha256:7c67fd69174877359ed9371ec3af8a3d2b04741818c51e5e99cc1742251fa93c" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/539/c70ba6fcead8e/pytest-8.4.1-py3-none-any.whl", hash = "sha256:539c70ba6fcead8e78eebbf1115e8b589e7565830d7d006a8723f19ac8a0afb7" },
 ]
 
 [[package]]
@@ -409,6 +489,15 @@ wheels = [
 ]
 
 [[package]]
+name = "types-pytz"
+version = "2025.2.0.20250809"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/222/e32e6a29bb288/types_pytz-2025.2.0.20250809.tar.gz", hash = "sha256:222e32e6a29bb28871f8834e8785e3801f2dc4441c715cd2082b271eecbe21e5" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/4f5/5ed1b43e925cf/types_pytz-2025.2.0.20250809-py3-none-any.whl", hash = "sha256:4f55ed1b43e925cf851a756fe1707e0f5deeb1976e15bf844bcaa025e8fbd0db" },
+]
+
+[[package]]
 name = "tzdata"
 version = "2025.2"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -426,6 +515,7 @@ source = { virtual = "." }
 dev = [
     { name = "openpyxl" },
     { name = "pandas" },
+    { name = "pandas-stubs" },
     { name = "paramiko" },
     { name = "psycopg2" },
     { name = "pyyaml" },
@@ -438,6 +528,9 @@ dev = [
 local = [
     { name = "wsjrdp2027" },
 ]
+pytest = [
+    { name = "pytest" },
+]
 
 [package.metadata]
 
@@ -445,6 +538,7 @@ local = [
 dev = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3.1" },
+    { name = "pandas-stubs", specifier = ">=2.3.0.250703" },
     { name = "paramiko", specifier = ">=3.5.1" },
     { name = "psycopg2", specifier = ">=2.9.10" },
     { name = "pyyaml", specifier = ">=6.0.2" },
@@ -455,11 +549,28 @@ dev = [
     { name = "xlsxwriter", specifier = ">=3.2.5" },
 ]
 local = [{ name = "wsjrdp2027", editable = "packages/wsjrdp2027" }]
+pytest = [{ name = "pytest", specifier = ">=8.4.1" }]
 
 [[package]]
 name = "wsjrdp2027"
 version = "0.0.1"
 source = { editable = "packages/wsjrdp2027" }
+dependencies = [
+    { name = "kontocheck" },
+    { name = "paramiko" },
+    { name = "psycopg2" },
+    { name = "pyyaml" },
+    { name = "sshtunnel" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "kontocheck", specifier = ">=6.15.0" },
+    { name = "paramiko", specifier = "<4" },
+    { name = "psycopg2", specifier = ">=2.9.10" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "sshtunnel", specifier = ">=0.4.0" },
+]
 
 [[package]]
 name = "xlsxwriter"
