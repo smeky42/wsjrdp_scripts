@@ -3,12 +3,24 @@ from __future__ import annotations
 from ._config import Config
 from ._connection import ConnectionContext
 from ._payment import PaymentRole, mandate_id_from_hitobito_id
+from ._people import load_people_dataframe
+from ._sepa_direct_debit import (
+    WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG,
+    SepaDirectDebit,
+    SepaDirectDebitConfig,
+    SepaDirectDebitPayment,
+)
 
 __all__ = [
+    "WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG",
     "Config",
     "ConnectionContext",
     "PaymentRole",
+    "SepaDirectDebit",
+    "SepaDirectDebitConfig",
+    "SepaDirectDebitPayment",
     "console_confirm",
+    "load_people_dataframe",
     "mandate_id_from_hitobito_id",
 ]
 
