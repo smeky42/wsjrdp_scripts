@@ -17,8 +17,21 @@ dev = [
     "ty>=0.0.1a16",
     "xlsxwriter>=3.2.5",
 ]
+local = [
+    "wsjrdp2027",
+]
+
+
 
 [tool.uv]
 # paramiko 4 breaks sshtunnel 0.4.0
 constraint-dependencies = ["paramiko<4"]
-default-groups = ["dev"]
+default-groups = ["dev", "local"]
+
+[tool.uv.sources]
+wsjrdp2027 = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "packages/wsjrdp2027",
+]

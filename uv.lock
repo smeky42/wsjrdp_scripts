@@ -3,6 +3,10 @@ revision = 3
 requires-python = ">=3.13"
 
 [manifest]
+members = [
+    "wsjrdp-scripts",
+    "wsjrdp2027",
+]
 constraints = [{ name = "paramiko", specifier = "<4" }]
 
 [[package]]
@@ -431,6 +435,9 @@ dev = [
     { name = "ty" },
     { name = "xlsxwriter" },
 ]
+local = [
+    { name = "wsjrdp2027" },
+]
 
 [package.metadata]
 
@@ -447,6 +454,12 @@ dev = [
     { name = "ty", specifier = ">=0.0.1a16" },
     { name = "xlsxwriter", specifier = ">=3.2.5" },
 ]
+local = [{ name = "wsjrdp2027", editable = "packages/wsjrdp2027" }]
+
+[[package]]
+name = "wsjrdp2027"
+version = "0.0.1"
+source = { editable = "packages/wsjrdp2027" }
 
 [[package]]
 name = "xlsxwriter"
