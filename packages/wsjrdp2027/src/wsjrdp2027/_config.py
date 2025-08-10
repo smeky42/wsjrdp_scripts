@@ -11,6 +11,8 @@ _LOGGER = _logging.getLogger(__name__)
 
 @_dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
 class Config:
+    is_production: bool = True
+
     use_ssh_tunnel: bool = True
     ssh_host: str = ""
     ssh_port: int = 0
@@ -52,10 +54,17 @@ class Config:
             else:
                 path = "config-dev.yml"
         _LOGGER.info("Read config file %s", path)
+        path = _pathlib.Path(path)
         with open(path, "r", encoding="utf-8") as f:
             config = _yaml.load(f, Loader=_yaml.FullLoader)
 
         kwargs: dict[str, str | _typing.Any] = {}
+
+        is_production_from_name = path.name in ("config.yml", "config-prod.yml")
+        is_production = cls.__to_bool(
+            "is_production", config.get("is_production", is_production_from_name)
+        )
+
         use_ssh_tunnel = cls.__to_bool(
             "use_ssh_tunnel", config.get("use_ssh_tunnel", "true")
         )
@@ -73,6 +82,7 @@ class Config:
             )
 
         self = cls(
+            is_production=is_production,
             use_ssh_tunnel=use_ssh_tunnel,
             # PostgreSQL-Datenbank-Einstellungen
             db_host=config["db_host"],
