@@ -39,9 +39,10 @@ class ConnectionContext:
 
         # wsjrdp_scripts config
         if config is None:
+            config = _config.Config.from_file(config_path)
+        else:
             if config_path is not None:
                 raise ValueError("Only one of 'config' and 'config_path' is allowed.")
-            config = _config.Config.from_file(config_path)
         self.config = config
 
     def __create_ssh_forwarder(
@@ -96,6 +97,123 @@ class ConnectionContext:
             )
             exit_stack.callback(conn.close)
             yield conn
+
+    def pg_dump(
+        self,
+        *,
+        dump_path: str | _pathlib.Path,
+        format: _typing.Literal[
+            "p", "plain", "c", "custom", "d", "directory", "t", "tar"
+        ] = "plain",
+    ) -> None:
+        import contextlib
+        import os
+        import shlex
+        import subprocess
+
+        env = os.environ.copy()
+        env["PGPASSWORD"] = self.config.db_password
+
+        with contextlib.ExitStack() as exit_stack:
+            if self.config.use_ssh_tunnel:
+                forwarder = self.__create_ssh_forwarder(
+                    remote_bind_address=(self.config.db_host, self.config.db_port)
+                )
+                _LOGGER.info(
+                    "Start SSH tunnel:\n%s", self.__ssh_forwarder_to_str(forwarder)
+                )
+                exit_stack.enter_context(forwarder)
+
+                db_host = forwarder.local_bind_host
+                db_port = forwarder.local_bind_port
+            else:
+                db_host = self.config.db_host
+                db_port = self.config.db_port
+
+            pg_dump_cmd = [
+                "pg_dump",
+                f"--host={db_host}",
+                f"--username={self.config.db_username}",
+                f"--port={db_port}",
+                f"--dbname={self.config.db_name}",
+                f"--format={format}",
+                f"--file={dump_path}",
+            ]
+            pg_dump_cmd_str = " ".join(shlex.quote(a) for a in pg_dump_cmd)
+
+            _LOGGER.info("Run %s", pg_dump_cmd_str)
+            subprocess.run(pg_dump_cmd, env=env, check=True)
+        p = os.path.abspath(dump_path)
+        _LOGGER.info("Wrote %s (%s bytes)", p, os.path.getsize(p))
+
+    def pg_restore(
+        self, *, dump_path: str | _pathlib.Path, restore_into_production: bool = False
+    ) -> None:
+        import contextlib
+        import os
+        import shlex
+        import subprocess
+
+        db_name = self.config.db_name
+
+        # By default we do not restore into a production database
+        is_production = self.config.is_production or db_name in ("hitobito_production")
+        if is_production and not restore_into_production:
+            raise RuntimeError(
+                "No restore into a production config unless 'restore_into_production' is True"
+            )
+
+        env = os.environ.copy()
+        env["PGPASSWORD"] = self.config.db_password
+
+        with contextlib.ExitStack() as exit_stack:
+            if self.config.use_ssh_tunnel:
+                forwarder = self.__create_ssh_forwarder(
+                    remote_bind_address=(self.config.db_host, self.config.db_port)
+                )
+                _LOGGER.info(
+                    "Start SSH tunnel:\n%s", self.__ssh_forwarder_to_str(forwarder)
+                )
+                exit_stack.enter_context(forwarder)
+
+                db_host = forwarder.local_bind_host
+                db_port = forwarder.local_bind_port
+            else:
+                db_host = self.config.db_host
+                db_port = self.config.db_port
+
+            def run_psql(command):
+                cmd = [
+                    "psql",
+                    f"--host={db_host}",
+                    f"--username={self.config.db_username}",
+                    f"--port={db_port}",
+                    # f"--dbname={self.config.db_name}",
+                    "-c",
+                    str(command),
+                ]
+                cmd_str = " ".join(shlex.quote(a) for a in cmd)
+                _LOGGER.info("Run %s", cmd_str)
+                subprocess.run(cmd, env=env, check=True)
+
+            def run_pg_restore(*args):
+                cmd = [
+                    "pg_restore",
+                    f"--host={db_host}",
+                    f"--username={self.config.db_username}",
+                    f"--port={db_port}",
+                    f"--dbname={self.config.db_name}",
+                    *args,
+                ]
+                cmd_str = " ".join(shlex.quote(str(a)) for a in cmd)
+                _LOGGER.info("Run %s", cmd_str)
+                subprocess.run(cmd, env=env, check=True)
+
+            quoted_db_name = f'"{db_name}"'
+            run_psql(f"DROP DATABASE IF EXISTS {quoted_db_name};")
+            run_psql(f"CREATE DATABASE {quoted_db_name};")
+            run_pg_restore("--format=custom", "--clean", "--if-exists", "--no-owner", dump_path)
+            _LOGGER.info("Finished restore")
 
     @_contextlib.contextmanager
     def smtp_login(self) -> _typing.Iterator[_smtplib.SMTP]:
