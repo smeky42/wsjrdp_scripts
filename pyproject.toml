@@ -49,3 +49,8 @@ members = [
 [tool.pytest.ini_options]
 addopts = "--doctest-modules"
 doctest_optionflags = "NORMALIZE_WHITESPACE IGNORE_EXCEPTION_DETAIL"
+
+
+
+[tool.ruff]
+extend-exclude = ["2023", "2025-05-22--Mailing-UL-Info.py"]

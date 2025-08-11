@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run
 """Dumps the database and restores it into dev (config-dev.yml)."""
 
 from __future__ import annotations

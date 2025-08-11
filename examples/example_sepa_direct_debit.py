@@ -1,73 +1,55 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run
 """Example showing how to create a SEPA Direct Debit file."""
 
 from __future__ import annotations
 
 import datetime as _datetime
+import logging as _logging
 import sys
 
-import pandas as pd
 import wsjrdp2027
 
-COLLECTION_DATE = _datetime.date(2025, 8, 14)
+_LOGGER = _logging.getLogger(__name__)
+
+
+COLLECTION_DATE = _datetime.date(2025, 8, 15)
 
 
 def main():
-    ctx = wsjrdp2027.ConnectionContext()
-    df = wsjrdp2027.load_people_dataframe(ctx)
-    print(f"Registered: {len(df)}")
+    now = _datetime.datetime.now()
+    now = _datetime.datetime(2025, 8, 11, 8, 11, 0)
+    out_dir = wsjrdp2027.create_dir("data/example_sepa_direct_debit.%(now)s", now=now)
 
-    df = df[~df["status"].isin(("registered", "deregistration_noted", "deregistered"))]
-    print(f"Printed or Further: {len(df)}")
-
-    dd = wsjrdp2027.SepaDirectDebit(wsjrdp2027.WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG)
-
-    skipped_list = []
-
-    for _, row in df.iterrows():
-        if not all(row[col] for col in ["payment_role", "sepa_iban"]):
-            skipped_list.append(row)
-            print(
-                "skip",
-                row["id"],
-                row["first_name"],
-                row["last_name"],
-                row["payment_role"],
-                row["sepa_iban"],
-            )
-            continue
-        print(row["id"], row["first_name"], row["last_name"])
-        payment_role = wsjrdp2027.PaymentRole(row["payment_role"])
-        people_id = row["id"]
-        paid_for_name = row["first_name"] + " " + row["last_name"]
-
-        description = (
-            f"WSJ 2027 Gesamtbetrag Einmalzahlung für {paid_for_name} ({people_id})"
+    ctx = wsjrdp2027.ConnectionContext(log_file=out_dir / "example_dd.log")
+    with ctx.psycopg2_connect() as conn:
+        df = wsjrdp2027.load_payment_dataframe(
+            conn,
+            status=wsjrdp2027.DB_PEOPLE_ALL_STATUS,
+            sepa_status=wsjrdp2027.DB_PEOPLE_ALL_SEPA_STATUS,
+            collection_date=COLLECTION_DATE,
+            booking_at=now,
+            pedantic=True,
         )
 
-        payment = {
-            "name": row["sepa_name"],
-            "IBAN": row["sepa_iban"],
-            "BIC": row["sepa_bic"],
-            "amount": payment_role.fee_due_by_date_in_cent(COLLECTION_DATE),
-            "type": "OOFF",  # FRST,RCUR,OOFF,FNAL
-            "collection_date": COLLECTION_DATE,
-            "mandate_id": wsjrdp2027.mandate_id_from_hitobito_id(people_id),
-            "mandate_date": row["print_at"],
-            "description": description,
-        }
-        try:
-            dd.add_payment(payment)
-        except ValueError as exc:
-            skipped_list.append(row)
-            print(f"Skipped, due to error: {exc}")
+    _LOGGER.info("Registered: %s", len(df))
+    df = df[
+        ~df["people_status"].isin(
+            ["registered", "deregistration_noted", "deregistered"]
+        )
+    ]
+    _LOGGER.info("Printed or further: %s", len(df))
+    df = df[df["sepa_status"].isin(["OK"])]
+    _LOGGER.info("Printed or further and sepa_status OK: %s", len(df))
+    # df = df[df["amount"] > 0]
+    # _LOGGER.info("Printed or further and sepa_status OK and amount > 0: %s", len(df))
 
-    now_str = _datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    xml_file = f"data/example_sepa_direct_debit.{now_str}.xml"
-    dd.export_file(xml_file)
-    print(f"Wrote {xml_file}")
-
-    skipped = pd.DataFrame(skipped_list)
+    wsjrdp2027.write_payment_dataframe_to_xlsx(df, out_dir / "example_dd.xlsx")
+    wsjrdp2027.write_accounting_dataframe_to_sepa_dd(
+        df,
+        out_dir / "example_dd.xml",
+        config=wsjrdp2027.WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG,
+        pedantic=True,
+    )
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run
 
 from __future__ import annotations
 
@@ -43,15 +43,16 @@ EXPECTED_ID_S = frozenset([
 def main():
     ctx = wsjrdp2027.ConnectionContext()
 
-    df = wsjrdp2027.load_people_dataframe(
-        ctx,
-        where="early_payer = TRUE AND print_at < '2025-08-01' AND status IN ('reviewed', 'confirmed')",
-    )
+    with ctx.psycopg2_connect() as conn:
+        df = wsjrdp2027.load_payment_dataframe(
+            conn,
+            early_payer=True,
+            max_print_at="2025-07-31",
+            collection_date=COLLECTION_DATE,
+        )
 
-    print("Pandas DataFrame:")
-    print(df)
     ids = df["id"].tolist()
-    assert frozenset(ids) == EXPECTED_ID_S
+    assert frozenset(ids) <= EXPECTED_ID_S
 
     collection_date_de = COLLECTION_DATE.strftime("%d.%m.%Y")
 
@@ -68,17 +69,8 @@ def main():
     with ctx.smtp_login() as client:
         for _, row in df.iterrows():
             msg = email.message.EmailMessage()
-            payment_role = wsjrdp2027.PaymentRole(row["payment_role"])
-            amount_eur = payment_role.full_fee_eur
-            mandate_id = wsjrdp2027.mandate_id_from_hitobito_id(row["id"])
-            nickname = row["nickname"]
-            full_name = row["first_name"] + " " + row["last_name"]
-            short_first_name = row["first_name"].split(" ", 1)[0]
-            short_full_name = short_first_name + " " + row["last_name"]
-            greeting_name = nickname if nickname else short_first_name
-
             msg["Subject"] = (
-                f"WSJ 2027 - {short_full_name} (id {row['id']}) - Ankündigung SEPA Lastschrifteinzug ab {collection_date_de}"
+                f"WSJ 2027 - {row['short_full_name']} (id {row['id']}) - Ankündigung SEPA Lastschrifteinzug ab {collection_date_de}"
             )
             msg["From"] = "anmeldung@worldscoutjamboree.de"
             msg["To"] = row["email"]
@@ -86,18 +78,18 @@ def main():
                 msg["Cc"] = row["sepa_mail"]
             msg["Reply-To"] = "info@worldscoutjamboree.de"
             msg.set_content(
-                f"""Hallo {greeting_name},
+                f"""Hallo {row["greeting_name"]},
 
 wir werden den verzögerten SEPA Lastschrifteinzug ab dem {collection_date_de} durchführen.
 
 Du nimmst mit folgenden Daten am Lastschriftverfahren teil:
 
-Teilnehmer*in: {full_name}
-Betrag: {amount_eur} €
+Teilnehmer*in: {row["full_name"]}
+Betrag: {row["amount"] // 100} €
 
 Kontoinhaber*in: {row["sepa_name"]}
 IBAN: {row["sepa_iban"]}
-Mandats-ID: {mandate_id}
+Mandatsreferenz: {row["mandate_id"]}
 
 
 Falls du Fragen hast, schau auf unserer Homepage https://worldscoutjamboree.de/ vorbei oder wende dich an info@worldscoutjamboree.de.
@@ -112,7 +104,7 @@ Daffi und Peter
 
             eml_file = out_dir / f"{row['id']}.pre_notification.eml"
             print(
-                f"id: {row['id']}; To: {msg['To']}; Cc: {msg['Cc']}; payment_role: {row['payment_role']}; Amount: {amount_eur} €"
+                f"id: {row['id']}; To: {msg['To']}; Cc: {msg['Cc']}; payment_role: {row['payment_role']}; Amount: {row['amount'] // 100} €"
             )
 
             with open(eml_file, "wb") as f:
