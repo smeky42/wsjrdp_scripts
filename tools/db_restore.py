@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run
 """Restore the database.
 
 ..important:: Restoring into production is by default not allowed.

@@ -26,16 +26,20 @@ class ConnectionContext:
         config: _config.Config | None = None,
         config_path: str | _pathlib.Path | None = None,
         log_level: int | str | None = None,
+        log_file: str | _pathlib.Path | None = None,
+        file_log_level: int | str | None = None,
     ) -> None:
+        from . import _util
+
         # Default basic logging config
-        if log_level is None:
-            log_level = _logging.INFO
-        elif isinstance(log_level, str):
-            log_level = _logging.getLevelNamesMapping()[log_level]
+        log_level = _util.to_log_level(log_level, default=_logging.INFO)
         _logging.basicConfig(
             level=log_level,
             format="%(asctime)s %(levelname)-1s %(message)s",
         )
+        if log_file:
+            _LOGGER.info("Writing log file %s", log_file)
+            _util.configure_file_logging(log_file, level=file_log_level)
 
         # wsjrdp_scripts config
         if config is None:
@@ -212,7 +216,9 @@ class ConnectionContext:
             quoted_db_name = f'"{db_name}"'
             run_psql(f"DROP DATABASE IF EXISTS {quoted_db_name};")
             run_psql(f"CREATE DATABASE {quoted_db_name};")
-            run_pg_restore("--format=custom", "--clean", "--if-exists", "--no-owner", dump_path)
+            run_pg_restore(
+                "--format=custom", "--clean", "--if-exists", "--no-owner", dump_path
+            )
             _LOGGER.info("Finished restore")
 
     @_contextlib.contextmanager
@@ -230,7 +236,7 @@ class ConnectionContext:
         client.ehlo()
 
         has_starttls = client.has_extn("STARTTLS")
-        _LOGGER.info("[SMTP] thas STARTTLS? %s", has_starttls)
+        _LOGGER.info("[SMTP] has STARTTLS? %s", has_starttls)
 
         if has_starttls:
             _LOGGER.debug("[SMTP] try STARTTLS")

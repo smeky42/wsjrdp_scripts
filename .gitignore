@@ -12,6 +12,7 @@
 *~
 .DS_Store
 .envrc
+.rgignore
 __pycache__
 config-prod.yml
 config.yml

@@ -2,42 +2,71 @@ from __future__ import annotations
 
 import logging as _logging
 import typing as _typing
+from collections import abc as _collections_abc
 
 if _typing.TYPE_CHECKING:
-    import pandas as _pandas
+    import datetime as _datetime
+    import pathlib as _pathlib
 
-    from . import _connection
+    import pandas as _pandas
+    import psycopg2 as _psycopg2
 
 
 _LOGGER = _logging.getLogger(__name__)
 
 
 def load_people_dataframe(
-    ctx: _connection.ConnectionContext, *, where: str = ""
+    conn: _psycopg2.connection,
+    *,
+    extra_cols: str | list[str] | None = None,
+    join: str = "",
+    where: str = "",
+    group_by: str = "",
+    log_resulting_data_frame: bool = True,
 ) -> _pandas.DataFrame:
+    import re
     import textwrap
-    import psycopg2.extras
-    import pandas as pd
 
-    if where:
-        where_clause = f'WHERE {where}'
-    else:
-        where_clause = ''
-    with ctx.psycopg2_connect() as conn:
-        cur = conn.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
+    import pandas as pd
+    import psycopg2.extras
+
+    if extra_cols is not None:
+        if isinstance(extra_cols, str):
+            extra_cols = extra_cols.strip()
+        else:
+            extra_cols = ",\n  ".join(extra_cols)
+    extra_cols_clause = f",\n  {extra_cols}" if extra_cols else ""
+
+    join_clause = join
+    where_clause = f"WHERE {where}" if where else ""
+    group_by_clause = f"GROUP BY {group_by}" if group_by else ""
+
+    with conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         sql_stmt = f"""
-            SELECT id, first_name, last_name, nickname, email, gender, status, nickname, primary_group_id,
-                sepa_name, sepa_mail, sepa_iban, sepa_bic, upload_sepa_pdf,
-                payment_role, early_payer, print_at
-            FROM people
-            {where_clause}
-            ORDER BY id
+SELECT
+  people.id, first_name, last_name, nickname, email, gender, status, nickname, primary_group_id,
+  sepa_name, sepa_mail, sepa_iban, sepa_bic,
+  payment_role,
+  COALESCE(people.early_payer, FALSE) AS early_payer,
+  print_at{extra_cols_clause}
+FROM people
+{join_clause}
+{where_clause}
+{group_by_clause}
+ORDER BY people.id
         """
-        sql_stmt = textwrap.dedent(sql_stmt)
+        sql_stmt = re.sub(r"\n+", "\n", textwrap.dedent(sql_stmt).strip())
 
-        _LOGGER.info("SQL Query:\n%s", sql_stmt)
+        _LOGGER.info("SQL Query:\n%s", textwrap.indent(sql_stmt, "  "))
         cur.execute(sql_stmt)
 
         rows = cur.fetchall()
-        return pd.DataFrame(rows)
+        cur.close()
+        df = pd.DataFrame(rows)
+        if log_resulting_data_frame:
+            _LOGGER.info(
+                "Resulting pandas DataFrame:\n%s", textwrap.indent(str(df), "  ")
+            )
+        return df

@@ -1,5 +1,6 @@
-"""Example showing how to send a plaintext email message.
-"""
+#!/usr/bin/env -S uv run
+"""Example: Sending a plaintext email message."""
+
 from __future__ import annotations
 
 import sys

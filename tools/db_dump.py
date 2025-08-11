@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run
 """Dump the database."""
 
 from __future__ import annotations
