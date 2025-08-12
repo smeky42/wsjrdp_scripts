@@ -554,26 +554,36 @@ def insert_accounting_entry(
 ) -> int:
     import datetime
 
+    from psycopg.sql import SQL, Identifier, Literal
+
     from ._util import to_date
 
     if created_at is None:
         created_at = datetime.datetime.now().date()
     else:
         created_at = to_date(created_at)
-    cursor.execute(
-        "INSERT INTO accounting_entries (id, subject_id, author_id, ammount, comment, created_at) "
-        "VALUES ((SELECT MAX(id) + 1 FROM accounting_entries), %(subject_id)s, %(author_id)s, %(amount)s, %(comment)s, %(created_at)s) "
-        "RETURNING id",
-        {
-            "subject_id": int(subject_id),
-            "author_id": int(author_id),
-            "amount": int(amount),
-            "comment": comment,
-            "created_at": created_at,
-        },
+
+    cols_vals = [
+        ("subject_id", int(subject_id)),
+        ("author_id", int(author_id)),
+        ("ammount", int(amount)),
+        ("comment", comment),
+        ("created_at", created_at),
+    ]
+    cols = [Identifier("id"), *(Identifier(col_val[0]) for col_val in cols_vals)]
+    vals = [
+        SQL("(SELECT MAX(id) + 1 FROM accounting_entries)"),
+        *(Literal(col_val[1]) for col_val in cols_vals),
+    ]
+    sql_string = (
+        SQL("INSERT INTO accounting_entries ({}) VALUES ({}) RETURNING {}")
+        .format(SQL(", ").join(cols), SQL(", ").join(vals), Identifier("id"))
+        .as_string()
     )
-    id = cursor.fetchone()[0]
-    return id
+    _LOGGER.debug("[ACC] execute %s", sql_string)
+    cursor.execute(sql_string)
+
+    return cursor.fetchone()[0]
 
 
 def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
