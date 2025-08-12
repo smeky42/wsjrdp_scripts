@@ -577,13 +577,21 @@ def insert_accounting_entry(
 
 
 def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
+    # Convert booking_at to a Python datetime.datetime object and if
+    # it is naive add the local timezone. Otherwise we might end up
+    # with a timezone difference when inserting the date into the
+    # database.
+    booking_at = row["accounting_booking_at"]
+    booking_at = booking_at.to_pydatetime()
+    if not booking_at.tzinfo:
+        booking_at = booking_at.astimezone()
     return insert_accounting_entry(
         cursor,
         subject_id=row["id"],
         author_id=row["accounting_author_id"],
         amount=int(row.get("amount", 0)),
         comment=row["accounting_comment"],
-        created_at=row["accounting_booking_at"],
+        created_at=booking_at,
     )
 
 
@@ -630,27 +638,28 @@ def write_payment_dataframe_to_xlsx(
 ) -> None:
     import pandas as pd
 
+    # Excel does not support timestamps with timezones, so we remove
+    # them here.
+    df = df.copy()
+    datetime_cols = df.select_dtypes(include=["datetimetz"]).columns
+    for col in datetime_cols:
+        print(col)
+        df[col] = df[col].dt.tz_localize(None)
+
     _LOGGER.info("Write %s", path)
-    writer = pd.ExcelWriter(path, engine="xlsxwriter")
-    sheet_name = "Sheet 1"
-    df.to_excel(
-        writer,
-        engine="xlsxwriter",
-        index=False,
-        # columns=[
-        #     "Teilnehmer*in",
-        #     "Kontoinhaber*in",
-        #     "IBAN",
-        #     "Mandatsreferenz",
-        #     "Datum SEPA-Mandat",
-        #     "Betrag",
-        # ],
-        sheet_name=sheet_name,
+    writer = pd.ExcelWriter(
+        path, engine="xlsxwriter", engine_kwargs={"options": {"remove_timezone": True}}
     )
+    sheet_name = "Sheet 1"
+    df.to_excel(writer, engine="xlsxwriter", index=False, sheet_name=sheet_name)
+    (max_row, max_col) = df.shape
+
     # workbook: xlsxwriter.Workbook = writer.book  # type: ignore
     worksheet = writer.sheets[sheet_name]
     worksheet.freeze_panes(1, 0)
+    worksheet.autofilter(0, 0, max_row, max_col - 1)
     worksheet.autofit()
+
     writer.close()
 
 
