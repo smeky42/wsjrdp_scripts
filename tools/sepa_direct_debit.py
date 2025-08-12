@@ -39,8 +39,8 @@ def main(argv=None):
 
     args = parse_args(argv=argv)
 
-    now = datetime.datetime.now()
-    # now = datetime.datetime(2025, 8, 11, 8, 11, 0)
+    now = datetime.datetime.now().astimezone()
+    # now = datetime.datetime(2025, 8, 11, 8, 11, 0).astimezone()
 
     now_str = now.strftime("%Y%m%d-%H%M%S")
     out_dir = wsjrdp2027.create_dir("data/sepa_direct_debit.%(now)s", now=now)
