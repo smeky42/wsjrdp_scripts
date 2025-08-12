@@ -18,22 +18,37 @@ import wsjrdp2027
 
 _LOGGER = logging.getLogger()
 
+
 DEFAULT_COLLECTION_DATE = datetime.date(2025, 8, 15)
+
+
+def parse_args(argv=None):
+    import argparse
+    import sys
+
+    if argv is None:
+        argv = sys.argv
+    p = argparse.ArgumentParser()
+    p.add_argument("--accounting", action="store_true", default=True)
+    p.add_argument("--no-accounting", dest="accounting", action="store_false")
+    return p.parse_args(argv[1:])
 
 
 def main(argv=None):
     import textwrap
+
+    args = parse_args(argv=argv)
 
     now = datetime.datetime.now()
     # now = datetime.datetime(2025, 8, 11, 8, 11, 0)
 
     now_str = now.strftime("%Y%m%d-%H%M%S")
     out_dir = wsjrdp2027.create_dir("data/sepa_direct_debit.%(now)s", now=now)
-    out_filename_base = out_dir / f"sepa_direct_debit.{now_str}"
-    log_filename = out_filename_base.with_suffix(".log")
-    xml_filename = out_filename_base.with_suffix(".xml")
-    html_filename = out_filename_base.with_suffix(".html")
-    xlsx_filename = out_filename_base.with_suffix(".xlsx")
+    out_base = out_dir / f"sepa_direct_debit.{now_str}"
+    log_filename = out_base.with_name(out_base.name + ".log")
+    xml_filename = out_base.with_name(out_base.name + ".xml")
+    html_filename = out_base.with_name(out_base.name + ".html")
+    xlsx_filename = out_base.with_name(out_base.name + ".xlsx")
 
     wsjrdp2027.ConnectionContext(log_file=log_filename)
 
@@ -47,6 +62,7 @@ def main(argv=None):
             early_payer=True,
             collection_date=collection_date,
             booking_at=now,
+            pedantic=False,
         )
 
         sum_amount = df["amount"].sum()
@@ -59,7 +75,12 @@ def main(argv=None):
             pedantic=True,
         )
 
-        wsjrdp2027.write_payment_dataframe_to_db(conn, df)
+        if args.accounting:
+            wsjrdp2027.write_payment_dataframe_to_db(conn, df)
+        else:
+            _LOGGER.info("")
+            _LOGGER.info("SKIP ACCOUNTING (--no-accounting given)")
+            _LOGGER.info("")
 
         wsjrdp2027.write_payment_dataframe_to_html(df, html_filename)
         wsjrdp2027.write_payment_dataframe_to_xlsx(df, xlsx_filename)

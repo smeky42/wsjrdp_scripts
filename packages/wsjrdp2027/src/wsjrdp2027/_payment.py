@@ -54,6 +54,8 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "sepa_mail",
     "sepa_iban",
     "sepa_bic",
+    "sepa_bic_status",
+    "sepa_bic_status_reason",
     "sepa_status",
     "print_at",
     "collection_date",
@@ -355,13 +357,10 @@ def enrich_dataframe_for_payments(
         if row["early_payer"] or row["amount_due"] == 0:
             return "OOFF"
         else:
-            full_fee = row["payment_role"].full_fee_cent
-            if row["amount_paid"] == 0:
-                return "FRST"
-            elif row["amount_paid"] + row["amount"] == full_fee:
-                return "FNAL"
-            else:
-                return "RCUR"
+            # It seems that it is OK to always use RCUR for recurring
+            # payments, even if FRST or FNAL would be somewhat more
+            # correct.
+            return "RCUR"
 
     def dd_description_from_row(row) -> str:
         prefix = "WSJ 2027"
@@ -392,7 +391,13 @@ def enrich_dataframe_for_payments(
         endtoend_id = row["sepa_debit_endtoend_id"]
         collection_date = row["collection_date"]
         collection_date_de = collection_date.strftime("%d.%m.%Y")
-        return f"SEPA Lastschrifteinzug {endtoend_id} zum {collection_date_de}"
+        sepa_name = row.get("sepa_name")
+        sepa_iban = row.get("sepa_iban")
+        sepa_debit_type = row.get("sepa_debit_type")
+        return (
+            f"SEPA Lastschrifteinzug {endtoend_id} zum {collection_date_de} "
+            f"(Kontoinhaber*in: {sepa_name}, IBAN: {sepa_iban}, Sequenz: {sepa_debit_type})"
+        )
 
     collection_date = to_date(collection_date)
     if booking_at is None:
@@ -403,6 +408,8 @@ def enrich_dataframe_for_payments(
     df["payment_role"] = df["payment_role"].map(lambda s: PaymentRole(s) if s else None)
     df["sepa_iban"] = df["sepa_iban"].map(lambda s: s.replace(" ", "").upper() if s else None)  # fmt: skip
     df["sepa_bic"] = df["sepa_bic"].map(lambda s: s.replace(" ", "").upper() if s else None)  # fmt: skip
+    df["sepa_bic_status"] = None
+    df["sepa_bic_status_reason"] = ""
 
     df["short_first_name"] = df["first_name"].map(lambda s: s.split(" ", 1)[0])
     df["greeting_name"] = df.apply(
@@ -421,15 +428,19 @@ def enrich_dataframe_for_payments(
     df["sepa_debit_type"] = df.apply(dd_type_from_row, axis=1)
     df["sepa_debit_description"] = df.apply(dd_description_from_row, axis=1)
     df["sepa_debit_endtoend_id"] = df.apply(dd_endtoend_id_from_row, axis=1)
-    df["payment_status"] = "ok"
-    df["payment_status_reason"] = ""
-    df["accounting_entry_id"] = (
-        None  # db id of the corresponding accounting_entries row
+    df["payment_status_reason"] = df["amount"].map(
+        lambda amt: "" if amt > 0 else "amount = 0"
     )
+    df["payment_status"] = df["payment_status_reason"].map(
+        lambda rsn: "ok" if not rsn else "skipped"
+    )
+    df["accounting_entry_id"] = None  # accounting_entries.id
     df["accounting_author_id"] = 65  # TODO: maybe (2 - Peter or 65 - Daffi)
     df["accounting_value_date"] = df["collection_date"]  # best guess we can do
     df["accounting_booking_at"] = booking_at
     df["accounting_comment"] = df.apply(accounting_comment_from_row, axis=1)
+
+    _check_iban_bic_in_payment_dataframe(df, pedantic=pedantic)
 
     return df.reindex(columns=PAYMENT_DATAFRAME_COLUMNS)
 
@@ -442,6 +453,85 @@ def compute_total_fee_due(row) -> int:
         )
     else:
         return 0
+
+
+def _check_iban_bic_in_payment_dataframe(df, pedantic: bool = True):
+    import schwifty
+
+    def _check_iban(df, idx, row: _pandas.Series) -> schwifty.IBAN | None:
+        # Check for IBAN and if present check that IBAN is valid
+        raw_iban = row.get("sepa_iban", None)
+        if not raw_iban:
+            _skip_payment(df, idx, "No IBAN")
+            return None
+        else:
+            try:
+                return schwifty.IBAN(raw_iban, validate_bban=pedantic)
+            except Exception as exc:
+                _skip_payment(df, idx, f"sepa_iban: {exc}")
+                return None
+
+    def _check_bic(df, idx, row: _pandas.Series, iban: schwifty.IBAN | None) -> None:
+        # Check for BIC and check that BIC is valid
+        bic: schwifty.BIC | None = None
+        raw_bic = row.get("sepa_bic", None)
+        if raw_bic:
+            try:
+                bic = schwifty.BIC(raw_bic)
+                raw_bic = str(bic)
+                df.at[idx, "sepa_bic_status"] = "valid"
+            except Exception as exc:
+                df.at[idx, "sepa_bic_status"] = "invalid"
+                df.at[idx, "sepa_bic_status_reason"] = str(exc)
+                if pedantic:
+                    _skip_payment(df, idx, f"sepa_bic: {exc}")
+                raw_bic = None
+        else:
+            if iban and (auto_bic := iban.bic):
+                df.at[idx, "sepa_bic"] = str(auto_bic)
+                df.at[idx, "sepa_bic_status"] = "from_iban"
+                df.at[idx, "sepa_bic_status_reason"] = "sepa_bic empty"
+            else:
+                df.at[idx, "sepa_bic_status"] = "not_present"
+            return
+
+        if not (bic and iban and (auto_bic := iban.bic)):
+            return
+
+        # here we now have iban, bic and auto_bic
+        if not _is_bic_compatible(str(bic), str(auto_bic)):
+            reason = (
+                f"sepa_bic {bic} not consistent with {auto_bic} derived from sepa_iban"
+            )
+            df.at[idx, "sepa_bic"] = str(auto_bic)
+            df.at[idx, "sepa_bic_status"] = "inconsistent"
+            df.at[idx, "sepa_bic_status_reason"] = reason
+            if pedantic:
+                _skip_payment(df, idx, f"sepa_bic: {reason}")
+
+    for idx, row in df.iterrows():
+        iban = _check_iban(df, idx, row)
+        _check_bic(df, idx, row, iban=iban)
+
+
+def _is_bic_compatible(bic_a: str | None, bic_b: str | None) -> bool:
+    if (
+        (bic_a is None or bic_b is None)
+        or (bic_a == bic_b)
+        or (bic_a + "XXX" == bic_b)
+        or (bic_a == bic_b + "XXX")
+    ):
+        return True
+    else:
+        return False
+
+
+def _skip_payment(df: _pandas.DataFrame, idx, reason: str = "") -> None:
+    row = df.loc[idx]
+    _LOGGER.warning("Skip payment id=%s reason=%r", row.get("id", "??"), reason)
+    df.at[idx, "payment_status"] = "skipped"
+    reason_parts = filter(None, [df.at[idx, "payment_status_reason"], reason])
+    df.at[idx, "payment_status_reason"] = ", ".join(filter(None, reason_parts))
 
 
 def load_accounting_balance_in_cent(conn: _psycopg2.connection, id: int | str) -> int:
@@ -491,7 +581,7 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
         cursor,
         subject_id=row["id"],
         author_id=row["accounting_author_id"],
-        amount=row["amount"],
+        amount=int(row.get("amount", 0)),
         comment=row["accounting_comment"],
         created_at=row["accounting_booking_at"],
     )
@@ -502,21 +592,26 @@ def write_payment_dataframe_to_db(
 ) -> None:
     with conn.cursor() as cursor:
         for idx, row in df.iterrows():
-            # TODO: skip if payment_status != 'ok'
-            amount = row["amount"]
-            if amount == 0:
-                _LOGGER.info(
-                    "Skip writing accounting_entry for id %s (amount is 0)", row["id"]
+            if row["payment_status"] != "ok":
+                _LOGGER.debug(
+                    "[ACC] Skip non-ok row id=%s payment_status=%s payment_status_reason=%s",
+                    row.get("id", "??"),
+                    row.get("payment_status", "??"),
+                    row.get("payment_status_reason", "??"),
                 )
-            else:
-                accounting_entry_id = insert_accounting_entry_from_row(cursor, row)
-                _LOGGER.info(
-                    "Write %s %s to db with id %s",
-                    row["id"],
-                    amount,
-                    accounting_entry_id,
-                )
-                df.at[idx, "accounting_entry_id"] = accounting_entry_id
+                continue
+            accounting_entry_id = insert_accounting_entry_from_row(cursor, row)
+            _LOGGER.info(
+                "[ACC] subject_id=%s sepa_name=%r %r %s print_at=%s amount=%s -> id=%s",
+                row.get("id"),
+                row.get("sepa_name"),
+                row.get("short_full_name"),
+                row.get("payment_role"),
+                row.get("print_at"),
+                int(row.get("amount", 0)),
+                accounting_entry_id,
+            )
+            df.at[idx, "accounting_entry_id"] = accounting_entry_id
         _LOGGER.info("COMMIT")
     conn.commit()
 

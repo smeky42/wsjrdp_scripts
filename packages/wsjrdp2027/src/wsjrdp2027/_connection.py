@@ -33,9 +33,12 @@ class ConnectionContext:
 
         # Default basic logging config
         log_level = _util.to_log_level(log_level, default=_logging.INFO)
+        stream_handler = _logging.StreamHandler()
+        stream_handler.setLevel(log_level)
         _logging.basicConfig(
-            level=log_level,
+            level=_logging.DEBUG,
             format="%(asctime)s %(levelname)-1s %(message)s",
+            handlers=[stream_handler],
         )
         if log_file:
             _LOGGER.info("Writing log file %s", log_file)

@@ -73,44 +73,19 @@ class SepaDirectDebit:
         """Number of payments added to this SEPA direct debit."""
         return self._num_payments
 
-    def __pedantic_payment_check(self, payment: SepaDirectDebitPayment) -> None:
-        from . import _kontocheck as kontocheck
-
-        raw_iban = payment.get("IBAN", "")
-        raw_bic = payment.get("BIC", None)
-        iban = raw_iban.replace(" ", "").upper()
-        bic = raw_bic.replace(" ", "").upper() if raw_bic else None
-
-        if not kontocheck.check_iban(iban):
-            raise ValueError(f"Invalid IBAN {iban} (from {raw_iban!r})")
-        else:
-            payment["IBAN"] = iban
-
-        auto_bic = kontocheck.get_bic(iban)
-        if bic is None:
-            payment["BIC"] = auto_bic
-        elif kontocheck.is_bic_compatible(bic, auto_bic):
-            payment["BIC"] = auto_bic
-        else:
-            if bic is not None and len(bic) not in (8, 11):
-                raise ValueError(
-                    f"Invalid BIC {bic!r} (got length={len(bic)}, must be 8 or 11); BIC from IBAN: {auto_bic}"
-                )
-            else:
-                raise ValueError(
-                    f"Inconsistent BIC {bic!r} does not match {auto_bic} (derived from IBAN)"
-                )
-
     def add_payment(
         self, payment: SepaDirectDebitPayment, *, pedantic: bool = True
     ) -> SepaDirectDebitPayment:
         raw_payment: SepaDirectDebitPayment = payment.copy()  # type: ignore
         raw_payment["amount"] = raw_payment.pop("amount")
-        if pedantic:
-            self.__pedantic_payment_check(raw_payment)
-        else:
-            raw_payment["IBAN"] = raw_payment.get("IBAN", "").replace(" ", "").upper()
-            raw_payment.pop("BIC")
+
+        raw_payment["IBAN"] = raw_payment.get("IBAN", "").replace(" ", "").upper()
+
+        # We assume that the BIC is not required (which it is not for
+        # most if not all EUR SEPA direct debit payments) and hence
+        # skip it as the quality of user entered BIC data is not good
+        # enough to transmit it unless required.
+        raw_payment.pop("BIC")
 
         for key in ["name", "description"]:
             if key in raw_payment:
@@ -183,7 +158,7 @@ def write_accounting_dataframe_to_sepa_dd(
     for idx, row in df.iterrows():
         if row["payment_status"] != "ok":
             _LOGGER.debug(
-                "Skip non-ok row id=%s payment_status=%s payment_status_reason=%r",
+                "[SDD] Skip non-ok row id=%s payment_status=%s payment_status_reason=%r",
                 row["id"],
                 row["payment_status"],
                 row["payment_status_reason"],
@@ -203,37 +178,35 @@ def write_accounting_dataframe_to_sepa_dd(
             df.at[idx, "payment_status"] = "skipped"
             df.at[idx, "payment_status_reason"] = skip_reason
             _LOGGER.warning(
-                "Skip row id=%s payment_status_reason=%r", row["id"], skip_reason
+                "[SDD] Skip row id=%s payment_status_reason=%r", row["id"], skip_reason
             )
             continue
 
-        row_msg = " ".join(
-            str(x)
-            for x in [
-                row.get("id"),
-                row.get("short_full_name"),
-                row.get("payment_role"),
-                row.get("amount"),
-                row.get("sepa_iban"),
-                row.get("print_at"),
-            ]
+        _LOGGER.info(
+            "[SDD] id=%s sepa_name=%r %r %s print_at=%s amount=%s %s",
+            row.get("id"),
+            row.get("sepa_name"),
+            row.get("short_full_name"),
+            row.get("payment_role"),
+            row.get("print_at"),
+            row.get("amount"),
+            row.get("sepa_iban"),
         )
-        _LOGGER.info("%s", row_msg)
         try:
             dd.add_payment_from_accounting_row(row, pedantic=pedantic)
         except (KeyError, ValueError) as exc:
             df.at[idx, "payment_status"] = "skipped"
             reason = f"{type(exc).__qualname__}: {exc}"
             df.at[idx, "payment_status_reason"] = reason
-            _LOGGER.warning("Caught exception: %s", reason)
+            _LOGGER.warning("[SDD] Caught exception: %s", reason)
 
     now_not_ok = len(df[df["payment_status"] != "ok"])
-    _LOGGER.info("Newly skipped rows: %s", now_not_ok - already_not_ok)
+    _LOGGER.info("[SDD] Newly skipped rows: %s", now_not_ok - already_not_ok)
 
     if dd.num_payments == 0:
-        _LOGGER.warning("No payments added to Direct Debit => No file written")
+        _LOGGER.warning("[SDD] No payments added to Direct Debit => No file written")
     else:
-        _LOGGER.info("Write %s", path)
+        _LOGGER.info("[SDD] Write %s", path)
         dd.export_file(path)
 
     return dd.num_payments
