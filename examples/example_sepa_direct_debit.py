@@ -17,7 +17,8 @@ COLLECTION_DATE = _datetime.date(2025, 8, 15)
 
 def main():
     now = _datetime.datetime.now()
-    now = _datetime.datetime(2025, 8, 11, 8, 11, 0)
+    # now = _datetime.datetime(2025, 8, 11, 8, 11, 0)
+
     out_dir = wsjrdp2027.create_dir("data/example_sepa_direct_debit.%(now)s", now=now)
 
     ctx = wsjrdp2027.ConnectionContext(log_file=out_dir / "example_dd.log")
@@ -40,8 +41,6 @@ def main():
     _LOGGER.info("Printed or further: %s", len(df))
     df = df[df["sepa_status"].isin(["OK"])]
     _LOGGER.info("Printed or further and sepa_status OK: %s", len(df))
-    # df = df[df["amount"] > 0]
-    # _LOGGER.info("Printed or further and sepa_status OK and amount > 0: %s", len(df))
 
     wsjrdp2027.write_payment_dataframe_to_xlsx(df, out_dir / "example_dd.xlsx")
     wsjrdp2027.write_accounting_dataframe_to_sepa_dd(

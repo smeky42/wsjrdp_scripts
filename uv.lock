@@ -153,12 +153,6 @@ wheels = [
 ]
 
 [[package]]
-name = "kontocheck"
-version = "6.15.0"
-source = { registry = "http://localhost:3141/root/wheels/+simple" }
-sdist = { url = "http://localhost:3141/root/pypi/+f/172/a4dbd436ded44/kontocheck-6.15.0.tar.gz", hash = "sha256:172a4dbd436ded44ea0f56927207c678fc7bdbb05539eabe03dadf0f0f27d84e" }
-
-[[package]]
 name = "numpy"
 version = "2.3.2"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -304,6 +298,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pycountry"
+version = "24.6.1"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/b61/b3faccea67f87/pycountry-24.6.1.tar.gz", hash = "sha256:b61b3faccea67f87d10c1f2b0fc0be714409e8fcdcc1315613174f6466c10221" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/f1a/4fb391cd7214f/pycountry-24.6.1-py3-none-any.whl", hash = "sha256:f1a4fb391cd7214f8eefd39556d740adcc233c778a27f8942c8dca351d6ce06f" },
+]
+
+[[package]]
 name = "pycparser"
 version = "2.22"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -396,6 +399,15 @@ wheels = [
 ]
 
 [[package]]
+name = "rstr"
+version = "3.2.2"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/c4a/564d4dfb4472d/rstr-3.2.2.tar.gz", hash = "sha256:c4a564d4dfb4472d931d145c43d1cf1ad78c24592142e7755b8866179eeac012" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/f39/195d38da17483/rstr-3.2.2-py3-none-any.whl", hash = "sha256:f39195d38da1748331eeec52f1276e71eb6295e7949beea91a5e9af2340d7b3b" },
+]
+
+[[package]]
 name = "ruff"
 version = "0.12.7"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -418,6 +430,19 @@ wheels = [
     { url = "http://localhost:3141/root/pypi/+f/c92/8f1b2ec59fb77/ruff-0.12.7-py3-none-win32.whl", hash = "sha256:c928f1b2ec59fb77dfdf70e0419408898b63998789cc98197e15f560b9e77f77" },
     { url = "http://localhost:3141/root/pypi/+f/9c1/8f3d707ee9edf/ruff-0.12.7-py3-none-win_amd64.whl", hash = "sha256:9c18f3d707ee9edf89da76131956aba1270c6348bfee8f6c647de841eac7194f" },
     { url = "http://localhost:3141/root/pypi/+f/dfc/e05101dbd1183/ruff-0.12.7-py3-none-win_arm64.whl", hash = "sha256:dfce05101dbd11833a0776716d5d1578641b7fddb537fe7fa956ab85d1769b69" },
+]
+
+[[package]]
+name = "schwifty"
+version = "2025.7.0"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+dependencies = [
+    { name = "pycountry" },
+    { name = "rstr" },
+]
+sdist = { url = "http://localhost:3141/root/pypi/+f/a98/af4f00056ba5f/schwifty-2025.7.0.tar.gz", hash = "sha256:a98af4f00056ba5fa6f25b7eb1749c50c481c1813b6500c88433e34ef45c19f9" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/b58/7e2d49badf06b/schwifty-2025.7.0-py3-none-any.whl", hash = "sha256:b587e2d49badf06bf3d5033836a1d081d3c4bdaa02171163a9b325e5eea60a31" },
 ]
 
 [[package]]
@@ -556,19 +581,19 @@ name = "wsjrdp2027"
 version = "0.0.1"
 source = { editable = "packages/wsjrdp2027" }
 dependencies = [
-    { name = "kontocheck" },
     { name = "paramiko" },
     { name = "psycopg2" },
     { name = "pyyaml" },
+    { name = "schwifty" },
     { name = "sshtunnel" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "kontocheck", specifier = ">=6.15.0" },
     { name = "paramiko", specifier = "<4" },
     { name = "psycopg2", specifier = ">=2.9.10" },
     { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "schwifty", specifier = ">=2025.7.0" },
     { name = "sshtunnel", specifier = ">=0.4.0" },
 ]
 
