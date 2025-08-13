@@ -265,6 +265,8 @@ class PaymentRole(_enum.Enum):
         3400
         >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-11-01', print_at='2025-07-31')
         3400
+        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2031-01-01', print_at='2025-07-31')
+        3400
 
         >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('1900-07-31', print_at='2025-08-01')
         0
@@ -273,6 +275,8 @@ class PaymentRole(_enum.Enum):
         >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-10-31', print_at='2025-08-01')
         0
         >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-11-01', print_at='2025-08-01')
+        3400
+        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2031-01-01', print_at='2025-08-01')
         3400
         """
         import bisect
@@ -323,7 +327,7 @@ _PAYMENT_ROLE_TO_INSTALLMENTS: dict[str | PaymentRole, list[int]] = {
     x[0]: (
         [0]
         + [int(x[1]) if x[0].startswith("EarlyPayer::") else 0]
-        + [int(x[1]) if x[0].startswith("EarlyPayer::") else 0]
+        + [0]
         + [int(s or "0") for s in x[2:]]
         + [0]
     )
