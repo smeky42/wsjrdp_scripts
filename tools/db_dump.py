@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import datetime
 import sys
 
 import wsjrdp2027
@@ -32,14 +31,16 @@ def main(argv=None):
     p.add_argument("dump_path", nargs="?")
     args = p.parse_args(argv[1:])
 
-    ctx = wsjrdp2027.ConnectionContext()
+    ctx = wsjrdp2027.WsjRdpContext(out_dir="data")
 
     if args.dump_path:
         dump_path = args.dump_path
     else:
-        now_str = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        ext = _FORMAT_TO_EXT.get(args.format, "")
-        dump_path = f"data/{ctx.config.db_name}.{now_str}{ext}"
+        dump_path = ctx.make_out_path(
+            f"{ctx.config.db_name}_{ctx.start_time_for_filename}", relative=False
+        )
+        if ext := _FORMAT_TO_EXT.get(args.format, ""):
+            dump_path = dump_path.with_name(dump_path.name + ext)
 
     ctx.pg_dump(dump_path=dump_path, format=args.format)
 

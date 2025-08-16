@@ -144,12 +144,99 @@ wheels = [
 ]
 
 [[package]]
+name = "humanfriendly"
+version = "10.0"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+dependencies = [
+    { name = "pyreadline3", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "http://localhost:3141/root/pypi/+f/6b0/b831ce8f15f73/humanfriendly-10.0.tar.gz", hash = "sha256:6b0b831ce8f15f7300721aa49829fc4e83921a9a301cc7f606be6686a2288ddc" }
+wheels = [
+    { url = "http://localhost:3141/root/wheels/+f/169/7e1a8a8f550fd/humanfriendly-10.0-py2.py3-none-any.whl", hash = "sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.1.0"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
 sdist = { url = "http://localhost:3141/root/pypi/+f/3ab/bd2e30b36733f/iniconfig-2.1.0.tar.gz", hash = "sha256:3abbd2e30b36733fee78f9c7f7308f2d0050e88f0087fd25c2645f63c773e1c7" }
 wheels = [
     { url = "http://localhost:3141/root/pypi/+f/9de/ba5723312380e/iniconfig-2.1.0-py3-none-any.whl", hash = "sha256:9deba5723312380e77435581c6bf4935c94cbfab9b1ed33ef8d238ea168eb760" },
+]
+
+[[package]]
+name = "jinja2"
+version = "3.1.6"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+dependencies = [
+    { name = "markupsafe" },
+]
+sdist = { url = "http://localhost:3141/root/pypi/+f/013/7fb05990d35f1/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/85e/ce4451f492d0c/jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67" },
+]
+
+[[package]]
+name = "markupsafe"
+version = "3.0.2"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/ee5/5d3edf80167e4/markupsafe-3.0.2.tar.gz", hash = "sha256:ee55d3edf80167e48ea11a923c7386f4669df67d7994554387f84e7d8b0a2bf0" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/ba9/527cdd4c926ed/MarkupSafe-3.0.2-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:ba9527cdd4c926ed0760bc301f6728ef34d841f405abf9d4f959c478421e4efd" },
+    { url = "http://localhost:3141/root/pypi/+f/f8b/3d067f2e40fe9/MarkupSafe-3.0.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:f8b3d067f2e40fe93e1ccdd6b2e1d16c43140e76f02fb1319a05cf2b79d99430" },
+    { url = "http://localhost:3141/root/pypi/+f/569/511d3b58c8791/MarkupSafe-3.0.2-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:569511d3b58c8791ab4c2e1285575265991e6d8f8700c7be0e88f86cb0672094" },
+    { url = "http://localhost:3141/root/pypi/+f/15a/b75ef81add558/MarkupSafe-3.0.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:15ab75ef81add55874e7ab7055e9c397312385bd9ced94920f2802310c930396" },
+    { url = "http://localhost:3141/root/pypi/+f/f38/18cb119498c06/MarkupSafe-3.0.2-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:f3818cb119498c0678015754eba762e0d61e5b52d34c8b13d770f0719f7b1d79" },
+    { url = "http://localhost:3141/root/pypi/+f/cdb/82a876c47801b/MarkupSafe-3.0.2-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:cdb82a876c47801bb54a690c5ae105a46b392ac6099881cdfb9f6e95e4014c6a" },
+    { url = "http://localhost:3141/root/pypi/+f/cab/c348d87e913db/MarkupSafe-3.0.2-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:cabc348d87e913db6ab4aa100f01b08f481097838bdddf7c7a84b7575b7309ca" },
+    { url = "http://localhost:3141/root/pypi/+f/444/dcda765c8a838/MarkupSafe-3.0.2-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:444dcda765c8a838eaae23112db52f1efaf750daddb2d9ca300bcae1039adc5c" },
+    { url = "http://localhost:3141/root/pypi/+f/bcf/3e58998965654/MarkupSafe-3.0.2-cp313-cp313-win32.whl", hash = "sha256:bcf3e58998965654fdaff38e58584d8937aa3096ab5354d493c77d1fdd66d7a1" },
+    { url = "http://localhost:3141/root/pypi/+f/e6a/2a455bd412959/MarkupSafe-3.0.2-cp313-cp313-win_amd64.whl", hash = "sha256:e6a2a455bd412959b57a172ce6328d2dd1f01cb2135efda2e4576e8a23fa3b0f" },
+    { url = "http://localhost:3141/root/pypi/+f/b5a/6b3ada725cea8/MarkupSafe-3.0.2-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:b5a6b3ada725cea8a5e634536b1b01c30bcdcd7f9c6fff4151548d5bf6b3a36c" },
+    { url = "http://localhost:3141/root/pypi/+f/a90/4af0a6162c73e/MarkupSafe-3.0.2-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:a904af0a6162c73e3edcb969eeeb53a63ceeb5d8cf642fade7d39e7963a22ddb" },
+    { url = "http://localhost:3141/root/pypi/+f/4aa/4e5faecf353ed/MarkupSafe-3.0.2-cp313-cp313t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4aa4e5faecf353ed117801a068ebab7b7e09ffb6e1d5e412dc852e0da018126c" },
+    { url = "http://localhost:3141/root/pypi/+f/c0e/f13eaeee5b615/MarkupSafe-3.0.2-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c0ef13eaeee5b615fb07c9a7dadb38eac06a0608b41570d8ade51c56539e509d" },
+    { url = "http://localhost:3141/root/pypi/+f/d16/a81a06776313e/MarkupSafe-3.0.2-cp313-cp313t-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:d16a81a06776313e817c951135cf7340a3e91e8c1ff2fac444cfd75fffa04afe" },
+    { url = "http://localhost:3141/root/pypi/+f/638/1026f158fdb7c/MarkupSafe-3.0.2-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:6381026f158fdb7c72a168278597a5e3a5222e83ea18f543112b2662a9b699c5" },
+    { url = "http://localhost:3141/root/pypi/+f/3d7/9d162e7be8f99/MarkupSafe-3.0.2-cp313-cp313t-musllinux_1_2_i686.whl", hash = "sha256:3d79d162e7be8f996986c064d1c7c817f6df3a77fe3d6859f6f9e7be4b8c213a" },
+    { url = "http://localhost:3141/root/pypi/+f/131/a3c7689c85f5a/MarkupSafe-3.0.2-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:131a3c7689c85f5ad20f9f6fb1b866f402c445b220c19fe4308c0b147ccd2ad9" },
+    { url = "http://localhost:3141/root/pypi/+f/ba8/062ed2cf21c07/MarkupSafe-3.0.2-cp313-cp313t-win32.whl", hash = "sha256:ba8062ed2cf21c07a9e295d5b8a2a5ce678b913b45fdf68c32d95d6c1291e0b6" },
+    { url = "http://localhost:3141/root/pypi/+f/e44/4a31f8db13eb1/MarkupSafe-3.0.2-cp313-cp313t-win_amd64.whl", hash = "sha256:e444a31f8db13eb18ada366ab3cf45fd4b31e4db1236a4448f68778c1d1a5a2f" },
+]
+
+[[package]]
+name = "mypy"
+version = "1.17.1"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+dependencies = [
+    { name = "mypy-extensions" },
+    { name = "pathspec" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "http://localhost:3141/root/pypi/+f/25e/01ec741ab5bb3/mypy-1.17.1.tar.gz", hash = "sha256:25e01ec741ab5bb3eec8ba9cdb0f769230368a22c959c4937360efb89b7e9f01" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/933/78d3203a5c080/mypy-1.17.1-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:93378d3203a5c0800c6b6d850ad2f19f7a3cdf1a3701d3416dbf128805c6a6a7" },
+    { url = "http://localhost:3141/root/pypi/+f/15d/54056f7fe7a82/mypy-1.17.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:15d54056f7fe7a826d897789f53dd6377ec2ea8ba6f776dc83c2902b899fee81" },
+    { url = "http://localhost:3141/root/pypi/+f/209/a58fed9987ecc/mypy-1.17.1-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:209a58fed9987eccc20f2ca94afe7257a8f46eb5df1fb69958650973230f91e6" },
+    { url = "http://localhost:3141/root/pypi/+f/099/b9a5da47de9e2/mypy-1.17.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:099b9a5da47de9e2cb5165e581f158e854d9e19d2e96b6698c0d64de911dd849" },
+    { url = "http://localhost:3141/root/pypi/+f/fa6/ffadfbe6994d7/mypy-1.17.1-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:fa6ffadfbe6994d724c5a1bb6123a7d27dd68fc9c059561cd33b664a79578e14" },
+    { url = "http://localhost:3141/root/pypi/+f/9a2/b7d9180aed171/mypy-1.17.1-cp313-cp313-win_amd64.whl", hash = "sha256:9a2b7d9180aed171f033c9f2fc6c204c1245cf60b0cb61cf2e7acc24eea78e0a" },
+    { url = "http://localhost:3141/root/pypi/+f/15a/83369400454c4/mypy-1.17.1-cp314-cp314-macosx_10_13_x86_64.whl", hash = "sha256:15a83369400454c41ed3a118e0cc58bd8123921a602f385cb6d6ea5df050c733" },
+    { url = "http://localhost:3141/root/pypi/+f/55b/918670f692fc9/mypy-1.17.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:55b918670f692fc9fba55c3298d8a3beae295c5cded0a55dccdc5bbead814acd" },
+    { url = "http://localhost:3141/root/pypi/+f/627/61474061feef6/mypy-1.17.1-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:62761474061feef6f720149d7ba876122007ddc64adff5ba6f374fda35a018a0" },
+    { url = "http://localhost:3141/root/pypi/+f/c49/562d3d908fd49/mypy-1.17.1-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c49562d3d908fd49ed0938e5423daed8d407774a479b595b143a3d7f87cdae6a" },
+    { url = "http://localhost:3141/root/pypi/+f/397/fba5d7616a5bc/mypy-1.17.1-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:397fba5d7616a5bc60b45c7ed204717eaddc38f826e3645402c426057ead9a91" },
+    { url = "http://localhost:3141/root/pypi/+f/9d6/b20b97d373f41/mypy-1.17.1-cp314-cp314-win_amd64.whl", hash = "sha256:9d6b20b97d373f41617bd0708fd46aa656059af57f2ef72aa8c7d6a2b73b74ed" },
+    { url = "http://localhost:3141/root/pypi/+f/a9f/52c0351c21fe2/mypy-1.17.1-py3-none-any.whl", hash = "sha256:a9f52c0351c21fe24c21d8c0eb1f62967b262d6729393397b6f443c3b773c3b9" },
+]
+
+[[package]]
+name = "mypy-extensions"
+version = "1.1.0"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/52e/68efc3284861e/mypy_extensions-1.1.0.tar.gz", hash = "sha256:52e68efc3284861e772bbcd66823fde5ae21fd2fdb51c62a211403730b916558" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/1be/4cccdb0f24823/mypy_extensions-1.1.0-py3-none-any.whl", hash = "sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505" },
 ]
 
 [[package]]
@@ -280,6 +367,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pathspec"
+version = "0.12.1"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/a48/2d51503a1ab33/pathspec-0.12.1.tar.gz", hash = "sha256:a482d51503a1ab33b1c67a6c3813a26953dbdc71c31dacaef9a838c4e29f5712" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/a0d/503e138a4c123/pathspec-0.12.1-py3-none-any.whl", hash = "sha256:a0d503e138a4c123b27490a4f7beda6a01c6f288df0e4a8b79c7eb0dc7b4cc08" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -377,6 +473,15 @@ wheels = [
     { url = "http://localhost:3141/root/pypi/+f/61f/642bf2378713e/PyNaCl-1.5.0-cp36-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:61f642bf2378713e2c2e1de73444a3778e5f0a38be6fee0fe532fe30060282ff" },
     { url = "http://localhost:3141/root/pypi/+f/e46/dae94e34b0851/PyNaCl-1.5.0-cp36-abi3-win32.whl", hash = "sha256:e46dae94e34b085175f8abb3b0aaa7da40767865ac82c928eeb9e57e1ea8a543" },
     { url = "http://localhost:3141/root/pypi/+f/20f/42270d27e1b6a/PyNaCl-1.5.0-cp36-abi3-win_amd64.whl", hash = "sha256:20f42270d27e1b6a29f54032090b972d97f0a1b0948cc52392041ef7831fee93" },
+]
+
+[[package]]
+name = "pyreadline3"
+version = "3.5.4"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/8d5/7d53039a1c75a/pyreadline3-3.5.4.tar.gz", hash = "sha256:8d57d53039a1c75adba8e50dd3d992b28143480816187ea5efbd5c78e6c885b7" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/eaf/8e6cc3c49bccc/pyreadline3-3.5.4-py3-none-any.whl", hash = "sha256:eaf8e6cc3c49bcccf145fc6067ba8643d1df34d604a1ec0eccbf7a18e6d3fae6" },
 ]
 
 [[package]]
@@ -524,28 +629,67 @@ wheels = [
 ]
 
 [[package]]
-name = "ty"
-version = "0.0.1a16"
+name = "time-machine"
+version = "2.17.0"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
-sdist = { url = "http://localhost:3141/root/pypi/+f/9ad/e26904870dc9b/ty-0.0.1a16.tar.gz", hash = "sha256:9ade26904870dc9bd988e58bad4382857f75ae05edb682ee0ba2f26fcc2d4c0f" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "http://localhost:3141/root/pypi/+f/bc3/1f23aa4c31b65/time_machine-2.17.0.tar.gz", hash = "sha256:bc31f23aa4c31b6567a7e5b2bbb0d1a0c0a1340c6d050c1f1b71cd0e2e76cb7f" }
 wheels = [
-    { url = "http://localhost:3141/root/pypi/+f/dfb/55d28df78ca40/ty-0.0.1a16-py3-none-linux_armv6l.whl", hash = "sha256:dfb55d28df78ca40f8aff91ec3ae01f4b7bc23aa04c72ace7ec00fbc5e0468c0" },
-    { url = "http://localhost:3141/root/pypi/+f/5a0/e9917efadf2ec/ty-0.0.1a16-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:5a0e9917efadf2ec173ee755db3653243b64fa8b26fa4d740dea68e969a99898" },
-    { url = "http://localhost:3141/root/pypi/+f/925/3cb8b5c405233/ty-0.0.1a16-py3-none-macosx_11_0_arm64.whl", hash = "sha256:9253cb8b5c4052337b1600f581ecd8e6929e635a07ec9e8dc5cc2fa4008e6b3b" },
-    { url = "http://localhost:3141/root/pypi/+f/374/c059e184f8abc/ty-0.0.1a16-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:374c059e184f8abc969e07965355ddbbf7205a713721d3867ee42f976249c9ac" },
-    { url = "http://localhost:3141/root/pypi/+f/c53/64c6d1a1a3d5b/ty-0.0.1a16-py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:c5364c6d1a1a3d5b8e765a730303f8e07094ab9e63682aa82f73755d92749852" },
-    { url = "http://localhost:3141/root/pypi/+f/f20/1ff0ab3267123/ty-0.0.1a16-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:f201ff0ab3267123b9e42cc8584a193aa76e6e0865003d1b0a41bd025f08229e" },
-    { url = "http://localhost:3141/root/pypi/+f/57f/14207d88043ba/ty-0.0.1a16-py3-none-manylinux_2_17_ppc64.manylinux2014_ppc64.whl", hash = "sha256:57f14207d88043ba27f4b84d84dfdaa1bfbcc5170d5f50814d2997cbc3d75366" },
-    { url = "http://localhost:3141/root/pypi/+f/950/c45e1d6c58e61/ty-0.0.1a16-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:950c45e1d6c58e61ad77ed5d2d04f091e44b0d13e6d5d79143bb81078ab526b1" },
-    { url = "http://localhost:3141/root/pypi/+f/ad1/33d0eac5291d7/ty-0.0.1a16-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:ad133d0eac5291d738e40052df98ca9f194e0f0433d6086a4890fd6733217969" },
-    { url = "http://localhost:3141/root/pypi/+f/3e5/9f877ef8b967c/ty-0.0.1a16-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3e59f877ef8b967c06173a7a663271a6e66edb049f0db00f7873be5e41d61d5b" },
-    { url = "http://localhost:3141/root/pypi/+f/4e9/73b8cb2c38226/ty-0.0.1a16-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:4e973b8cb2c382263aaf77a40889ad236bd06ddca671cc973f9e33e8e02f0af1" },
-    { url = "http://localhost:3141/root/pypi/+f/4a8/2d9c4b76a73af/ty-0.0.1a16-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:4a82d9c4b76a73aff60cab93b71f2dd83952c2eb68a86578e1db56aee8f7e338" },
-    { url = "http://localhost:3141/root/pypi/+f/799/3f48def35f170/ty-0.0.1a16-py3-none-musllinux_1_2_i686.whl", hash = "sha256:7993f48def35f1707a2dc675bf7d08906cc5f26204b0b479746664301eda15b9" },
-    { url = "http://localhost:3141/root/pypi/+f/d98/87ec65984e7db/ty-0.0.1a16-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:d9887ec65984e7dbf3b5e906ef44e8f47ff5351c7ac04d49e793b324d744050f" },
-    { url = "http://localhost:3141/root/pypi/+f/411/3a176a8343196/ty-0.0.1a16-py3-none-win32.whl", hash = "sha256:4113a176a8343196d73145668460873d26ccef8766ff4e5287eec2622ce8754d" },
-    { url = "http://localhost:3141/root/pypi/+f/508/ba4c50bc88f1a/ty-0.0.1a16-py3-none-win_amd64.whl", hash = "sha256:508ba4c50bc88f1a7c730d40f28d6c679696ee824bc09630c7c6763911de862a" },
-    { url = "http://localhost:3141/root/pypi/+f/36f/53e430b5e0231/ty-0.0.1a16-py3-none-win_arm64.whl", hash = "sha256:36f53e430b5e0231d6b6672160c981eaf7f9390162380bcd1096941b2c746b5d" },
+    { url = "http://localhost:3141/root/pypi/+f/b74/ff0463b3ca47a/time_machine-2.17.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:b74ff0463b3ca47adec9660be2b91ac15dc15e85616cecd3d526e50d006a15bf" },
+    { url = "http://localhost:3141/root/pypi/+f/0f1/b96579296b124/time_machine-2.17.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:0f1b96579296b124a8b85661315875c7036d09bfe985e602196bf7531bec577b" },
+    { url = "http://localhost:3141/root/pypi/+f/ba5/57aa2485a942f/time_machine-2.17.0-cp313-cp313-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:ba557aa2485a942f08e9f7a6e0605d90e597f8208d9eec43994dfc55c792a5df" },
+    { url = "http://localhost:3141/root/pypi/+f/968/1fd2966d1279b/time_machine-2.17.0-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:9681fd2966d1279b92cf9734c85305f1ba924cb66f8f7dffe3dc53c105e67ae0" },
+    { url = "http://localhost:3141/root/pypi/+f/068/96406b22cb5bf/time_machine-2.17.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:06896406b22cb5bf0665386127ec140098efd07253b91e3a9bb7bc49ef282b56" },
+    { url = "http://localhost:3141/root/pypi/+f/089/5e81874b81066/time_machine-2.17.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:0895e81874b81066d68e88744bd261b119cb100e0dc79e7930d527fb166f2514" },
+    { url = "http://localhost:3141/root/pypi/+f/3db/b4205ab7fcbe6/time_machine-2.17.0-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:3dbb4205ab7fcbe6c2bd3ac381fa6d896ec9a025b6efad02444b00a7b6b0e921" },
+    { url = "http://localhost:3141/root/pypi/+f/c63/63772ded138ed/time_machine-2.17.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:c6363772ded138ed9d2bb312efd528dfffc7a719541b2e0c46c3afc044e8d973" },
+    { url = "http://localhost:3141/root/pypi/+f/79a/ddc4e83d6a600/time_machine-2.17.0-cp313-cp313-win32.whl", hash = "sha256:79addc4e83d6a6003a81bb7becf9a46e73f79132d5b2f5311b45e1b9f1e14807" },
+    { url = "http://localhost:3141/root/pypi/+f/47a/b5947541526a3/time_machine-2.17.0-cp313-cp313-win_amd64.whl", hash = "sha256:47ab5947541526a322926d7ab30a6b3c9b8dfd0e23a345afa3cda80147a06130" },
+    { url = "http://localhost:3141/root/pypi/+f/ab3/7bbe5f233667d/time_machine-2.17.0-cp313-cp313-win_arm64.whl", hash = "sha256:ab37bbe5f233667d0a1aa14f81ed0a85f402cc72c2f9e10e190f404a2ff057cc" },
+    { url = "http://localhost:3141/root/pypi/+f/285/2334b4ae8442d/time_machine-2.17.0-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:2852334b4ae8442dd182c2623dea79aa5167eb5dc558a63a116617db8b96a573" },
+    { url = "http://localhost:3141/root/pypi/+f/9ab/b2098d22a17d0/time_machine-2.17.0-cp313-cp313t-macosx_10_13_x86_64.whl", hash = "sha256:9abb2098d22a17d0255a1768c7caa0ffe70f3c2c936a5351a7c81555f28b768d" },
+    { url = "http://localhost:3141/root/pypi/+f/1fc/270f6220762c3/time_machine-2.17.0-cp313-cp313t-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:1fc270f6220762c31d5afe2f0f3e05bea2366c51368db18c43c303a9640e84c8" },
+    { url = "http://localhost:3141/root/pypi/+f/9f6/afd89664d2e30/time_machine-2.17.0-cp313-cp313t-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:9f6afd89664d2e30a6e57f3ce9aeb53502064167f628f14bf6927d5a2cbd2101" },
+    { url = "http://localhost:3141/root/pypi/+f/284/4002ff867d083/time_machine-2.17.0-cp313-cp313t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:2844002ff867d083c267bb19ecf7fb326e964c01a0a9cc323dd2f55d275fdb9d" },
+    { url = "http://localhost:3141/root/pypi/+f/a82/28b79be107bb0/time_machine-2.17.0-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:a8228b79be107bb0eb76ece610545b5a9d88bf398d0cbeb1ab5363fe026939fa" },
+    { url = "http://localhost:3141/root/pypi/+f/813/7ea6c680bd625/time_machine-2.17.0-cp313-cp313t-musllinux_1_2_i686.whl", hash = "sha256:8137ea6c680bd62554f15e36b9f384406790f0b2605bdbc4fe52f0b9e4644ff5" },
+    { url = "http://localhost:3141/root/pypi/+f/7c2/16990c381c4a3/time_machine-2.17.0-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:7c216990c381c4a3f25fb648377cd1022d65cfbf0023ecbab12f78c9f02066cf" },
+    { url = "http://localhost:3141/root/pypi/+f/f22/139193db761cb/time_machine-2.17.0-cp313-cp313t-win32.whl", hash = "sha256:f22139193db761cb470e20a954aa86157e1b51b3e03f1ece879d235fef3a13e1" },
+    { url = "http://localhost:3141/root/pypi/+f/8b3/7d391555e3162/time_machine-2.17.0-cp313-cp313t-win_amd64.whl", hash = "sha256:8b37d391555e316248a3c227a298959034a23e5fc6e059e1f1fe591d0f58fe77" },
+    { url = "http://localhost:3141/root/pypi/+f/c4a/b494d787e571b/time_machine-2.17.0-cp313-cp313t-win_arm64.whl", hash = "sha256:c4ab494d787e571b53323c130349d667c4d91bd74a0278758cf9edc1ecfc7098" },
+    { url = "http://localhost:3141/root/pypi/+f/ce7/f9967f1a744b1/time_machine-2.17.0-cp314-cp314-macosx_10_13_universal2.whl", hash = "sha256:ce7f9967f1a744b1b0c8c2c29aca0a20468077041907b4e4288a82a4988e7fcf" },
+    { url = "http://localhost:3141/root/pypi/+f/667/3ce6e3000d8e4/time_machine-2.17.0-cp314-cp314-macosx_10_13_x86_64.whl", hash = "sha256:6673ce6e3000d8e42104d0dd5d5b6a367ca6c69d215704f72da74e354e5f860e" },
+    { url = "http://localhost:3141/root/pypi/+f/0d5/9b492109dcfe4/time_machine-2.17.0-cp314-cp314-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:0d59b492109dcfe424885a3ef50555cfeb0ccc71e58ad4e027babfc91809adb1" },
+    { url = "http://localhost:3141/root/pypi/+f/159/4e8e1d970675a/time_machine-2.17.0-cp314-cp314-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:1594e8e1d970675a87615f3fe59d212d527b54f0315ae577fef0c0d7baf42275" },
+    { url = "http://localhost:3141/root/pypi/+f/49e/1e7be05eb0396/time_machine-2.17.0-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:49e1e7be05eb0396e0e71373c552061bd644e8973a5a0139ea76a328c7b794a0" },
+    { url = "http://localhost:3141/root/pypi/+f/7bd/4e0120184c377/time_machine-2.17.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:7bd4e0120184c377827050bbe41760a385943d64291089855a6ccdf3f5dc554e" },
+    { url = "http://localhost:3141/root/pypi/+f/fd8/859dbba8f214a/time_machine-2.17.0-cp314-cp314-musllinux_1_2_i686.whl", hash = "sha256:fd8859dbba8f214a4c733a00cd84a1da1262510e6d8a1adac0c10478b61c018a" },
+    { url = "http://localhost:3141/root/pypi/+f/7b8/cfa7412093a4c/time_machine-2.17.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:7b8cfa7412093a4ca0eb218e6f042ef476a3fbf0035a07405c095f0fdf2c4ab5" },
+    { url = "http://localhost:3141/root/pypi/+f/71f/432058917fb24/time_machine-2.17.0-cp314-cp314-win32.whl", hash = "sha256:71f432058917fb2405a9d0005886d4680d30f1a36de400bb5f726b5106b67566" },
+    { url = "http://localhost:3141/root/pypi/+f/bec/64a2d1e33c144/time_machine-2.17.0-cp314-cp314-win_amd64.whl", hash = "sha256:bec64a2d1e33c14438b94f80b241e9e7a3e543cfcb70ae9c12020b17c23728d2" },
+    { url = "http://localhost:3141/root/pypi/+f/b12/c419bc5d23a31/time_machine-2.17.0-cp314-cp314-win_arm64.whl", hash = "sha256:b12c419bc5d23a3153976177c24bf95d666af3ef32acb73947145eb18e051854" },
+    { url = "http://localhost:3141/root/pypi/+f/239/e069a3b09f680/time_machine-2.17.0-cp314-cp314t-macosx_10_13_universal2.whl", hash = "sha256:239e069a3b09f68082ffa7fbd500078a99ed0a80defb8d0b3f1607be74532166" },
+    { url = "http://localhost:3141/root/pypi/+f/ddd/4d92bd51c536e/time_machine-2.17.0-cp314-cp314t-macosx_10_13_x86_64.whl", hash = "sha256:ddd4d92bd51c536e11469f3c9ff40b7604b8d02425da2243d8a8e498d9a1cc71" },
+    { url = "http://localhost:3141/root/pypi/+f/b38/b77bdd8a45820/time_machine-2.17.0-cp314-cp314t-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:b38b77bdd8a45820bbdaad6c031b71b925b442b78cef84c05d98f5d52e5f4c7e" },
+    { url = "http://localhost:3141/root/pypi/+f/dc2/2a40dc78613fa/time_machine-2.17.0-cp314-cp314t-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:dc22a40dc78613fae6092d577845cc47e84fff5b83749b4f405e923cc186829e" },
+    { url = "http://localhost:3141/root/pypi/+f/05e/a377c8b57dc74/time_machine-2.17.0-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:05ea377c8b57dc74395ba05cd6a1c63dc2b23db5f709f704a39c8fe920bb6135" },
+    { url = "http://localhost:3141/root/pypi/+f/4d9/3d2838d05676a/time_machine-2.17.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:4d93d2838d05676ae892eaa6f9e52e3c3697fd58e3c9c7a288302bc00a55afb9" },
+    { url = "http://localhost:3141/root/pypi/+f/32e/c169809838cc6/time_machine-2.17.0-cp314-cp314t-musllinux_1_2_i686.whl", hash = "sha256:32ec169809838cc68cd03ee878a93742b7d4c83f87f494816bfa9ca4b053f244" },
+    { url = "http://localhost:3141/root/pypi/+f/657/444bac9cb0e13/time_machine-2.17.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:657444bac9cb0e1326aa83936df0ff1ed99e66e2142555ad9a6f32f3c5dd6560" },
+    { url = "http://localhost:3141/root/pypi/+f/4c7/e18d92375070c/time_machine-2.17.0-cp314-cp314t-win32.whl", hash = "sha256:4c7e18d92375070c43be2a54e40ec1a25fd82b1955e11f72cb4d61d47c76cf42" },
+    { url = "http://localhost:3141/root/pypi/+f/e64/eaecc26631f69/time_machine-2.17.0-cp314-cp314t-win_amd64.whl", hash = "sha256:e64eaecc26631f69c17925d3e5a1da4a50956f02d63b6589eb5f9b401b17ce67" },
+    { url = "http://localhost:3141/root/pypi/+f/d83/d2e4cc1db4944/time_machine-2.17.0-cp314-cp314t-win_arm64.whl", hash = "sha256:d83d2e4cc1db49441bed3320e0d3225d027db456912fceabfe393e4664d5027f" },
+]
+
+[[package]]
+name = "types-humanfriendly"
+version = "10.0.1.20250319"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/452/aa1abbfff88a4/types_humanfriendly-10.0.1.20250319.tar.gz", hash = "sha256:452aa1abbfff88a44cd9985eb459555bb1eae0cdd7bc084269146bfdbf1ff31d" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/0fe/c93cc793b9130/types_humanfriendly-10.0.1.20250319-py3-none-any.whl", hash = "sha256:0fec93cc793b91309481ed4bb9bed178ffde0076026fb3ac1cc3299ad7ecbc46" },
 ]
 
 [[package]]
@@ -555,6 +699,15 @@ source = { registry = "http://localhost:3141/root/wheels/+simple" }
 sdist = { url = "http://localhost:3141/root/pypi/+f/222/e32e6a29bb288/types_pytz-2025.2.0.20250809.tar.gz", hash = "sha256:222e32e6a29bb28871f8834e8785e3801f2dc4441c715cd2082b271eecbe21e5" }
 wheels = [
     { url = "http://localhost:3141/root/pypi/+f/4f5/5ed1b43e925cf/types_pytz-2025.2.0.20250809-py3-none-any.whl", hash = "sha256:4f55ed1b43e925cf851a756fe1707e0f5deeb1976e15bf844bcaa025e8fbd0db" },
+]
+
+[[package]]
+name = "typing-extensions"
+version = "4.14.1"
+source = { registry = "http://localhost:3141/root/wheels/+simple" }
+sdist = { url = "http://localhost:3141/root/pypi/+f/38b/39f4aeeab6488/typing_extensions-4.14.1.tar.gz", hash = "sha256:38b39f4aeeab64884ce9f74c94263ef78f3c22467c8724005483154c26648d36" }
+wheels = [
+    { url = "http://localhost:3141/root/pypi/+f/d1e/1e3b58374dc93/typing_extensions-4.14.1-py3-none-any.whl", hash = "sha256:d1e1e3b58374dc93031d6eda2420a48ea44a36c2b4766a4fdeb3710755731d76" },
 ]
 
 [[package]]
@@ -582,14 +735,18 @@ dev = [
     { name = "ruff" },
     { name = "sepaxml" },
     { name = "sshtunnel" },
-    { name = "ty" },
     { name = "xlsxwriter" },
 ]
 local = [
     { name = "wsjrdp2027" },
 ]
+mypy = [
+    { name = "mypy" },
+    { name = "types-humanfriendly" },
+]
 pytest = [
     { name = "pytest" },
+    { name = "time-machine" },
 ]
 
 [package.metadata]
@@ -605,17 +762,25 @@ dev = [
     { name = "ruff", specifier = ">=0.12.7" },
     { name = "sepaxml", specifier = ">=2.6.2" },
     { name = "sshtunnel", specifier = ">=0.4.0" },
-    { name = "ty", specifier = ">=0.0.1a16" },
     { name = "xlsxwriter", specifier = ">=3.2.5" },
 ]
 local = [{ name = "wsjrdp2027", editable = "packages/wsjrdp2027" }]
-pytest = [{ name = "pytest", specifier = ">=8.4.1" }]
+mypy = [
+    { name = "mypy", specifier = ">=1.17.1" },
+    { name = "types-humanfriendly", specifier = ">=10.0.1.20250319" },
+]
+pytest = [
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "time-machine", specifier = ">=2.17.0" },
+]
 
 [[package]]
 name = "wsjrdp2027"
 version = "0.0.1"
 source = { editable = "packages/wsjrdp2027" }
 dependencies = [
+    { name = "humanfriendly" },
+    { name = "jinja2" },
     { name = "paramiko" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg2" },
@@ -624,14 +789,32 @@ dependencies = [
     { name = "sshtunnel" },
 ]
 
+[package.dev-dependencies]
+mypy = [
+    { name = "types-humanfriendly" },
+]
+pytest = [
+    { name = "pytest" },
+    { name = "time-machine" },
+]
+
 [package.metadata]
 requires-dist = [
+    { name = "humanfriendly", specifier = ">=10.0" },
+    { name = "jinja2", specifier = ">=3.1.6" },
     { name = "paramiko", specifier = "<4" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.9" },
     { name = "psycopg2", specifier = ">=2.9.10" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "schwifty", specifier = ">=2025.7.0" },
     { name = "sshtunnel", specifier = ">=0.4.0" },
+]
+
+[package.metadata.requires-dev]
+mypy = [{ name = "types-humanfriendly", specifier = ">=10.0.1.20250319" }]
+pytest = [
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "time-machine", specifier = ">=2.17.0" },
 ]
 
 [[package]]

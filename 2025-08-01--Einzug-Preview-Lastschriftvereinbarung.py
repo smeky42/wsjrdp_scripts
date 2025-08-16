@@ -1,3 +1,6 @@
+#!/usr/bin/env -S uv run
+from __future__ import annotations
+
 import datetime
 import sys
 
@@ -7,7 +10,7 @@ import xlsxwriter
 
 
 def main():
-    ctx = wsjrdp2027.ConnectionContext()
+    ctx = wsjrdp2027.WsjRdpContext()
 
     with ctx.psycopg2_connect() as conn:
         cur = conn.cursor()

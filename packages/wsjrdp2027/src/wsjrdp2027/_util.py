@@ -26,7 +26,7 @@ _CONSOLE_CONFIRM_INPUT_TO_VALUE = {
 def console_confirm(question, *, default: bool | None = False) -> bool:
     allowed_choices = _CONSOLE_CONFIRM_DEFAULT_TO_CHOICE_DISPLAY.get(default, "y/n")
     while True:
-        raw_user_input = input(f"{question} [{allowed_choices}]? ")
+        raw_user_input = input(f"{question} [{allowed_choices}] ")
         user_input = raw_user_input.strip().lower()
         if not user_input and default is not None:
             return default
@@ -90,16 +90,256 @@ def configure_file_logging(
     return handler
 
 
+def date_to_datetime(
+    date: _datetime.date, *, tz: _datetime.tzinfo | None = None
+) -> _datetime.datetime:
+    """Convert *date* to an aware datetime.
+
+    The returned :obj:`~datetime.datetime` is aware in time zone *tz*
+    (or local time if *tz* is `None`) with the hours of the day chosen
+    such that the date part of the returned datetime converted to UTC
+    is *date*.
+
+    >>> import datetime, zoneinfo
+    >>> date = datetime.date(2025, 8, 15)
+    >>> date_to_datetime(date).date() == date
+    True
+    >>> date_to_datetime(date).astimezone(datetime.timezone.utc).date() == date
+    True
+
+    >>> date_to_datetime(date, tz=zoneinfo.ZoneInfo("Etc/GMT+12"))
+    datetime.datetime(2025, 8, 15, 6, 0, tzinfo=zoneinfo.ZoneInfo(key='Etc/GMT+12'))
+
+    >>> date_to_datetime(date, tz=zoneinfo.ZoneInfo("America/Los_Angeles"))
+    datetime.datetime(2025, 8, 15, 8, 0, tzinfo=zoneinfo.ZoneInfo(key='America/Los_Angeles'))
+
+    >>> date_to_datetime(date, tz=datetime.timezone.utc)
+    datetime.datetime(2025, 8, 15, 12, 0, tzinfo=datetime.timezone.utc)
+
+    >>> date_to_datetime(date, tz=zoneinfo.ZoneInfo("Europe/Berlin"))
+    datetime.datetime(2025, 8, 15, 13, 0, tzinfo=zoneinfo.ZoneInfo(key='Europe/Berlin'))
+
+    >>> date_to_datetime(date, tz=zoneinfo.ZoneInfo("Asia/Calcutta"))
+    datetime.datetime(2025, 8, 15, 14, 30, tzinfo=zoneinfo.ZoneInfo(key='Asia/Calcutta'))
+
+    >>> date_to_datetime(date, tz=zoneinfo.ZoneInfo("Asia/Katmandu"))
+    datetime.datetime(2025, 8, 15, 14, 45, tzinfo=zoneinfo.ZoneInfo(key='Asia/Katmandu'))
+
+    >>> date_to_datetime(date, tz=zoneinfo.ZoneInfo("Asia/Tokyo"))
+    datetime.datetime(2025, 8, 15, 16, 0, tzinfo=zoneinfo.ZoneInfo(key='Asia/Tokyo'))
+
+    >>> date_to_datetime(date, tz=zoneinfo.ZoneInfo("Pacific/Kiritimati"))
+    datetime.datetime(2025, 8, 15, 19, 0, tzinfo=zoneinfo.ZoneInfo(key='Pacific/Kiritimati'))
+    """
+
+    def to_hours(delta: datetime.timedelta) -> datetime.timedelta:
+        return datetime.timedelta(hours=delta.total_seconds() // 3600)
+
+    import datetime
+
+    naive = datetime.datetime.combine(date, datetime.time())
+    aware = naive.astimezone(tz=tz)
+    utcoffset = aware.utcoffset()
+    h24 = datetime.timedelta(hours=24)
+    if utcoffset.total_seconds() >= 0:
+        offset = utcoffset + to_hours((h24 - utcoffset) // 2)
+    else:
+        offset = to_hours((h24 + utcoffset) // 2)
+    return (naive + offset).replace(tzinfo=aware.tzinfo)
+
+
+@_typing.overload
+def to_datetime(dt: _datetime.datetime | str) -> _datetime.datetime: ...
+
+
+@_typing.overload
+def to_datetime(dt: None) -> None: ...
+
+
+def to_datetime(
+    dt: _datetime.datetime | _datetime.date | str | int | None,
+) -> _datetime.datetime | None:
+    """Return a datetime.
+
+    >>> import datetime as dt, zoneinfo as zi
+
+    ..
+       >>> import datetime
+       >>> import datetime as _dt, zoneinfo as _zi
+       >>> _tm = getfixture("time_machine")
+       >>> _tm.move_to(_dt.datetime(2025, 8, 15, 10, 30, 27, tzinfo=_zi.ZoneInfo("Europe/Berlin")))
+
+    >>> to_datetime("0")
+    datetime.datetime(1970, 1, 1, 0, 0, tzinfo=datetime.timezone.utc)
+    >>> to_datetime(0)
+    datetime.datetime(1970, 1, 1, 0, 0, tzinfo=datetime.timezone.utc)
+    >>> to_datetime(1755246627)
+    datetime.datetime(2025, 8, 15, 8, 30, 27, tzinfo=datetime.timezone.utc)
+    >>> to_datetime("2025-02-01")
+    datetime.datetime(2025, 2, 1, 12, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=3600), 'CET'))
+    >>> to_datetime("01.06.2025")
+    datetime.datetime(2025, 6, 1, 13, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
+
+
+    >>> some_dt = dt.datetime(2025, 8, 15, 10, 30, 27, 1234, tzinfo=zi.ZoneInfo("Europe/Berlin"))
+    >>> to_datetime(some_dt) == some_dt
+    True
+
+    If the local time zone is "America/Los_Angeles":
+
+    ..
+       >>> _tm.move_to(_dt.datetime(2025, 8, 15, 1, 30, 27, tzinfo=_zi.ZoneInfo(key='America/Los_Angeles')))
+
+    >>> to_datetime("01.06.2025")
+    datetime.datetime(2025, 6, 1, 8, 0, tzinfo=datetime.timezone(datetime.timedelta(days=-1, seconds=61200), 'PDT'))
+    >>> to_datetime("01.06.2025").astimezone(datetime.timezone.utc)
+    datetime.datetime(2025, 6, 1, 15, 0, tzinfo=datetime.timezone.utc)
+
+
+    If the local time zone is "Asia/Tokyo":
+
+    ..
+       >>> _tm.move_to(_dt.datetime(2025, 8, 15, 1, 30, 27, tzinfo=_zi.ZoneInfo(key='Asia/Tokyo')))
+
+    >>> to_datetime("01.06.2025")
+    datetime.datetime(2025, 6, 1, 16, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400), 'JST'))
+    >>> to_datetime("01.06.2025").astimezone(datetime.timezone.utc)
+    datetime.datetime(2025, 6, 1, 7, 0, tzinfo=datetime.timezone.utc)
+
+
+    If the local time zone is "Pacific/Kiritimati":
+
+    ..
+       >>> _tm.move_to(_dt.datetime(2025, 8, 15, 1, 30, 27, tzinfo=_zi.ZoneInfo(key='Pacific/Kiritimati')))
+
+    >>> to_datetime("01.06.2025")
+    datetime.datetime(2025, 6, 1, 19, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=50400), '+14'))
+    >>> to_datetime("01.06.2025").astimezone(datetime.timezone.utc)
+    datetime.datetime(2025, 6, 1, 5, 0, tzinfo=datetime.timezone.utc)
+
+    """
+    import datetime
+    import re
+
+    def normalize_tz(dt: datetime.datetime) -> datetime.datetime:
+        if not dt.tzinfo:
+            return dt.astimezone()
+        else:
+            return dt
+
+    def parse_date(dt: str, pattern: str) -> datetime.datetime:
+        """Return a aware datetime object for date *dt*.
+
+        >>> dt = parse_date("01.01.2025", "%d.%m.%Y")
+        >>> dt.tzinfo is not None
+        >>> dt.date() == dt.astimezone(datetime.timezone.utc)
+        """
+        naive = datetime.datetime.strptime(dt, pattern)
+        return date_to_datetime(naive)
+
+    if dt is None:
+        return None
+    elif isinstance(dt, datetime.datetime):
+        return normalize_tz(dt)
+    elif isinstance(dt, datetime.date):
+        return date_to_datetime(dt)
+    elif isinstance(dt, int):
+        return datetime.datetime.fromtimestamp(dt, tz=datetime.timezone.utc)
+    elif isinstance(dt, str):
+        if re.fullmatch("[0-9]+", dt):
+            return datetime.datetime.fromtimestamp(int(dt), tz=datetime.timezone.utc)
+        elif re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", dt):
+            return parse_date(dt, "%d.%m.%Y")
+        elif re.fullmatch("[0-9]+-[0-9]+-[0-9]+", dt):
+            return parse_date(dt, "%Y-%m-%d")
+        elif re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+ [0-9]+:[0-9]+:[0-9]+", dt):
+            return datetime.datetime.strptime(dt, "%d.%m.%Y %H:%M:%S").astimezone()
+        else:
+            try:
+                iso_dt = datetime.datetime.fromisoformat(dt)
+                return normalize_tz(iso_dt)
+            except ValueError:
+                raise ValueError(f"Unsupported datetime format: {dt!r}") from None
+    else:
+        raise ValueError(
+            f"Cannot convert {type(dt).__qualname__!r} value {dt!r} to datetime"
+        )
+
+
 def to_date(date: _datetime.date | str) -> _datetime.date:
+    """Return a date.
+
+    >>> to_date("2025-06-01")
+    datetime.date(2025, 6, 1)
+    >>> to_date("01.06.2025")
+    datetime.date(2025, 6, 1)
+    """
     import datetime
     import re
 
     if isinstance(date, str):
-        if re.fullmatch("[0-9]+-[0-9]+-[0-9]+", date):
-            return datetime.datetime.strptime(date, "%Y-%m-%d").date()
-        elif re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", date):
+        if re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", date):
             return datetime.datetime.strptime(date, "%d.%m.%Y").date()
         else:
-            raise ValueError(f"Unsupported date format: {date!r}")
+            try:
+                return datetime.date.fromisoformat(date)
+            except ValueError:
+                raise ValueError(f"Unsupported date format: {date!r}") from None
     else:
         return date
+
+
+def render_template(
+    template: str,
+    context: dict | None,
+    *,
+    extra_context: dict | None = None,
+    extra_filters: dict[str, _typing.Callable] | None = None,
+) -> str:
+    """Render the Jinja2 *template* using *vars*.
+
+    >>> render_template("Hello {{ name }}", dict(name="World"))
+    'Hello World'
+
+    >>> import datetime as dt, zoneinfo as zi
+    >>> now = dt.datetime(2025, 8, 15, 10, 30, 27, 1234, tzinfo=zi.ZoneInfo("Europe/Berlin"))
+    >>> render_template("Now is {{ now }}", {'now': now})
+    'Now is 2025-08-15 10:30:27.001234+02:00'
+    >>> render_template("Now is {{ now | isoformat }}", {'now': now})
+    'Now is 2025-08-15 10:30:27+02:00'
+    >>> render_template("Now is {{ now | isoformat('T') }}", {'now': now})
+    'Now is 2025-08-15T10:30:27+02:00'
+    >>> render_template("Now is {{ now | isoformat(' ', 'hours') }}", {'now': now})
+    'Now is 2025-08-15 10+02:00'
+    >>> render_template("Now is {{ now | isoformat(' ', 'milliseconds') }}", {'now': now})
+    'Now is 2025-08-15 10:30:27.001+02:00'
+    >>> render_template("Now is {{ now | strftime('%Y%m%d-%H%M%S') }}", {'now': now})
+    'Now is 20250815-103027'
+
+    Jinja2 builtin filters: https://jinja.palletsprojects.com/en/stable/templates/#builtin-filters
+
+    Available filters:
+
+    * ``strftime`` - calls :obj:`datetime.datetime.strftime`
+    * ``isoformat`` - calls :obj:`datetime.datetime.isoformat`
+    * ``to_ext`` - adds leading dot (``.``) if non-empty
+
+    """
+    import jinja2 as _jinja2
+
+    def _strftime(dt: _datetime.datetime, format="%Y-%m-%d %H:%M:%S") -> str:
+        return dt.strftime(format)
+
+    def _isoformat(dt: _datetime.datetime, sep=" ", timespec="seconds") -> str:
+        return dt.isoformat(sep=sep, timespec=timespec)
+
+    jinja_env = _jinja2.Environment(undefined=_jinja2.StrictUndefined)
+    jinja_env.filters["strftime"] = _strftime
+    jinja_env.filters["isoformat"] = _isoformat
+    jinja_env.filters["to_ext"] = lambda s: f".{s}" if s else ""
+    jinja_env.filters.update(extra_filters or {})
+    jinja_template = jinja_env.from_string(template)
+    context = (context or {}).copy()
+    context.update(extra_context or {})
+    out = jinja_template.render(context)
+    return out

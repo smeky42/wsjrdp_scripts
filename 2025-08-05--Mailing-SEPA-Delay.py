@@ -1,131 +1,31 @@
+#!/usr/bin/env -S uv run
+from __future__ import annotations
+
+import email.message
 import sys
-import pandas as pd
-from sshtunnel import SSHTunnelForwarder
-import psycopg2
-import yaml
-import smtplib
-from email.mime.text import MIMEText
+
+import wsjrdp2027
 
 
 def main():
-    with open("config-dev.yml", "r") as yamlfile:
-        config = yaml.load(yamlfile, Loader=yaml.FullLoader)
-        print("read config.yml successful")
+    ctx = wsjrdp2027.WsjRdpContext()
 
-    # PostgreSQL-Datenbank-Einstellungen
-    db_host = config["db_host"]
-    db_port = config["db_port"]
-    db_username = config["db_username"]
-    db_password = config["db_password"]
-    db_name = config["db_name"]
-
-    # SMTP-Einstellungen
-    smtp_server = config["smtp_server"]
-    smtp_port = config["smtp_port"]
-    smtp_username = config.get("smtp_username", "")
-    smtp_password = config.get("smtp_password", "")
-
-    # SSH-Tunnel-Einstellungen
-    use_ssh_tunnel = config.get("use_ssh_tunnel")
-    if use_ssh_tunnel:
-        ssh_host = config["ssh_host"]
-        ssh_port = config["ssh_port"]
-        ssh_username = config["ssh_username"]
-        ssh_private_key = config["ssh_private_key"]
-
-        # Erstelle einen SSH-Tunnel
-        tunnel = SSHTunnelForwarder(
-            (ssh_host, ssh_port),
-            ssh_username=ssh_username,
-            ssh_pkey=ssh_private_key,
-            remote_bind_address=(db_host, db_port),
+    with ctx.psycopg2_connect() as conn:
+        df = wsjrdp2027.load_payment_dataframe(
+            conn,
+            early_payer=True,
+            status=["reviewed"],
+            max_print_at="2025-07-31",
         )
 
-        print("start ssh tunnel")
-        tunnel.start()
-    else:
-        tunnel = None
-
-    print("connect postgres")
-    if tunnel:
-        conn = psycopg2.connect(
-            host="localhost",
-            port=tunnel.local_bind_port,
-            user=db_username,
-            password=db_password,
-            dbname=db_name,
-        )
-    else:
-        conn = psycopg2.connect(
-            host=db_host,
-            port=db_port,
-            user=db_username,
-            password=db_password,
-            dbname=db_name,
-        )
-
-    print("query db")
-    cur = conn.cursor()
-    cur.execute("""
-    SELECT id, first_name, last_name, email, gender, status, nickname, primary_group_id,
-                    sepa_name, sepa_mail, sepa_iban, upload_sepa_pdf,
-                    payment_role, early_payer, print_at
-    FROM people
-    WHERE early_payer = TRUE
-    AND print_at < '2025-08-01'
-    AND status = 'reviewed'
-    ORDER BY id
-    """)
-    rows = cur.fetchall()
-    columns = [
-        "id",
-        "first_name",
-        "last_name",
-        "email",
-        "gender",
-        "status",
-        "nickname",
-        "primary_group_id",
-        "sepa_name",
-        "sepa_mail",
-        "sepa_iban",
-        "upload_sepa_pdf",
-        "payment_role",
-        "early_payer",
-        "print_at",
-    ]
-
-    df = pd.DataFrame(rows, columns=columns)
-
-    cur.close()
-    conn.close()
-    if tunnel is not None:
-        tunnel.stop()
-
-    print("print pandas frame")
-    print(df)
-
-    # Verbinde dich mit dem SMTP-Server
-    server = smtplib.SMTP(smtp_server, smtp_port)
-    if server.has_extn("STARTTLS"):
-        server.starttls()
-    if smtp_username and smtp_password:
-        server.login(smtp_username, smtp_password)
+    ctx.require_approval_to_send_email_in_prod()
 
     # Verschicke die Mail an alle Mailadressen
-    for idx, row in df.iterrows():
-        name = row["first_name"]
-        mailadress = row["email"]
-        nickname = row["nickname"]
-        cc_mailadress = row["sepa_mail"]
-
-        if nickname:
-            name = nickname
-
-        print(
-            f"Send Mail to Name: {name}, Mailadresse: {mailadress} and {cc_mailadress}"
-        )
-        msg = MIMEText(f"""Hallo {name},
+    with ctx.smtp_login() as client:
+        for _, row in df.iterrows():
+            msg = email.message.EmailMessage()
+            msg.set_content(
+                f"""Hallo {row["greeting_name"]},
 
 es hilft uns sehr, dass du am SEPA-Lastschriftverfahren für das World Scout Jamboree 2027 als Early Payer teilnimmst!
 Ursprünglich sollte heute der erste Einzug stattfinden. Vielleicht ist dir bereits aufgefallen, dass wir noch nichts eingezogen haben.
@@ -144,27 +44,27 @@ Vielen Dank für dein Verständnis!
 Dein WSJ-Orga-Team
 
 Daffi und Peter
---
-World Scout Jamboree 2027 Poland
-Head of Organisation
+"""
+                + wsjrdp2027.EMAIL_SIGNATURE_ORG
+            )
 
-Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
-Chausseestr. 128/129
-10115 Berlin
+            msg["Subject"] = (
+                "WSJ 2027 - Early Payer SEPA Lastschrifteinzug wird verschoben"
+            )
+            msg["From"] = "anmeldung@worldscoutjamboree.de"
+            msg["To"] = row["email"]
+            if row["sepa_mail"] != row["email"]:
+                msg["Cc"] = row["sepa_mail"]
+            msg["Reply-To"] = "info@worldscoutjamboree.de"
 
-info@worldscoutjamboree.de
-https://worldscoutjamboree.de""")
-
-        from_email = smtp_username or "anmeldung@worldscoutjamboree.de"
-        msg["From"] = from_email
-        msg["To"] = mailadress
-        msg["Cc"] = cc_mailadress
-        msg["Reply-To"] = "info@worldscoutjamboree.de"
-        msg["Subject"] = "WSJ 2027 - Early Payer SEPA Lastschrifteinzug wird verschoben"
-
-        server.sendmail(from_email, [mailadress, cc_mailadress], msg.as_string())
-
-    server.quit()
+            print(
+                f"Send email to "
+                f"id: {row['id']}; "
+                f"name: {row['short_full_name']}; "
+                f"To: {msg['To']}; "
+                f"Cc: {msg['Cc']}"
+            )
+            client.send_message(msg)
 
 
 if __name__ == "__main__":

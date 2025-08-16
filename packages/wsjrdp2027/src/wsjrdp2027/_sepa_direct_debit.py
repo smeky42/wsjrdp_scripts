@@ -157,6 +157,8 @@ def write_accounting_dataframe_to_sepa_dd(
 
     for idx, row in df.iterrows():
         if row["payment_status"] != "ok":
+            if row.get("amount", 0) == 0:
+                continue  # silently skip non-ok row with amount=0
             _LOGGER.debug(
                 "[SDD] Skip non-ok row id=%s payment_status=%s payment_status_reason=%r",
                 row["id"],
