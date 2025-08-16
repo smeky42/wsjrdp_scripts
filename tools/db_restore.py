@@ -20,8 +20,10 @@ def main(argv=None):
     args = p.parse_args(argv[1:])
     dump_path = args.dump_path
 
-    ctx = wsjrdp2027.ConnectionContext()
-    ctx.pg_restore(dump_path=dump_path)
+    ctx = wsjrdp2027.WsjRdpContext()
+    if ctx.is_production or ctx.config.db_name in ["hitobito_production"]:
+        ctx.require_approval_to_run_in_prod()
+    ctx.pg_restore(dump_path=dump_path, restore_into_production=False)
 
 
 if __name__ == "__main__":

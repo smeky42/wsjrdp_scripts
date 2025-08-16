@@ -10,7 +10,7 @@ import wsjrdp2027
 
 
 def main():
-    ctx = wsjrdp2027.ConnectionContext(log_level="DEBUG")
+    ctx = wsjrdp2027.WsjRdpContext(log_level="DEBUG")
 
     with ctx.smtp_login() as client:
         msg = EmailMessage()

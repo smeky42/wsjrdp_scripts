@@ -2,6 +2,11 @@
 
 Siehe auch [CONTRIBUTING.md](./CONTRIBUTING.md) mit Hinweisen zum Ausführen.
 
+## Umgebungs-Variablen
+
+* `WSJRDP_SCRIPTS_CONFIG` - Die Konfigurations-Datei, die geladen werden soll (Default `config-dev.yml`).
+* `WSJRDP_SCRIPTS_START_TIME` - Start-Zeit, wird nur außerhalb von Produktion verwendet (kein Default).
+
 ## Tools
 
 ### Datenbank Dump

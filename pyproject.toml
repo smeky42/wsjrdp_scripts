@@ -15,14 +15,18 @@ dev = [
     "ruff>=0.12.7",
     "sepaxml>=2.6.2",
     "sshtunnel>=0.4.0",
-    "ty>=0.0.1a16",
     "xlsxwriter>=3.2.5",
 ]
 local = [
     "wsjrdp2027",
 ]
+mypy = [
+    "mypy>=1.17.1",
+    "types-humanfriendly>=10.0.1.20250319",
+]
 pytest = [
     "pytest>=8.4.1",
+    "time-machine>=2.17.0",
 ]
 
 
@@ -33,6 +37,7 @@ constraint-dependencies = ["paramiko<4"]
 default-groups = [
     "dev",
     "local",
+    "mypy",
     "pytest",
 ]
 
@@ -54,3 +59,7 @@ doctest_optionflags = "NORMALIZE_WHITESPACE IGNORE_EXCEPTION_DETAIL"
 
 [tool.ruff]
 extend-exclude = ["2023", "2025-05-22--Mailing-UL-Info.py"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+lines-after-imports = 2

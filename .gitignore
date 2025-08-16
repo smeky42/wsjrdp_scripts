@@ -11,8 +11,10 @@
 *sepa.xml
 *~
 .DS_Store
+.dir-locals.el
 .envrc
 .rgignore
+/data_PROD
 __pycache__
 config-prod.yml
 config.yml

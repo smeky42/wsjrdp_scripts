@@ -19,18 +19,21 @@ import wsjrdp2027
 _LOGGER = logging.getLogger()
 
 
-DEFAULT_COLLECTION_DATE = datetime.date(2025, 8, 15)
+DEFAULT_COLLECTION_DATE = datetime.date(2025, 1, 1)
 
 
 def parse_args(argv=None):
     import argparse
     import sys
 
+    from wsjrdp2027._util import to_date
+
     if argv is None:
         argv = sys.argv
     p = argparse.ArgumentParser()
     p.add_argument("--accounting", action="store_true", default=True)
     p.add_argument("--no-accounting", dest="accounting", action="store_false")
+    p.add_argument("--collection-date", type=to_date, default=DEFAULT_COLLECTION_DATE)
     return p.parse_args(argv[1:])
 
 
@@ -39,29 +42,28 @@ def main(argv=None):
 
     args = parse_args(argv=argv)
 
-    now = datetime.datetime.now().astimezone()
-    # now = datetime.datetime(2025, 8, 11, 8, 11, 0).astimezone()
+    start_time = None
+    # start_time = datetime.datetime(2025, 8, 15, 10, 30, 27).astimezone()
 
-    now_str = now.strftime("%Y%m%d-%H%M%S")
-    out_dir = wsjrdp2027.create_dir("data/sepa_direct_debit.%(now)s", now=now)
-    out_base = out_dir / f"sepa_direct_debit.{now_str}"
-    log_filename = out_base.with_name(out_base.name + ".log")
-    xml_filename = out_base.with_name(out_base.name + ".xml")
-    html_filename = out_base.with_name(out_base.name + ".html")
-    xlsx_filename = out_base.with_name(out_base.name + ".xlsx")
+    ctx = wsjrdp2027.WsjRdpContext(
+        setup_logging=True,
+        start_time=start_time,
+        out_dir="data/sepa_direct_debit_{{ filename_suffix }}",
+    )
+    out_base = ctx.make_out_path("sepa_direct_debit_{{ filename_suffix }}")
+    log_filename = out_base.with_suffix(".log")
+    xml_filename = out_base.with_suffix(".xml")
+    html_filename = out_base.with_suffix(".html")
+    xlsx_filename = out_base.with_suffix(".xlsx")
 
-    wsjrdp2027.ConnectionContext(log_file=log_filename)
-
-    ctx = wsjrdp2027.ConnectionContext()
-
-    collection_date = DEFAULT_COLLECTION_DATE
+    ctx.configure_log_file(log_filename)
+    ctx.require_approval_to_run_in_prod()
 
     with ctx.psycopg2_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
-            early_payer=True,
-            collection_date=collection_date,
-            booking_at=now,
+            collection_date=args.collection_date,
+            booking_at=ctx.start_time,
             pedantic=False,
         )
 
@@ -108,7 +110,7 @@ def main(argv=None):
     )
     _LOGGER.info("  SUM(amount): %s EUR", df_ok["amount"].sum() / 100)
     _LOGGER.info("")
-    _LOGGER.info("Output directory: %s", out_dir)
+    _LOGGER.info("Output directory: %s", ctx.out_dir)
     _LOGGER.info("  SEPA XML: %s", xml_filename)
     _LOGGER.info("  Excel: %s", xlsx_filename)
     _LOGGER.info("  Log file: %s", log_filename)

@@ -12,23 +12,26 @@ import wsjrdp2027
 _LOGGER = _logging.getLogger(__name__)
 
 
-COLLECTION_DATE = _datetime.date(2025, 8, 15)
+COLLECTION_DATE = _datetime.date(2025, 12, 15)
 
 
 def main():
-    now = _datetime.datetime.now()
-    # now = _datetime.datetime(2025, 8, 11, 8, 11, 0)
+    start_time = None
+    # start_time = datetime.datetime(2025, 8, 15, 10, 30, 27).astimezone()
 
-    out_dir = wsjrdp2027.create_dir("data/example_sepa_direct_debit.%(now)s", now=now)
-
-    ctx = wsjrdp2027.ConnectionContext(log_file=out_dir / "example_dd.log")
+    ctx = wsjrdp2027.WsjRdpContext(
+        start_time=start_time,
+        out_dir="data/example_sepa_direct_debit_{{ filename_suffix }}",
+    )
+    out_base = ctx.make_out_path("example_sepa_direct_debit_{{ filename_suffix }}")
+    ctx.configure_log_file(out_base.with_suffix(".log"))
     with ctx.psycopg2_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
             status=wsjrdp2027.DB_PEOPLE_ALL_STATUS,
             sepa_status=wsjrdp2027.DB_PEOPLE_ALL_SEPA_STATUS,
             collection_date=COLLECTION_DATE,
-            booking_at=now,
+            booking_at=ctx.start_time,
             pedantic=True,
         )
 
@@ -42,10 +45,10 @@ def main():
     df = df[df["sepa_status"].isin(["OK"])]
     _LOGGER.info("Printed or further and sepa_status OK: %s", len(df))
 
-    wsjrdp2027.write_payment_dataframe_to_xlsx(df, out_dir / "example_dd.xlsx")
+    wsjrdp2027.write_payment_dataframe_to_xlsx(df, out_base.with_suffix(".xlsx"))
     wsjrdp2027.write_accounting_dataframe_to_sepa_dd(
         df,
-        out_dir / "example_dd.xml",
+        out_base.with_suffix(".xml"),
         config=wsjrdp2027.WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG,
         pedantic=True,
     )

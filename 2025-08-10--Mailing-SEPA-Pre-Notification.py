@@ -1,5 +1,4 @@
 #!/usr/bin/env -S uv run
-
 from __future__ import annotations
 
 import datetime
@@ -9,39 +8,12 @@ import sys
 
 import wsjrdp2027
 
+
 COLLECTION_DATE = datetime.date(2025, 8, 15)
 
 
-SIGNATURE = """World Scout Jamboree 2027 Poland
-Head of Organisation
-
-Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
-Chausseestr. 128/129
-10115 Berlin
-
-info@worldscoutjamboree.de
-https://worldscoutjamboree.de"""
-
-
-EXPECTED_ID_S = frozenset([
-    760, 59, 732, 82, 16, 14, 65, 1153, 1094, 1133, 832, 1132, 998, 765, 738, 1129, 681,
-    1128, 1126, 712, 879, 571, 870, 673, 1097, 1011, 640, 702, 409, 1025, 751, 1014,
-    1068, 217, 207, 829, 1050, 748, 895, 1055, 1036, 1039, 789, 1029, 295, 1002, 192,
-    597, 220, 1015, 1007, 999, 586, 428, 908, 891, 645, 606, 466, 167, 498, 728, 685,
-    684, 292, 298, 878, 886, 588, 864, 865, 620, 392, 868, 854, 615, 455, 808, 813, 822,
-    532, 820, 430, 725, 726, 819, 807, 812, 788, 567, 787, 784, 761, 721, 755, 785, 782,
-    783, 158, 623, 779, 608, 759, 603, 610, 671, 585, 737, 745, 631, 358, 691, 682, 723,
-    692, 675, 642, 546, 643, 646, 678, 572, 632, 625, 527, 594, 568, 214, 402, 172, 619,
-    518, 519, 444, 451, 389, 596, 601, 415, 448, 308, 587, 508, 539, 264, 556, 357, 555,
-    526, 566, 417, 399, 547, 384, 433, 534, 545, 533, 535, 317, 503, 208, 170, 160, 269,
-    326, 148, 149, 471, 374, 447, 456, 147, 463, 315, 329, 443, 442, 414, 300, 287, 310,
-    275, 231, 144, 161, 150, 188, 204, 166, 252, 263, 206, 288, 200, 198, 311, 190, 302,
-    176, 219, 159, 156, 141, 1142, 1012, 1013, 799, 271, 747, 703, 355, 528, 251, 371,
-    297, 253, 235, 241])  # fmt: skip
-
-
 def main():
-    ctx = wsjrdp2027.ConnectionContext()
+    ctx = wsjrdp2027.WsjRdpContext()
 
     with ctx.psycopg2_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
@@ -52,17 +24,13 @@ def main():
         )
 
     ids = df["id"].tolist()
-    assert frozenset(ids) <= EXPECTED_ID_S
+    assert frozenset(ids) <= frozenset(wsjrdp2027.EARLY_PAYER_AUGUST_IDS_SUPERSET)
 
     collection_date_de = COLLECTION_DATE.strftime("%d.%m.%Y")
 
-    if ctx.config.is_production:
-        prompt = f"Do you want to send messages via SMTP server {ctx.config.smtp_server}:{ctx.config.smtp_port}"
-        if not wsjrdp2027.console_confirm(prompt, default=False):
-            print("Ending script - not sending messages")
-            return
+    ctx.require_approval_to_send_email_in_prod()
 
-    now_str = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    now_str = ctx.start_time.strftime("%Y%m%d-%H%M%S")
     out_dir = pathlib.Path(f"data/sepa_direct_debit.{now_str}")
     out_dir.mkdir(exist_ok=True)
 
@@ -98,8 +66,7 @@ Dein WSJ-Orga-Team
 
 Daffi und Peter
 """
-                + "\n-- \n"
-                + SIGNATURE
+                + wsjrdp2027.EMAIL_SIGNATURE_ORG
             )
 
             eml_file = out_dir / f"{row['id']}.pre_notification.eml"
