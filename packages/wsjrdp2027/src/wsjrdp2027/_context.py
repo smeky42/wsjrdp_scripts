@@ -9,11 +9,12 @@ import os as _os
 import pathlib as _pathlib
 import typing as _typing
 
+
 if _typing.TYPE_CHECKING:
     import datetime as _datetime
     import smtplib as _smtplib
 
-    import psycopg2 as _psycopg2
+    import psycopg as _psycopg
     import sshtunnel as _sshtunnel
 
 
@@ -387,10 +388,10 @@ class WsjRdpContext:
 """.strip("\n ")
 
     @_contextlib.contextmanager
-    def psycopg2_connect(self) -> _typing.Iterator[_psycopg2.connection]:
+    def psycopg_connect(self) -> _typing.Iterator[_psycopg.Connection]:
         import contextlib
 
-        import psycopg2
+        import psycopg
 
         with contextlib.ExitStack() as exit_stack:
             if self._config.use_ssh_tunnel:
@@ -408,7 +409,7 @@ class WsjRdpContext:
                 db_host = self._config.db_host
                 db_port = self._config.db_port
 
-            conn = psycopg2.connect(
+            conn = psycopg.connect(
                 host=db_host,
                 port=db_port,
                 user=self._config.db_username,

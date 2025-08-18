@@ -25,7 +25,7 @@ def main():
     )
     out_base = ctx.make_out_path("example_sepa_direct_debit_{{ filename_suffix }}")
     ctx.configure_log_file(out_base.with_suffix(".log"))
-    with ctx.psycopg2_connect() as conn:
+    with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
             status=wsjrdp2027.DB_PEOPLE_ALL_STATUS,

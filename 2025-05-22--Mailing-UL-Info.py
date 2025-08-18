@@ -4,7 +4,7 @@ from __future__ import annotations
 import sys
 import pandas as pd
 from sshtunnel import SSHTunnelForwarder
-import psycopg2
+import psycopg
 import yaml
 import smtplib
 from email.mime.text import MIMEText
@@ -51,7 +51,7 @@ def main():
 
     print("connect postgres")
     if tunnel:
-        conn = psycopg2.connect(
+        conn = psycopg.connect(
             host="localhost",
             port=tunnel.local_bind_port,
             user=db_username,
@@ -59,7 +59,7 @@ def main():
             dbname=db_name,
         )
     else:
-        conn = psycopg2.connect(
+        conn = psycopg.connect(
             host=db_host,
             port=db_port,
             user=db_username,
@@ -138,14 +138,15 @@ info@worldscoutjamboree.de
 https://worldscoutjamboree.de"""
         )
 
-        msg["From"] = smtp_username
+        from_addr = smtp_username or "anmeldung@worldscoutjamboree.de"
+        msg["From"] = from_addr
         msg["To"] = mailadress
         msg["Reply-To"] = "info@worldscoutjamboree.de"
         msg["Subject"] = (
             "Einladung zur ersten UL Online Info Veranstaltung - 25.05. 17 Uhr"
         )
 
-        server.sendmail(smtp_username, mailadress, msg.as_string())
+        server.sendmail(from_addr, mailadress, msg.as_string())
 
     server.quit()
 
