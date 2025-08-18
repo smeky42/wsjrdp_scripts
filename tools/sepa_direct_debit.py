@@ -59,7 +59,7 @@ def main(argv=None):
     ctx.configure_log_file(log_filename)
     ctx.require_approval_to_run_in_prod()
 
-    with ctx.psycopg2_connect() as conn:
+    with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
             collection_date=args.collection_date,

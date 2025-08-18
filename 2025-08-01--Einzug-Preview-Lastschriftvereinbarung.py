@@ -12,7 +12,7 @@ import xlsxwriter
 def main():
     ctx = wsjrdp2027.WsjRdpContext()
 
-    with ctx.psycopg2_connect() as conn:
+    with ctx.psycopg_connect() as conn:
         cur = conn.cursor()
         cur.execute("""
 SELECT id, first_name, last_name, status,

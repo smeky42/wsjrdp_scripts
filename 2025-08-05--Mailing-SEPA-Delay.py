@@ -10,7 +10,7 @@ import wsjrdp2027
 def main():
     ctx = wsjrdp2027.WsjRdpContext()
 
-    with ctx.psycopg2_connect() as conn:
+    with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
             early_payer=True,

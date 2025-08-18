@@ -7,10 +7,12 @@ import logging as _logging
 import typing as _typing
 from collections import abc as _collections_abc
 
+
 if _typing.TYPE_CHECKING:
     import pathlib as _pathlib
 
     import pandas as _pandas
+    import psycopg as _psycopg
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -538,11 +540,13 @@ def _skip_payment(df: _pandas.DataFrame, idx, reason: str = "") -> None:
     df.at[idx, "payment_status_reason"] = ", ".join(filter(None, reason_parts))
 
 
-def load_accounting_balance_in_cent(conn: _psycopg2.connection, id: int | str) -> int:
+def load_accounting_balance_in_cent(conn: _psycopg.Connection, id: int | str) -> int:
+    from psycopg.sql import SQL, Literal
+
     with conn:
         cur = conn.cursor()
-        query = f"SELECT COALESCE(SUM(ammount), 0) FROM accounting_entries WHERE subject_id = {id}"
-        cur.execute(query)
+        query = "SELECT COALESCE(SUM(ammount), 0) FROM accounting_entries WHERE subject_id = {id}"
+        cur.execute(SQL(query).format(id=Literal(int(id))))
         rows = cur.fetchall()
         cur.close()
     return rows[0][0]
@@ -610,7 +614,7 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
 
 
 def write_payment_dataframe_to_db(
-    conn: _psycopg2.connection, df: _pandas.DataFrame
+    conn: _psycopg.Connection, df: _pandas.DataFrame
 ) -> None:
     with conn.cursor() as cursor:
         for idx, row in df.iterrows():
@@ -678,7 +682,7 @@ def write_payment_dataframe_to_xlsx(
 
 
 def load_payment_dataframe(
-    conn: _psycopg2.connection,
+    conn: _psycopg.Connection,
     *,
     collection_date: _datetime.date | str = "2025-01-01",
     booking_at: _datetime.datetime | None = None,

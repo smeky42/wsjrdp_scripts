@@ -2,21 +2,18 @@ from __future__ import annotations
 
 import logging as _logging
 import typing as _typing
-from collections import abc as _collections_abc
+
 
 if _typing.TYPE_CHECKING:
-    import datetime as _datetime
-    import pathlib as _pathlib
-
     import pandas as _pandas
-    import psycopg2 as _psycopg2
+    import psycopg as _psycopg
 
 
 _LOGGER = _logging.getLogger(__name__)
 
 
 def load_people_dataframe(
-    conn: _psycopg2.connection,
+    conn: _psycopg.Connection,
     *,
     extra_cols: str | list[str] | None = None,
     join: str = "",
@@ -28,7 +25,7 @@ def load_people_dataframe(
     import textwrap
 
     import pandas as pd
-    import psycopg2.extras
+    import psycopg.rows
 
     if extra_cols is not None:
         if isinstance(extra_cols, str):
@@ -42,7 +39,7 @@ def load_people_dataframe(
     group_by_clause = f"GROUP BY {group_by}" if group_by else ""
 
     with conn:
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
         sql_stmt = f"""
 SELECT
@@ -60,7 +57,7 @@ ORDER BY people.id
         sql_stmt = re.sub(r"\n+", "\n", textwrap.dedent(sql_stmt).strip())
 
         _LOGGER.info("SQL Query:\n%s", textwrap.indent(sql_stmt, "  "))
-        cur.execute(sql_stmt)
+        cur.execute(sql_stmt)  # type: ignore
 
         rows = cur.fetchall()
         cur.close()

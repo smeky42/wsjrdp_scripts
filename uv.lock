@@ -420,15 +420,6 @@ wheels = [
 ]
 
 [[package]]
-name = "psycopg2"
-version = "2.9.10"
-source = { registry = "http://localhost:3141/root/wheels/+simple" }
-sdist = { url = "http://localhost:3141/root/pypi/+f/12e/c0b40b0273f95/psycopg2-2.9.10.tar.gz", hash = "sha256:12ec0b40b0273f95296233e8750441339298e6a572f7039da5b260e3c8b60e11" }
-wheels = [
-    { url = "http://localhost:3141/root/pypi/+f/91f/d603a2155da8d/psycopg2-2.9.10-cp313-cp313-win_amd64.whl", hash = "sha256:91fd603a2155da8d0cfcdbf8ab24a2d54bca72795b90d2a3ed2b6da8d979dee2" },
-]
-
-[[package]]
 name = "pycountry"
 version = "24.6.1"
 source = { registry = "http://localhost:3141/root/wheels/+simple" }
@@ -730,7 +721,7 @@ dev = [
     { name = "pandas" },
     { name = "pandas-stubs" },
     { name = "paramiko" },
-    { name = "psycopg2" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pyyaml" },
     { name = "ruff" },
     { name = "sepaxml" },
@@ -757,7 +748,7 @@ dev = [
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pandas-stubs", specifier = ">=2.3.0.250703" },
     { name = "paramiko", specifier = ">=3.5.1" },
-    { name = "psycopg2", specifier = ">=2.9.10" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.9" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "ruff", specifier = ">=0.12.7" },
     { name = "sepaxml", specifier = ">=2.6.2" },
@@ -783,7 +774,6 @@ dependencies = [
     { name = "jinja2" },
     { name = "paramiko" },
     { name = "psycopg", extra = ["binary"] },
-    { name = "psycopg2" },
     { name = "pyyaml" },
     { name = "schwifty" },
     { name = "sshtunnel" },
@@ -804,7 +794,6 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "paramiko", specifier = "<4" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.9" },
-    { name = "psycopg2", specifier = ">=2.9.10" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "schwifty", specifier = ">=2025.7.0" },
     { name = "sshtunnel", specifier = ">=0.4.0" },
