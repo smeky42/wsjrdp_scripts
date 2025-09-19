@@ -9,6 +9,7 @@ import sys
 
 import wsjrdp2027
 
+
 _LOGGER = _logging.getLogger(__name__)
 
 
@@ -36,11 +37,7 @@ def main():
         )
 
     _LOGGER.info("Registered: %s", len(df))
-    df = df[
-        ~df["people_status"].isin(
-            ["registered", "deregistration_noted", "deregistered"]
-        )
-    ]
+    df = df[~df["status"].isin(["registered", "deregistration_noted", "deregistered"])]
     _LOGGER.info("Printed or further: %s", len(df))
     df = df[df["sepa_status"].isin(["OK"])]
     _LOGGER.info("Printed or further and sepa_status OK: %s", len(df))

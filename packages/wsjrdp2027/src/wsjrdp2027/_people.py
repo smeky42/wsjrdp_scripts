@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections.abc as _collections_abc
 import logging as _logging
 import typing as _typing
 
@@ -19,6 +20,8 @@ def load_people_dataframe(
     join: str = "",
     where: str = "",
     group_by: str = "",
+    status: str | _collections_abc.Iterable[str] | None = None,
+    exclude_deregistered: bool = True,
     log_resulting_data_frame: bool = True,
 ) -> _pandas.DataFrame:
     import re
@@ -26,6 +29,8 @@ def load_people_dataframe(
 
     import pandas as pd
     import psycopg.rows
+
+    from . import _util
 
     if extra_cols is not None:
         if isinstance(extra_cols, str):
@@ -35,6 +40,14 @@ def load_people_dataframe(
     extra_cols_clause = f",\n  {extra_cols}" if extra_cols else ""
 
     join_clause = join
+
+    status = _util.to_str_list(status)
+    if status is not None:
+        where = _util.combine_where(where, _util.in_expr("people.status", status))
+    elif exclude_deregistered:
+        where = _util.combine_where(
+            where, "people.status NOT IN ('deregistration_noted', 'deregistered')"
+        )
     where_clause = f"WHERE {where}" if where else ""
     group_by_clause = f"GROUP BY {group_by}" if group_by else ""
 
@@ -43,7 +56,7 @@ def load_people_dataframe(
 
         sql_stmt = f"""
 SELECT
-  people.id, first_name, last_name, nickname, email, gender, status, nickname, primary_group_id,
+  people.id, first_name, last_name, nickname, email, gender, people.status, nickname, primary_group_id,
   sepa_name, sepa_mail, sepa_iban, sepa_bic,
   payment_role,
   COALESCE(people.early_payer, FALSE) AS early_payer,
@@ -62,6 +75,14 @@ ORDER BY people.id
         rows = cur.fetchall()
         cur.close()
         df = pd.DataFrame(rows)
+
+        df["short_first_name"] = df["first_name"].map(lambda s: s.split(" ", 1)[0])
+        df["greeting_name"] = df.apply(
+            lambda row: row["nickname"] or row["short_first_name"], axis=1
+        )
+        df["full_name"] = df["first_name"] + " " + df["last_name"]
+        df["short_full_name"] = df["short_first_name"] + " " + df["last_name"]
+
         if log_resulting_data_frame:
             _LOGGER.info(
                 "Resulting pandas DataFrame:\n%s", textwrap.indent(str(df), "  ")

@@ -1,11 +1,30 @@
 from __future__ import annotations
 
+import collections.abc as _collections_abc
 import typing as _typing
+
 
 if _typing.TYPE_CHECKING:
     import datetime as _datetime
     import logging as _logging
     import pathlib as _pathlib
+
+
+__all__ = [
+    "combine_where",
+    "configure_file_logging",
+    "console_confirm",
+    "create_dir",
+    "date_to_datetime",
+    "in_expr",
+    "render_template",
+    "to_date",
+    "to_datetime",
+    "to_log_level",
+    "to_str_list",
+]
+
+_T = _typing.TypeVar("_T")
 
 
 _CONSOLE_CONFIRM_DEFAULT_TO_CHOICE_DISPLAY = {
@@ -343,3 +362,32 @@ def render_template(
     context.update(extra_context or {})
     out = jinja_template.render(context)
     return out
+
+
+@_typing.overload
+def to_str_list(str_or_list: None) -> None: ...
+
+
+@_typing.overload
+def to_str_list(str_or_list: str | _collections_abc.Iterable[str]) -> list[str]: ...
+
+
+def to_str_list(str_or_list) -> list[str] | None:
+    if str_or_list is None:
+        return None
+    if isinstance(str_or_list, str):
+        str_or_list = [str_or_list]
+    return [str(x) for x in str_or_list if x]
+
+
+def combine_where(where: str, expr: str) -> str:
+    return f"{where}\n    AND {expr}" if where else expr
+
+
+def in_expr(expr, elts) -> str:
+    if isinstance(elts, str):
+        elts = [elts]
+    if not elts:
+        return ""
+    elts_list_str = ", ".join(f"'{s}'" for s in elts)
+    return f"{expr} IN ({elts_list_str})"

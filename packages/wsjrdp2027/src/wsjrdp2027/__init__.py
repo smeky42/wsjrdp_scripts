@@ -25,9 +25,12 @@ from ._sepa_direct_debit import (
 )
 from ._util import console_confirm, create_dir
 
+
 __all__ = [
     "DB_PEOPLE_ALL_SEPA_STATUS",
     "DB_PEOPLE_ALL_STATUS",
+    "EMAIL_SIGNATURE_CMT",
+    "EMAIL_SIGNATURE_HOC",
     "EMAIL_SIGNATURE_ORG",
     "WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG",
     "WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG",
@@ -49,6 +52,35 @@ __all__ = [
     "write_payment_dataframe_to_html",
     "write_payment_dataframe_to_xlsx",
 ]
+
+EMAIL_SIGNATURE_CMT = (
+    "\n-- "
+    + """
+World Scout Jamboree 2027 Poland
+Contingent Management Team
+
+Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
+Chausseestr. 128/129
+10115 Berlin
+
+info@worldscoutjamboree.de
+https://worldscoutjamboree.de"""
+)
+
+
+EMAIL_SIGNATURE_HOC = (
+    "\n-- "
+    + """
+World Scout Jamboree 2027 Poland
+Head of Contingent
+
+Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
+Chausseestr. 128/129
+10115 Berlin
+
+info@worldscoutjamboree.de
+https://worldscoutjamboree.de"""
+)
 
 
 EMAIL_SIGNATURE_ORG = (
