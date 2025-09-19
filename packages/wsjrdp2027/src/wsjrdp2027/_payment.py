@@ -42,7 +42,7 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "primary_group_id",
     "first_name",
     "last_name",
-    "people_status",
+    "status",
     "short_first_name",
     "nickname",
     "greeting_name",
@@ -409,7 +409,6 @@ def enrich_dataframe_for_payments(
     if booking_at is None:
         booking_at = datetime.datetime.now()
 
-    df.rename(columns={"status": "people_status"}, inplace=True)
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
     df["payment_role"] = df["payment_role"].map(lambda s: PaymentRole(s) if s else None)
     df["sepa_iban"] = df["sepa_iban"].map(lambda s: s.replace(" ", "").upper() if s else None)  # fmt: skip
@@ -417,12 +416,6 @@ def enrich_dataframe_for_payments(
     df["sepa_bic_status"] = None
     df["sepa_bic_status_reason"] = ""
 
-    df["short_first_name"] = df["first_name"].map(lambda s: s.split(" ", 1)[0])
-    df["greeting_name"] = df.apply(
-        lambda row: row["nickname"] or row["short_first_name"], axis=1
-    )
-    df["full_name"] = df["first_name"] + " " + df["last_name"]
-    df["short_full_name"] = df["short_first_name"] + " " + df["last_name"]
     df["collection_date"] = collection_date
     df["mandate_id"] = df["id"].map(mandate_id_from_hitobito_id)
     df["mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
@@ -695,34 +688,21 @@ def load_payment_dataframe(
 ) -> _pandas.DataFrame:
     import textwrap
 
-    from . import _people
-    from ._util import to_date
+    from . import _people, _util
 
-    def combine_where(where: str, expr: str) -> str:
-        return f"{where}\n    AND {expr}" if where else expr
-
-    def in_expr(expr, elts) -> str:
-        if isinstance(elts, str):
-            elts = [elts]
-        if not elts:
-            return ""
-        elts_list_str = ", ".join(f"'{s}'" for s in elts)
-        return f"{expr} IN ({elts_list_str})"
-
-    where = combine_where(
-        where, in_expr("COALESCE(people.sepa_status, 'OK')", sepa_status)
+    where = _util.combine_where(
+        where, _util.in_expr("COALESCE(people.sepa_status, 'OK')", sepa_status)
     )
-    where = combine_where(where, in_expr("people.status", status))
     if early_payer is not None:
         if early_payer:
-            where = combine_where(where, "people.early_payer = TRUE")
+            where = _util.combine_where(where, "people.early_payer = TRUE")
         else:
-            where = combine_where(
+            where = _util.combine_where(
                 where, "(people.early_payer = FALSE OR people.early_payer IS NULL)"
             )
     if max_print_at is not None:
-        where = combine_where(
-            where, f"people.print_at <= '{to_date(max_print_at).isoformat()}'"
+        where = _util.combine_where(
+            where, f"people.print_at <= '{_util.to_date(max_print_at).isoformat()}'"
         )
 
     df = _people.load_people_dataframe(
@@ -736,6 +716,7 @@ def load_payment_dataframe(
         ],
         join="LEFT OUTER JOIN accounting_entries ON people.id = accounting_entries.subject_id",
         group_by="people.id",
+        status=status,
         log_resulting_data_frame=False,
     )
 
