@@ -3,11 +3,15 @@ from __future__ import annotations
 import collections.abc as _collections_abc
 import typing as _typing
 
+from numpy import require
+
 
 if _typing.TYPE_CHECKING:
     import datetime as _datetime
     import logging as _logging
     import pathlib as _pathlib
+
+    import pandas as _pandas
 
 
 __all__ = [
@@ -16,12 +20,14 @@ __all__ = [
     "console_confirm",
     "create_dir",
     "date_to_datetime",
+    "dedup",
     "in_expr",
     "render_template",
     "to_date",
     "to_datetime",
     "to_log_level",
     "to_str_list",
+    "dataframe_copy_for_xlsx",
 ]
 
 _T = _typing.TypeVar("_T")
@@ -308,6 +314,23 @@ def to_date(date: _datetime.date | str) -> _datetime.date:
         return date
 
 
+def compute_age(birthday: _datetime.date, today: _datetime.date) -> int:
+    """Compute age.
+
+    >>> from datetime import date
+    >>> compute_age(date(1970, 1, 1), date(2024, 12, 31))
+    54
+    >>> compute_age(date(1970, 1, 1), date(2025, 1, 1))
+    55
+    >>> compute_age(date(1970, 1, 1), date(2025, 1, 2))
+    55
+    """
+    birthday_passed = (today.month > birthday.month) or (
+        (today.month == birthday.month) and (today.day >= birthday.day)
+    )
+    return (today.year - birthday.year) - (0 if birthday_passed else 1)
+
+
 def render_template(
     template: str,
     context: dict | None,
@@ -364,6 +387,15 @@ def render_template(
     return out
 
 
+def dedup(iterable):
+    """Deduplicate *iterable*."""
+    memo = set()
+    for item in iterable:
+        if item not in memo:
+            yield item
+        memo.add(item)
+
+
 @_typing.overload
 def to_str_list(str_or_list: None) -> None: ...
 
@@ -391,3 +423,35 @@ def in_expr(expr, elts) -> str:
         return ""
     elts_list_str = ", ".join(f"'{s}'" for s in elts)
     return f"{expr} IN ({elts_list_str})"
+
+
+def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
+    df = df.copy()
+
+    # Excel does not support timestamps with timezones, so we remove
+    # them here.
+    df = df.copy()
+    datetime_cols = df.select_dtypes(include=["datetimetz"]).columns
+    for col in datetime_cols:
+        print(col)
+        df[col] = df[col].dt.tz_localize(None)
+
+    def str_or_repr(obj):
+        obj_str = str(obj)
+        obj_str_repr = repr(obj_str)
+        require_repr = (
+            (len(obj_str_repr) > len(obj_str) + 2)  #
+            or "," in obj_str
+            or obj_str.strip() != obj_str
+        )
+        return repr(obj) if require_repr else obj_str
+
+    def to_excel_val(obj):
+        if isinstance(obj, list):
+            return ", ".join(str_or_repr(x) for x in obj)
+        else:
+            return obj
+
+    for col in df.columns:
+        df[col] = df[col].map(to_excel_val)
+    return df

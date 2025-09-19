@@ -34,6 +34,7 @@ def main():
             collection_date=COLLECTION_DATE,
             booking_at=ctx.start_time,
             pedantic=True,
+            today=ctx.start_time.date(),
         )
 
     _LOGGER.info("Registered: %s", len(df))
