@@ -16,6 +16,7 @@ import sys
 
 import wsjrdp2027
 
+
 _LOGGER = logging.getLogger()
 
 
@@ -65,6 +66,7 @@ def main(argv=None):
             collection_date=args.collection_date,
             booking_at=ctx.start_time,
             pedantic=False,
+            today=ctx.start_time.date(),
         )
 
         sum_amount = df["amount"].sum()

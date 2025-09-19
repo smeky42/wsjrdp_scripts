@@ -645,23 +645,18 @@ def write_payment_dataframe_to_html(
 
 
 def write_payment_dataframe_to_xlsx(
-    df: _pandas.DataFrame, path: str | _pathlib.Path
+    df: _pandas.DataFrame, path: str | _pathlib.Path, *, sheet_name: str = "Sheet 1"
 ) -> None:
     import pandas as pd
 
-    # Excel does not support timestamps with timezones, so we remove
-    # them here.
-    df = df.copy()
-    datetime_cols = df.select_dtypes(include=["datetimetz"]).columns
-    for col in datetime_cols:
-        print(col)
-        df[col] = df[col].dt.tz_localize(None)
+    from . import _util
+
+    df = _util.dataframe_copy_for_xlsx(df)
 
     _LOGGER.info("Write %s", path)
     writer = pd.ExcelWriter(
         path, engine="xlsxwriter", engine_kwargs={"options": {"remove_timezone": True}}
     )
-    sheet_name = "Sheet 1"
     df.to_excel(writer, engine="xlsxwriter", index=False, sheet_name=sheet_name)
     (max_row, max_col) = df.shape
 
@@ -685,6 +680,7 @@ def load_payment_dataframe(
     max_print_at: str | _datetime.date | None = None,
     status: str | _collections_abc.Iterable[str] = ("reviewed", "confirmed"),
     sepa_status: str | _collections_abc.Iterable[str] = "OK",
+    today: _datetime.date | str | None = None,
 ) -> _pandas.DataFrame:
     import textwrap
 
@@ -718,8 +714,11 @@ def load_payment_dataframe(
         group_by="people.id",
         status=status,
         log_resulting_data_frame=False,
+        today=today,
     )
 
+    collection_date = _util.to_date(collection_date)
+    today = collection_date if today is None else min(today, collection_date)
     df = enrich_dataframe_for_payments(
         df,
         collection_date=collection_date,

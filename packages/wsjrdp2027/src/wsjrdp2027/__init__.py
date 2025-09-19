@@ -1,29 +1,36 @@
 from __future__ import annotations
 
-from ._context import WsjRdpContext, WsjRdpContextConfig
+from ._context import (
+    WsjRdpContext as WsjRdpContext,
+    WsjRdpContextConfig as WsjRdpContextConfig,
+)
 from ._payment import (
-    DB_PEOPLE_ALL_SEPA_STATUS,
-    DB_PEOPLE_ALL_STATUS,
-    PaymentRole,
-    load_accounting_balance_in_cent,
-    load_payment_dataframe,
-    mandate_id_from_hitobito_id,
-    write_payment_dataframe_to_db,
-    write_payment_dataframe_to_html,
-    write_payment_dataframe_to_xlsx,
+    DB_PEOPLE_ALL_SEPA_STATUS as DB_PEOPLE_ALL_SEPA_STATUS,
+    DB_PEOPLE_ALL_STATUS as DB_PEOPLE_ALL_STATUS,
+    PaymentRole as PaymentRole,
+    load_accounting_balance_in_cent as load_accounting_balance_in_cent,
+    load_payment_dataframe as load_payment_dataframe,
+    mandate_id_from_hitobito_id as mandate_id_from_hitobito_id,
+    write_payment_dataframe_to_db as write_payment_dataframe_to_db,
+    write_payment_dataframe_to_html as write_payment_dataframe_to_html,
+    write_payment_dataframe_to_xlsx as write_payment_dataframe_to_xlsx,
 )
 from ._people import (
-    load_people_dataframe,
+    load_people_dataframe as load_people_dataframe,
+    write_people_dataframe_to_xlsx as write_people_dataframe_to_xlsx,
 )
 from ._sepa_direct_debit import (
-    WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG,
-    WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG,
-    SepaDirectDebit,
-    SepaDirectDebitConfig,
-    SepaDirectDebitPayment,
-    write_accounting_dataframe_to_sepa_dd,
+    WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG as WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG,
+    WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG as WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG,
+    SepaDirectDebit as SepaDirectDebit,
+    SepaDirectDebitConfig as SepaDirectDebitConfig,
+    SepaDirectDebitPayment as SepaDirectDebitPayment,
+    write_accounting_dataframe_to_sepa_dd as write_accounting_dataframe_to_sepa_dd,
 )
-from ._util import console_confirm, create_dir
+from ._util import (
+    console_confirm as console_confirm,
+    create_dir as create_dir,
+)
 
 
 __all__ = [
@@ -51,6 +58,7 @@ __all__ = [
     "write_payment_dataframe_to_db",
     "write_payment_dataframe_to_html",
     "write_payment_dataframe_to_xlsx",
+    "write_people_dataframe_to_xlsx",
 ]
 
 EMAIL_SIGNATURE_CMT = (
