@@ -28,7 +28,6 @@ _STATUS_TO_DE = {
 }
 
 
-
 def load_people_dataframe(
     conn: _psycopg.Connection,
     *,
@@ -163,23 +162,6 @@ ORDER BY people.id
 def write_people_dataframe_to_xlsx(
     df: _pandas.DataFrame, path: str | _pathlib.Path, *, sheet_name: str = "Sheet 1"
 ) -> None:
-    import pandas as pd
-
     from . import _util
 
-    df = _util.dataframe_copy_for_xlsx(df)
-
-    _LOGGER.info("Write %s", path)
-    writer = pd.ExcelWriter(
-        path, engine="xlsxwriter", engine_kwargs={"options": {"remove_timezone": True}}
-    )
-    df.to_excel(writer, engine="xlsxwriter", index=False, sheet_name=sheet_name)
-    (max_row, max_col) = df.shape
-
-    # workbook: xlsxwriter.Workbook = writer.book  # type: ignore
-    worksheet = writer.sheets[sheet_name]
-    worksheet.freeze_panes(1, 0)
-    worksheet.autofilter(0, 0, max_row, max_col - 1)
-    worksheet.autofit()
-
-    writer.close()
+    _util.write_dataframe_to_xlsx(df, path, sheet_name=sheet_name)

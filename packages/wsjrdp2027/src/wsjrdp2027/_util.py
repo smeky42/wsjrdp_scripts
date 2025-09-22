@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import collections.abc as _collections_abc
+import logging as _logging
 import typing as _typing
-
-from numpy import require
 
 
 if _typing.TYPE_CHECKING:
@@ -12,6 +11,9 @@ if _typing.TYPE_CHECKING:
     import pathlib as _pathlib
 
     import pandas as _pandas
+
+
+_LOGGER = _logging.getLogger(__name__)
 
 
 __all__ = [
@@ -455,3 +457,28 @@ def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
     for col in df.columns:
         df[col] = df[col].map(to_excel_val)
     return df
+
+
+def write_dataframe_to_xlsx(
+    df: _pandas.DataFrame, path: str | _pathlib.Path, *, sheet_name: str = "Sheet 1"
+) -> None:
+    import pandas as pd
+
+    from . import _util
+
+    df = _util.dataframe_copy_for_xlsx(df)
+
+    _LOGGER.info("Write %s", path)
+    writer = pd.ExcelWriter(
+        path, engine="xlsxwriter", engine_kwargs={"options": {"remove_timezone": True}}
+    )
+    df.to_excel(writer, engine="xlsxwriter", index=False, sheet_name=sheet_name)
+    (max_row, max_col) = df.shape
+
+    # workbook: xlsxwriter.Workbook = writer.book  # type: ignore
+    worksheet = writer.sheets[sheet_name]
+    worksheet.freeze_panes(1, 0)
+    worksheet.autofilter(0, 0, max_row, max_col - 1)
+    worksheet.autofit()
+
+    writer.close()
