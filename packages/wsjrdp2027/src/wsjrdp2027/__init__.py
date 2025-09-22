@@ -30,6 +30,7 @@ from ._sepa_direct_debit import (
 from ._util import (
     console_confirm as console_confirm,
     create_dir as create_dir,
+    write_dataframe_to_xlsx as write_dataframe_to_xlsx,
 )
 
 
@@ -55,6 +56,7 @@ __all__ = [
     "load_people_dataframe",
     "mandate_id_from_hitobito_id",
     "write_accounting_dataframe_to_sepa_dd",
+    "write_dataframe_to_xlsx",
     "write_payment_dataframe_to_db",
     "write_payment_dataframe_to_html",
     "write_payment_dataframe_to_xlsx",
