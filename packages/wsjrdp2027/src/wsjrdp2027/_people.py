@@ -137,6 +137,7 @@ ORDER BY people.id
             return sorted(other)
 
         df["today"] = today
+        df["today_de"] = df['today'].map(lambda d: d.strftime("%d.%m.%Y"))
         df["age"] = df["birthday"].map(
             lambda bday: _util.compute_age(bday, today) if bday is not None else None
         )
