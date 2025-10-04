@@ -14,7 +14,7 @@ def main():
         print("query db")
         cur = conn.cursor()
         cur.execute(f"""SELECT first_name, email, nickname, primary_group_id, zip_code, status, rdp_association, rdp_association_region, payment_role FROM people 
-    WHERE status = 'printed' OR status = 'uploaded' OR status = 'reviewed'
+    WHERE status = 'printed' OR status = 'upload' OR status = 'in_review' OR status = 'reviewed' OR status = 'confirmed'
     ORDER BY id""")
         rows = cur.fetchall()
         df = pd.DataFrame(
