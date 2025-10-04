@@ -460,7 +460,11 @@ def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
 
 
 def write_dataframe_to_xlsx(
-    df: _pandas.DataFrame, path: str | _pathlib.Path, *, sheet_name: str = "Sheet 1"
+    df: _pandas.DataFrame,
+    path: str | _pathlib.Path,
+    *,
+    index: bool = False,
+    sheet_name: str = "Sheet 1",
 ) -> None:
     import pandas as pd
 
@@ -472,7 +476,7 @@ def write_dataframe_to_xlsx(
     writer = pd.ExcelWriter(
         path, engine="xlsxwriter", engine_kwargs={"options": {"remove_timezone": True}}
     )
-    df.to_excel(writer, engine="xlsxwriter", index=False, sheet_name=sheet_name)
+    df.to_excel(writer, engine="xlsxwriter", index=index, sheet_name=sheet_name)
     (max_row, max_col) = df.shape
 
     # workbook: xlsxwriter.Workbook = writer.book  # type: ignore
