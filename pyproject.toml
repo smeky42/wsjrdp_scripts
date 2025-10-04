@@ -2,7 +2,9 @@
 name = "wsjrdp-scripts"
 version = "0.1.0"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "networkx[default]>=3.5",
+]
 
 [dependency-groups]
 dev = [
