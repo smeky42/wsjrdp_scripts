@@ -79,6 +79,8 @@ SELECT
   people.first_name, people.last_name, people.nickname,
   people.birthday,
   people.email,
+  people.street, people.housenumber, people.town, people.zip_code, people.country,
+  people.longitude, people.latitude,
   people.additional_contact_email_a,
   people.additional_contact_email_b,
   ARRAY(
@@ -127,7 +129,11 @@ ORDER BY people.id
 
         def row_to_sepa_cc(row):
             other = set(row["additional_emails_mailings"])
-            other.add(row["email"])
+            # other.add(row["email"])
+
+            email = row.get("email")
+            if email:
+                other.add(email)
             if row["primary_group_id"] == 3 or row.get("years", 18) < 18:
                 for k in ("additional_contact_email_a", "additional_contact_email_b"):
                     if row[k]:

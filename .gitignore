@@ -9,6 +9,7 @@
 *.xlsm
 *.xlsx
 *sepa.xml
+*.log
 *~
 .DS_Store
 .dir-locals.el

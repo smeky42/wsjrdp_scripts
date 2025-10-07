@@ -6,18 +6,18 @@ if ! command -v yq &> /dev/null; then
     exit 1
 fi
 
-# Read credentials from config.yml
-SSH_HOST=$(yq eval '.ssh_host' config.yml)
-SSH_PORT=$(yq eval '.ssh_port' config.yml)
-SSH_USERNAME=$(yq eval '.ssh_username' config.yml)
-SSH_PRIVATE_KEY=$(yq eval '.ssh_private_key' config.yml)
+# Read credentials from config-prod.yml
+SSH_HOST=$(yq eval '.ssh_host' config-prod.yml)
+SSH_PORT=$(yq eval '.ssh_port' config-prod.yml)
+SSH_USERNAME=$(yq eval '.ssh_username' config-prod.yml)
+SSH_PRIVATE_KEY=$(yq eval '.ssh_private_key' config-prod.yml)
 
-DB_HOST=$(yq eval '.db_host' config.yml)
-DB_PORT=$(yq eval '.db_port' config.yml)
+DB_HOST=$(yq eval '.db_host' config-prod.yml)
+DB_PORT=$(yq eval '.db_port' config-prod.yml)
 DB_PORT_TUNNEL="5433"
-DB_USERNAME=$(yq eval '.db_username' config.yml)
-DB_PASSWORD=$(yq eval '.db_password' config.yml)
-DB_NAME=$(yq eval '.db_name' config.yml)
+DB_USERNAME=$(yq eval '.db_username' config-prod.yml)
+DB_PASSWORD=$(yq eval '.db_password' config-prod.yml)
+DB_NAME=$(yq eval '.db_name' config-prod.yml)
 
 TIMESTAMP=$(date +"%Y-%m-%d--%H-%M-%S")
 DUMP_FILE="$TIMESTAMP--hitobito_production_dump.sql"  # Output dump file name

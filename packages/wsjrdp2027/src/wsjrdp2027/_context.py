@@ -48,6 +48,8 @@ class WsjRdpContextConfig:
     smtp_username: str = ""
     smtp_password: str = ""
 
+    geo_api_key: str = ""
+
     @staticmethod
     def __to_bool(name: str, value: bool | str) -> bool:
         if isinstance(value, bool):
@@ -120,6 +122,7 @@ class WsjRdpContextConfig:
             smtp_port=config["smtp_port"],
             smtp_username=str(config.get("smtp_username", "")),
             smtp_password=str(config.get("smtp_password", "")),
+            geo_api_key=str(config.get("geo_api_key","")),
             **kwargs,  # type: ignore
         )
         return self
