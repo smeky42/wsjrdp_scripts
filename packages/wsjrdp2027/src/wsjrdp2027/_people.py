@@ -80,6 +80,7 @@ SELECT
   people.birthday,
   people.email,
   people.street, people.housenumber, people.town, people.zip_code, people.country,
+  people.rdp_association, people.rdp_association_region,
   people.longitude, people.latitude,
   people.additional_contact_email_a,
   people.additional_contact_email_b,
