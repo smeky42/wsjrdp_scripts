@@ -129,10 +129,7 @@ ORDER BY people.id
 
         def row_to_sepa_cc(row):
             other = set(row["additional_emails_mailings"])
-            # other.add(row["email"])
-
-            email = row.get("email")
-            if email:
+            if email := row["email"]:
                 other.add(email)
             if row["primary_group_id"] == 3 or row.get("years", 18) < 18:
                 for k in ("additional_contact_email_a", "additional_contact_email_b"):
@@ -140,14 +137,14 @@ ORDER BY people.id
                         other.add(row[k])
             for s in row["sepa_to"] or []:
                 other.discard(s)
-            return sorted(other)
+            return sorted(filter(None, other))
 
         df["today"] = today
-        df["today_de"] = df['today'].map(lambda d: d.strftime("%d.%m.%Y"))
+        df["today_de"] = df["today"].map(lambda d: d.strftime("%d.%m.%Y"))
         df["age"] = df["birthday"].map(
             lambda bday: _util.compute_age(bday, today) if bday is not None else None
         )
-        df["mailing_to"] = df["email"].map(lambda s: [s])
+        df["mailing_to"] = df["email"].map(lambda s: ([s] if s else None))
         df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)
         df["sepa_to"] = df["sepa_mail"].map(lambda s: [s] if s else None)
         df["sepa_cc"] = df.apply(row_to_sepa_cc, axis=1)
