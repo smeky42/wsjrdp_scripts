@@ -49,6 +49,7 @@ class WsjRdpContextConfig:
     smtp_password: str = ""
 
     geo_api_key: str = ""
+    hitobito_url: str = ""
 
     @staticmethod
     def __to_bool(name: str, value: bool | str) -> bool:
@@ -122,7 +123,10 @@ class WsjRdpContextConfig:
             smtp_port=config["smtp_port"],
             smtp_username=str(config.get("smtp_username", "")),
             smtp_password=str(config.get("smtp_password", "")),
-            geo_api_key=str(config.get("geo_api_key","")),
+            geo_api_key=str(config.get("geo_api_key", "")),
+            hitobito_url=str(
+                config.get("hitobito_url", "https://anmeldung.worldscoutjamboree.de")
+            ),
             **kwargs,  # type: ignore
         )
         return self

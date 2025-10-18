@@ -8,3 +8,5 @@ db_name: "hitobito_development"
 
 smtp_server: "localhost"
 smtp_port: 1025
+
+hitobito_url: "http://localhost:3000"
