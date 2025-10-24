@@ -538,7 +538,7 @@ def load_accounting_balance_in_cent(conn: _psycopg.Connection, id: int | str) ->
 
     with conn:
         cur = conn.cursor()
-        query = "SELECT COALESCE(SUM(ammount), 0) FROM accounting_entries WHERE subject_id = {id}"
+        query = "SELECT COALESCE(SUM(amount_cents), 0) FROM accounting_entries WHERE subject_id = {id} AND subject_type = 'Person' AND amount_currency = 'EUR'"
         cur.execute(SQL(query).format(id=Literal(int(id))))
         rows = cur.fetchall()
         cur.close()
@@ -550,7 +550,7 @@ def insert_accounting_entry(
     subject_id: int | str,
     author_id: int | str,
     amount: int,
-    comment: str,
+    description: str,
     created_at: _datetime.date | str | None = None,
 ) -> int:
     import datetime
@@ -565,17 +565,17 @@ def insert_accounting_entry(
         created_at = to_date(created_at)
 
     cols_vals = [
+        ("subject_type", "Person"),
         ("subject_id", int(subject_id)),
+        ("author_type", "Person"),
         ("author_id", int(author_id)),
-        ("ammount", int(amount)),
-        ("comment", comment),
+        ("amount_currency", "EUR"),
+        ("amount_cents", int(amount)),
+        ("description", description),
         ("created_at", created_at),
     ]
-    cols = [Identifier("id"), *(Identifier(col_val[0]) for col_val in cols_vals)]
-    vals = [
-        SQL("(SELECT MAX(id) + 1 FROM accounting_entries)"),
-        *(Literal(col_val[1]) for col_val in cols_vals),
-    ]
+    cols = [*(Identifier(col_val[0]) for col_val in cols_vals)]
+    vals = [*(Literal(col_val[1]) for col_val in cols_vals)]
     sql_string = (
         SQL("INSERT INTO accounting_entries ({}) VALUES ({}) RETURNING {}")
         .format(SQL(", ").join(cols), SQL(", ").join(vals), Identifier("id"))
@@ -601,7 +601,7 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
         subject_id=row["id"],
         author_id=row["accounting_author_id"],
         amount=int(row.get("amount", 0)),
-        comment=row["accounting_comment"],
+        description=row["accounting_comment"],
         created_at=booking_at,
     )
 
@@ -679,7 +679,7 @@ def load_payment_dataframe(
     early_payer: bool | None = None,
     max_print_at: str | _datetime.date | None = None,
     status: str | _collections_abc.Iterable[str] = ("reviewed", "confirmed"),
-    sepa_status: str | _collections_abc.Iterable[str] = "OK",
+    sepa_status: str | _collections_abc.Iterable[str] = "ok",
     today: _datetime.date | str | None = None,
 ) -> _pandas.DataFrame:
     import textwrap
@@ -687,7 +687,7 @@ def load_payment_dataframe(
     from . import _people, _util
 
     where = _util.combine_where(
-        where, _util.in_expr("COALESCE(people.sepa_status, 'OK')", sepa_status)
+        where, _util.in_expr("COALESCE(people.sepa_status, 'ok')", sepa_status)
     )
     if early_payer is not None:
         if early_payer:
@@ -706,11 +706,11 @@ def load_payment_dataframe(
         where=where,
         extra_cols=[
             "people.print_at",
-            "COALESCE(people.sepa_status, 'OK') AS sepa_status",
+            "COALESCE(people.sepa_status, 'ok') AS sepa_status",
             "COUNT(accounting_entries.id) AS accounting_entries_count",
-            "COALESCE(SUM(accounting_entries.ammount), 0) AS amount_paid",
+            "SUM(COALESCE(accounting_entries.amount_cents, 0)) AS amount_paid",
         ],
-        join="LEFT OUTER JOIN accounting_entries ON people.id = accounting_entries.subject_id",
+        join="LEFT OUTER JOIN accounting_entries ON people.id = accounting_entries.subject_id AND accounting_entries.subject_type = 'Person' AND accounting_entries.amount_currency = 'EUR'",
         group_by="people.id",
         status=status,
         log_resulting_data_frame=False,

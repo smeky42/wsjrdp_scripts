@@ -40,8 +40,8 @@ def main():
     _LOGGER.info("Registered: %s", len(df))
     df = df[~df["status"].isin(["registered", "deregistration_noted", "deregistered"])]
     _LOGGER.info("Printed or further: %s", len(df))
-    df = df[df["sepa_status"].isin(["OK"])]
-    _LOGGER.info("Printed or further and sepa_status OK: %s", len(df))
+    df = df[df["sepa_status"].isin(["ok"])]
+    _LOGGER.info("Printed or further and sepa_status='ok': %s", len(df))
 
     wsjrdp2027.write_payment_dataframe_to_xlsx(df, out_base.with_suffix(".xlsx"))
     wsjrdp2027.write_accounting_dataframe_to_sepa_dd(
