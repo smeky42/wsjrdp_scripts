@@ -72,276 +72,15 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "accounting_value_date",
     "accounting_booking_at",
     "accounting_comment",
+    "total_fee_regular_cents",
+    "total_fee_reduction_comment",
+    "total_fee_reduction_cents",
     "amount_paid",
     "amount_due",
     "amount",
     "payment_status_reason",
     "payment_status",
 ]
-
-
-# input: [dt.datetime.strptime(d, '%b %Y').date() for d in _PAYMENT_ARRAY[0][2:]]
-_PAYMENT_DATES = [
-    _datetime.date.min,
-    _datetime.date(2025, 8, 1),  # cut-off for earliest Early-Payer
-    _datetime.date(2025, 11, 1),  # cut-off for middle Early-Payer
-    _datetime.date(2025, 12, 1),
-    _datetime.date(2026, 1, 1),
-    _datetime.date(2026, 2, 1),
-    _datetime.date(2026, 3, 1),
-    _datetime.date(2026, 8, 1),
-    _datetime.date(2026, 11, 1),
-    _datetime.date(2027, 2, 1),
-    _datetime.date(2027, 5, 1),
-    _datetime.date.max,
-]
-
-_AUG_25 = _datetime.date(2025, 8, 1)
-_NOV_25 = _datetime.date(2025, 11, 1)
-
-
-_PAYMENT_ARRAY = [
-    [
-        "Rolle",
-        "Gesamt",
-        "Dez 2025",
-        "Jan 2026",
-        "Feb 2026",
-        "Mär 2026",
-        "Aug 2026",
-        "Nov 2026",
-        "Feb 2027",
-        "Mai 2027",
-    ],
-    [
-        "RegularPayer::Group::Unit::Member",
-        "3400",
-        "300",
-        "500",
-        "500",
-        "500",
-        "400",
-        "400",
-        "400",
-        "400",
-    ],
-    [
-        "RegularPayer::Group::Unit::Leader",
-        "2400",
-        "150",
-        "350",
-        "350",
-        "350",
-        "300",
-        "300",
-        "300",
-        "300",
-    ],
-    [
-        "RegularPayer::Group::Ist::Member",
-        "2600",
-        "200",
-        "400",
-        "400",
-        "400",
-        "300",
-        "300",
-        "300",
-        "300",
-    ],
-    [
-        "RegularPayer::Group::Root::Member",
-        "1600",
-        "50",
-        "250",
-        "250",
-        "250",
-        "200",
-        "200",
-        "200",
-        "200",
-    ],
-    ["EarlyPayer::Group::Unit::Member", "3400", "", "", "", "", "", "", "", ""],
-    ["EarlyPayer::Group::Unit::Leader", "2400", "", "", "", "", "", "", "", ""],
-    ["EarlyPayer::Group::Ist::Member", "2600", "", "", "", "", "", "", "", ""],
-    ["EarlyPayer::Group::Root::Member", "1600", "", "", "", "", "", "", "", ""],
-]
-
-
-class PaymentRole(_enum.Enum):
-    REGULAR_PAYER_CMT = "RegularPayer::Group::Root::Member"
-    REGULAR_PAYER_YP = "RegularPayer::Group::Unit::Member"
-    REGULAR_PAYER_UL = "RegularPayer::Group::Unit::Leader"
-    REGULAR_PAYER_IST = "RegularPayer::Group::Ist::Member"
-
-    EARLY_PAYER_CMT = "EarlyPayer::Group::Root::Member"
-    EARLY_PAYER_YP = "EarlyPayer::Group::Unit::Member"
-    EARLY_PAYER_UL = "EarlyPayer::Group::Unit::Leader"
-    EARLY_PAYER_IST = "EarlyPayer::Group::Ist::Member"
-
-    def __str__(self) -> str:
-        return self.name
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__qualname__}.{self.name}"
-
-    @property
-    def is_early_payer(self) -> bool:
-        return self in _EARLY_PAYER_ROLES
-
-    @property
-    def is_regular_payer(self) -> bool:
-        return self in _REGULAR_PAYER_ROLES
-
-    @property
-    def db_payment_role(self) -> str:
-        """The string for the payment_role column in the database.
-
-        >>> PaymentRole.REGULAR_PAYER_CMT.db_payment_role
-        'RegularPayer::Group::Root::Member'
-        """
-        return self.value
-
-    @property
-    def short_role_name(self) -> str:
-        return self.name.rsplit("_", 1)[1]
-
-    @property
-    def full_fee_eur(self) -> int:
-        """Full amount due for this role in EUR.
-
-        >>> PaymentRole.REGULAR_PAYER_CMT.full_fee_eur
-        1600
-        """
-        return _PAYMENT_ROLE_TO_FULL_FEE_EUR[self]
-
-    @property
-    def full_fee_cent(self) -> int:
-        """Full amount due for this role in EUR-cents.
-
-        >>> PaymentRole.REGULAR_PAYER_CMT.full_fee_cent
-        160000
-        """
-        return self.full_fee_eur * 100
-
-    def fee_due_by_date_in_eur(
-        self,
-        date: _datetime.date | str,
-        *,
-        print_at: _datetime.date | str | None = None,
-    ) -> int:
-        """Return the accumulated fees due for this role by *date* in EUR.
-
-        >>> PaymentRole.REGULAR_PAYER_YP.fee_due_by_date_in_eur('1900-01-01')
-        0
-        >>> PaymentRole.REGULAR_PAYER_YP.fee_due_by_date_in_eur('1900-07-31')
-        0
-        >>> PaymentRole.REGULAR_PAYER_YP.fee_due_by_date_in_eur('2025-08-01')
-        0
-        >>> PaymentRole.REGULAR_PAYER_YP.fee_due_by_date_in_eur('2025-11-30')
-        0
-        >>> PaymentRole.REGULAR_PAYER_YP.fee_due_by_date_in_eur('2025-12-01')
-        300
-        >>> PaymentRole.REGULAR_PAYER_YP.fee_due_by_date_in_eur('2031-01-01')
-        3400
-
-
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('1900-01-01')
-        0
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('1900-07-31')
-        0
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-08-01')
-        3400
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-11-30')
-        3400
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-12-01')
-        3400
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2031-01-01')
-        3400
-
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('1900-07-31', print_at='2025-07-31')
-        0
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-08-01', print_at='2025-07-31')
-        3400
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-10-31', print_at='2025-07-31')
-        3400
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-11-01', print_at='2025-07-31')
-        3400
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2031-01-01', print_at='2025-07-31')
-        3400
-
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('1900-07-31', print_at='2025-08-01')
-        0
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-08-01', print_at='2025-08-01')
-        0
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-10-31', print_at='2025-08-01')
-        0
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2025-11-01', print_at='2025-08-01')
-        3400
-        >>> PaymentRole.EARLY_PAYER_YP.fee_due_by_date_in_eur('2031-01-01', print_at='2025-08-01')
-        3400
-        """
-        import bisect
-
-        from ._util import to_date
-
-        date = to_date(date)
-        pos = max(bisect.bisect_right(_PAYMENT_DATES, date) - 1, 0)
-        amount = _PAYMENT_ROLE_TO_ACCUMULATED_INSTALLMENTS[self][pos]
-        if self.is_early_payer and print_at is not None:
-            print_at = to_date(print_at)
-            if date < _NOV_25 and print_at >= _AUG_25:
-                return 0
-        return amount
-
-    def fee_due_by_date_in_cent(
-        self,
-        date: _datetime.date | str,
-        *,
-        print_at: _datetime.date | str | None = None,
-    ) -> int:
-        return self.fee_due_by_date_in_eur(date, print_at=print_at) * 100
-
-
-_ALL_PAYMENT_ROLES = frozenset(role.value for role in PaymentRole)
-
-
-_PAYMENT_ROLE_TO_FULL_FEE_EUR: dict[str | PaymentRole, int] = {
-    x[0]: int(x[1]) for x in _PAYMENT_ARRAY[1:]
-}
-assert _ALL_PAYMENT_ROLES == frozenset([x[0] for x in _PAYMENT_ARRAY[1:]])
-
-_PAYMENT_ROLE_TO_FULL_FEE_EUR.update(
-    {role: _PAYMENT_ROLE_TO_FULL_FEE_EUR[role.value] for role in PaymentRole}
-)
-
-
-_EARLY_PAYER_ROLES = frozenset(
-    [role for role in PaymentRole if role.db_payment_role.startswith("EarlyPayer::")]
-)
-_REGULAR_PAYER_ROLES = frozenset(
-    [role for role in PaymentRole if role.db_payment_role.startswith("RegularPayer::")]
-)
-assert all(role.is_early_payer or role.is_regular_payer for role in PaymentRole)
-assert not any(role.is_early_payer and role.is_regular_payer for role in PaymentRole)
-
-_PAYMENT_ROLE_TO_INSTALLMENTS: dict[str | PaymentRole, list[int]] = {
-    x[0]: (
-        [0]
-        + [int(x[1]) if x[0].startswith("EarlyPayer::") else 0]
-        + [0]
-        + [int(s or "0") for s in x[2:]]
-        + [0]
-    )
-    for x in _PAYMENT_ARRAY[1:]
-}
-_PAYMENT_ROLE_TO_INSTALLMENTS.update(
-    {role: _PAYMENT_ROLE_TO_INSTALLMENTS[role.value] for role in PaymentRole}
-)
-
-_PAYMENT_ROLE_TO_ACCUMULATED_INSTALLMENTS = {
-    k: list(_itertools.accumulate(v)) for k, v in _PAYMENT_ROLE_TO_INSTALLMENTS.items()
-}
 
 
 def mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:
@@ -409,8 +148,6 @@ def enrich_dataframe_for_payments(
     if booking_at is None:
         booking_at = datetime.datetime.now()
 
-    df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
-    df["payment_role"] = df["payment_role"].map(lambda s: PaymentRole(s) if s else None)
     df["sepa_iban"] = df["sepa_iban"].map(lambda s: s.replace(" ", "").upper() if s else None)  # fmt: skip
     df["sepa_bic"] = df["sepa_bic"].map(lambda s: s.replace(" ", "").upper() if s else None)  # fmt: skip
     df["sepa_bic_status"] = None
@@ -420,6 +157,8 @@ def enrich_dataframe_for_payments(
     df["mandate_id"] = df["id"].map(mandate_id_from_hitobito_id)
     df["mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
 
+    df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
+    df["amount_paid"] = df["accounting_entries_amounts_cents"].map(lambda amounts: sum(amounts))  # fmt: skip
     df["amount_due"] = df.apply(compute_total_fee_due, axis=1)
     df["amount"] = df.apply(
         lambda row: max(row["amount_due"] - row["amount_paid"], 0), axis=1
@@ -444,14 +183,63 @@ def enrich_dataframe_for_payments(
     return df.reindex(columns=PAYMENT_DATAFRAME_COLUMNS)
 
 
-def compute_total_fee_due(row) -> int:
-    payment_role = row["payment_role"]
-    if payment_role:
-        return payment_role.fee_due_by_date_in_cent(
-            row["collection_date"], print_at=row["print_at"]
+def format_cents_as_eur_de(cents: int, zero_cents: str = ",—") -> str:
+    from babel.numbers import format_currency
+
+    return format_currency(cents / 100, "EUR", locale="de_DE").replace(
+        ",00", zero_cents
+    )
+
+
+def to_int_or_none(obj: object) -> int | None:
+    try:
+        return int(obj)
+    except Exception:
+        return None
+
+
+def mk_installments_plan(row) -> list[tuple[_datetime.date, int]] | None:
+    year = to_int_or_none(row["custom_installments_starting_year"])
+    custom_installments_cents = row["custom_installments_cents"]
+    if year is None or custom_installments_cents is None:
+        return None
+    plan = []
+    for i, cents in enumerate(custom_installments_cents):
+        print(i, cents)
+        #  0   ->  year + 0,   1,  5
+        #  11  ->  year + 0,  12,  5
+        #  12  ->  year + 1,   1,  5
+        print((year + i // 12, (i % 12) + 1, 5))
+        d = _datetime.date(year + i // 12, (i % 12) + 1, 5)
+        plan.append((d, cents))
+    return plan
+
+
+def fee_due_by_date_in_cent_from_plan(
+    date: _datetime.date, installments_cents: dict[tuple[int, int], int]
+) -> int:
+    import bisect
+
+    plan = [
+        (_datetime.date(year, month, 5), cents)
+        for (year, month), cents in sorted(
+            installments_cents.items(), key=lambda item: item[0]
         )
-    else:
+    ]
+    dates = [_datetime.date.min, *(x[0] for x in plan), _datetime.date.max]
+    installments = [0, *(x[1] for x in plan), 0]
+    accumulated = list(_itertools.accumulate(installments))
+    pos = max(bisect.bisect_right(dates, date) - 1, 0)
+    return accumulated[pos]
+
+
+def compute_total_fee_due(row) -> int:
+    installments_cents = row["installments_cents"]
+    collection_date: _datetime.date = row["collection_date"]
+    if installments_cents is None:
         return 0
+    else:
+        return fee_due_by_date_in_cent_from_plan(collection_date, installments_cents)
 
 
 def _check_iban_bic_in_payment_dataframe(df, pedantic: bool = True):
@@ -678,7 +466,8 @@ def load_payment_dataframe(
     where: str = "",
     early_payer: bool | None = None,
     max_print_at: str | _datetime.date | None = None,
-    status: str | _collections_abc.Iterable[str] = ("reviewed", "confirmed"),
+    status: str | _collections_abc.Iterable[str] | None = ("reviewed", "confirmed"),
+    fee_rules: str | _collections_abc.Iterable[str] = "active",
     sepa_status: str | _collections_abc.Iterable[str] = "ok",
     today: _datetime.date | str | None = None,
 ) -> _pandas.DataFrame:
@@ -705,14 +494,14 @@ def load_payment_dataframe(
         conn,
         where=where,
         extra_cols=[
-            "people.print_at",
-            "COALESCE(people.sepa_status, 'ok') AS sepa_status",
-            "COUNT(accounting_entries.id) AS accounting_entries_count",
-            "SUM(COALESCE(accounting_entries.amount_cents, 0)) AS amount_paid",
+            """ARRAY(
+    SELECT COALESCE(e.amount_cents, 0)
+    FROM accounting_entries AS e
+    WHERE e.subject_type = 'Person' AND e.subject_id = people."id" AND e.amount_currency = 'EUR'
+  ) AS accounting_entries_amounts_cents""",
         ],
-        join="LEFT OUTER JOIN accounting_entries ON people.id = accounting_entries.subject_id AND accounting_entries.subject_type = 'Person' AND accounting_entries.amount_currency = 'EUR'",
-        group_by="people.id",
         status=status,
+        fee_rules=fee_rules,
         log_resulting_data_frame=False,
         today=today,
     )

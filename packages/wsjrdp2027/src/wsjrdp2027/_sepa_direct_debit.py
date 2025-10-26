@@ -7,6 +7,7 @@ import typing as _typing
 
 import sepaxml as _sepaxml
 
+
 if _typing.TYPE_CHECKING:
     import pandas as _pandas
 
@@ -14,11 +15,13 @@ if _typing.TYPE_CHECKING:
 _LOGGER = _logging.getLogger(__name__)
 
 
+CREDITOR_ID = "DE81WSJ00002017275"
+
 WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG = {
     "name": "Ring deutscher Pfadfinder*innenverbände e.V.",
     "IBAN": "DE34520900000077228802",
     "BIC": "GENODE51KS1",
-    "creditor_id": "DE81WSJ00002017275",
+    "creditor_id": CREDITOR_ID,
     "currency": "EUR",
 }
 
@@ -26,7 +29,7 @@ WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG = {
     "name": "Ring deutscher Pfadfinder*innenverbände e.V.",
     "IBAN": "DE13370601932001939044",
     "BIC": "GENODED1PAX",
-    "creditor_id": "DE81WSJ00002017275",
+    "creditor_id": CREDITOR_ID,
     "currency": "EUR",
 }
 

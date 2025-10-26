@@ -27,6 +27,7 @@ __all__ = [
     "render_template",
     "to_date",
     "to_datetime",
+    "to_int_or_none",
     "to_log_level",
     "to_str_list",
     "dataframe_copy_for_xlsx",
@@ -305,7 +306,9 @@ def to_date(date: _datetime.date | str) -> _datetime.date:
     import re
 
     if isinstance(date, str):
-        if re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", date):
+        if date.upper() == "TODAY":
+            return datetime.date.today()
+        elif re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", date):
             return datetime.datetime.strptime(date, "%d.%m.%Y").date()
         else:
             try:
@@ -412,6 +415,21 @@ def to_str_list(str_or_list) -> list[str] | None:
     if isinstance(str_or_list, str):
         str_or_list = [str_or_list]
     return [str(x) for x in str_or_list if x]
+
+
+@_typing.overload
+def to_int_or_none(obj: int) -> int: ...
+
+
+@_typing.overload
+def to_int_or_none(obj: object) -> int | None: ...
+
+
+def to_int_or_none(obj):
+    try:
+        return int(obj)
+    except Exception:
+        return None
 
 
 def combine_where(where: str, expr: str) -> str:
