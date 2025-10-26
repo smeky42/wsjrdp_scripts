@@ -60,7 +60,7 @@ ORDER BY last_name ASC, first_name ASC
         df["first_name"].map(to_initial) + " " + df["last_name"].map(to_initial)
     )
     df["Betrag"] = df["payment_role"].map(
-        lambda role: wsjrdp2027.PaymentRole(role).full_fee_eur
+        lambda role: wsjrdp2027.PaymentRole(role).regular_full_fee_eur
     )
     sum_eur = sum(df["Betrag"])
     print(f"Sum EUR: {sum_eur}")
