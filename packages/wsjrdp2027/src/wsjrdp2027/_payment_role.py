@@ -118,14 +118,22 @@ class PaymentRole(_enum.Enum):
     def is_regular_payer(self) -> bool:
         return self in _REGULAR_PAYER_ROLES
 
-    @property
-    def db_payment_role(self) -> str:
+    def get_db_payment_role(self, *, early_payer: bool | None = None) -> str:
         """The string for the payment_role column in the database.
 
-        >>> PaymentRole.REGULAR_PAYER_CMT.db_payment_role
+        >>> PaymentRole.REGULAR_PAYER_CMT.get_db_payment_role()
+        'RegularPayer::Group::Root::Member'
+        >>> PaymentRole.REGULAR_PAYER_CMT.get_db_payment_role(early_payer=True)
+        'EarlyPayer::Group::Root::Member'
+        >>> PaymentRole.REGULAR_PAYER_CMT.get_db_payment_role(early_payer=False)
         'RegularPayer::Group::Root::Member'
         """
-        return self.value
+        if early_payer is None:
+            return self.value
+        elif early_payer:
+            return getattr(self, f"EARLY_PAYER_{self.short_role_name}").value
+        else:
+            return getattr(self, f"REGULAR_PAYER_{self.short_role_name}").value
 
     @property
     def short_role_name(self) -> str:
@@ -221,41 +229,44 @@ class PaymentRole(_enum.Enum):
 
     def get_installments_eur(
         self,
+        *,
         early_payer: bool | None = None,
         print_at: _datetime.date | str | None = None,
         today: _datetime.date | str = "TODAY",
-    ) -> dict[tuple[int, int], int]:
+        fee_reduction_eur: float = 0,
+    ) -> dict[tuple[int, int], float]:
         """Dictionary mapping year-month tuples to installments.
 
-        >>> PaymentRole.REGULAR_PAYER_CMT.installments_eur
+        >>> PaymentRole.REGULAR_PAYER_CMT.get_installments_eur()
         {(2025, 12): 50, (2026, 1): 250, (2026, 2): 250, (2026, 3): 250, (2026, 8): 200, (2026, 11): 200, (2027, 2): 200, (2027, 5): 200}
-        >>> PaymentRole.REGULAR_PAYER_YP.installments_eur
+        >>> PaymentRole.REGULAR_PAYER_YP.get_installments_eur()
         {(2025, 12): 300, (2026, 1): 500, (2026, 2): 500, (2026, 3): 500, (2026, 8): 400, (2026, 11): 400, (2027, 2): 400, (2027, 5): 400}
-        >>> PaymentRole.REGULAR_PAYER_UL.installments_eur
+        >>> PaymentRole.REGULAR_PAYER_UL.get_installments_eur()
         {(2025, 12): 150, (2026, 1): 350, (2026, 2): 350, (2026, 3): 350, (2026, 8): 300, (2026, 11): 300, (2027, 2): 300, (2027, 5): 300}
-        >>> PaymentRole.REGULAR_PAYER_IST.installments_eur
+        >>> PaymentRole.REGULAR_PAYER_IST.get_installments_eur()
         {(2025, 12): 200, (2026, 1): 400, (2026, 2): 400, (2026, 3): 400, (2026, 8): 300, (2026, 11): 300, (2027, 2): 300, (2027, 5): 300}
 
-        >>> PaymentRole.EARLY_PAYER_CMT.installments_eur
+        >>> PaymentRole.REGULAR_PAYER_IST.get_installments_eur(fee_reduction_eur=1250)
+        {(2025, 12): 200, (2026, 1): 400, (2026, 2): 400, (2026, 3): 350}
+
+        >>> PaymentRole.EARLY_PAYER_CMT.get_installments_eur(today="2025-07-31")
         {(2025, 8): 1600}
-        >>> PaymentRole.EARLY_PAYER_YP.installments_eur
+        >>> PaymentRole.EARLY_PAYER_YP.get_installments_eur(today="2025-07-31")
         {(2025, 8): 3400}
-        >>> PaymentRole.EARLY_PAYER_UL.installments_eur
+        >>> PaymentRole.EARLY_PAYER_UL.get_installments_eur(today="2025-07-31")
         {(2025, 8): 2400}
-        >>> PaymentRole.EARLY_PAYER_IST.installments_eur
+        >>> PaymentRole.EARLY_PAYER_IST.get_installments_eur(today="2025-07-31")
         {(2025, 8): 2600}
+        >>> PaymentRole.EARLY_PAYER_YP.get_installments_eur(today="2025-07-31", fee_reduction_eur=1700)
+        {(2025, 8): 1700}
         """
         from . import _util
 
-        print()
-        print("print_at:", print_at)
-        print("today:", today)
         single_payment_at = (
             _util.to_date(print_at) if print_at is not None else _util.to_date(today)
         )
-        print("single_payment_at:", single_payment_at)
-        print()
-
+        if early_payer is None:
+            early_payer = self.is_early_payer
         if early_payer:
             start_of_next_month = (
                 single_payment_at.replace(day=1) + _datetime.timedelta(days=32)
@@ -264,11 +275,20 @@ class PaymentRole(_enum.Enum):
                 (
                     start_of_next_month.year,
                     start_of_next_month.month,
-                ): self.regular_full_fee_eur
+                ): max(self.regular_full_fee_eur - fee_reduction_eur, 0)
             }
 
         dates = _PAYMENT_DATES
-        raw_installments = _PAYMENT_ROLE_TO_INSTALLMENTS[self]
+        raw_installments: list[float] = _PAYMENT_ROLE_TO_INSTALLMENTS[self]  # type: ignore
+        if fee_reduction_eur > 0:
+            for i, eur in reversed(list(enumerate(raw_installments))):
+                if fee_reduction_eur > eur:
+                    raw_installments[i] = 0
+                    fee_reduction_eur -= eur
+                else:  # fee_reduction_eur <= eur
+                    raw_installments[i] -= fee_reduction_eur
+                    fee_reduction_eur = 0
+                    break
         installments = {
             (date.year, date.month): cents
             for date, cents in zip(dates, raw_installments)
@@ -278,19 +298,28 @@ class PaymentRole(_enum.Enum):
 
     def get_installments_cents(
         self,
+        *,
         early_payer: bool | None = None,
         print_at: _datetime.date | str | None = None,
         today: _datetime.date | str = "TODAY",
+        fee_reduction_cents: int = 0,
     ) -> dict[tuple[int, int], int]:
         """Dictionary of year-month tuple to installments.
 
-        >>> PaymentRole.EARLY_PAYER_CMT.installments_cents
+        >>> PaymentRole.EARLY_PAYER_CMT.get_installments_cents(today="2025-07-31")
         {(2025, 8): 160000}
         """
+        fee_reduction_eur = fee_reduction_cents / 100
+        if fee_reduction_eur == round(fee_reduction_eur):
+            fee_reduction_eur = int(fee_reduction_eur)
+
         return {
-            key: eur * 100
+            key: int(round(eur * 100))
             for key, eur in self.get_installments_eur(
-                early_payer=early_payer, print_at=print_at, today=today
+                early_payer=early_payer,
+                print_at=print_at,
+                today=today,
+                fee_reduction_eur=fee_reduction_eur,
             ).items()
         }
 
@@ -317,10 +346,18 @@ _PAYMENT_ROLE_TO_FULL_FEE_EUR.update(
 
 
 _EARLY_PAYER_ROLES = frozenset(
-    [role for role in PaymentRole if role.db_payment_role.startswith("EarlyPayer::")]
+    [
+        role
+        for role in PaymentRole
+        if role.get_db_payment_role().startswith("EarlyPayer::")
+    ]
 )
 _REGULAR_PAYER_ROLES = frozenset(
-    [role for role in PaymentRole if role.db_payment_role.startswith("RegularPayer::")]
+    [
+        role
+        for role in PaymentRole
+        if role.get_db_payment_role().startswith("RegularPayer::")
+    ]
 )
 assert all(role.is_early_payer or role.is_regular_payer for role in PaymentRole)
 assert not any(role.is_early_payer and role.is_regular_payer for role in PaymentRole)

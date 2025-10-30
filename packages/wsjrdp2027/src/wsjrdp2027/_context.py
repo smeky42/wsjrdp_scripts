@@ -423,7 +423,7 @@ class WsjRdpContext:
                 password=self._config.db_password,
                 dbname=self._config.db_name,
             )
-            exit_stack.callback(conn.close)
+            exit_stack.enter_context(conn)
             yield conn
 
     def pg_dump(

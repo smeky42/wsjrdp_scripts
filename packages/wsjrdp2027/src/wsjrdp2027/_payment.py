@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import datetime as _datetime
-import enum as _enum
 import itertools as _itertools
 import logging as _logging
 import typing as _typing
 from collections import abc as _collections_abc
+
+from . import _payment_role
 
 
 if _typing.TYPE_CHECKING:
@@ -13,6 +14,9 @@ if _typing.TYPE_CHECKING:
 
     import pandas as _pandas
     import psycopg as _psycopg
+    import psycopg.sql as _psycopg_sql
+
+    from . import _sepa_direct_debit
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -54,6 +58,12 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "early_payer",
     "sepa_name",
     "sepa_mail",
+    "sepa_address",
+    "sepa_mailing_from",
+    "sepa_mailing_to",
+    "sepa_mailing_cc",
+    "sepa_mailing_bcc",
+    "sepa_mailing_reply_to",
     "sepa_iban",
     "sepa_bic",
     "sepa_bic_status",
@@ -63,16 +73,17 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "collection_date",
     "mandate_id",
     "mandate_date",
-    "sepa_debit_type",
-    "sepa_debit_description",
-    "sepa_debit_endtoend_id",
+    "sepa_dd_sequence_type",
+    "sepa_dd_description",
+    "sepa_dd_endtoend_id",
     "accounting_entries_count",
     "accounting_entry_id",
     "accounting_author_id",
     "accounting_value_date",
     "accounting_booking_at",
     "accounting_comment",
-    "total_fee_regular_cents",
+    "regular_full_fee_cents",
+    "total_fee_cents",
     "total_fee_reduction_comment",
     "total_fee_reduction_cents",
     "amount_paid",
@@ -109,17 +120,17 @@ def enrich_dataframe_for_payments(
 
     def dd_description_from_row(row) -> str:
         prefix = "WSJ 2027"
-        payment_role = row["payment_role"]
-        short_role_name = payment_role.short_role_name if payment_role else "UNKNOWN"
-        suffix = f"{row['short_full_name']} {short_role_name} {row['id']}"
+        if payment_role := row["payment_role"]:
+            prefix = f'{prefix} {payment_role.short_role_name}'
+        name_and_id = f"{row['short_full_name']} {row['id']}"
         if row["early_payer"]:
-            return f"{prefix} Beitrag {suffix}"
+            return f"{prefix} Beitrag {name_and_id}"
         else:
             year_month = row["collection_date"].strftime("%Y-%m")
             # TODO: Check if amount is larger than usual
             # TODO: improve format of year_month
             # TODO: determine Ratenzahlungsmonat from collection_date
-            return f"{prefix} {year_month} Rate {suffix}"
+            return f"{prefix} {year_month} Rate {name_and_id}"
 
     def dd_endtoend_id_from_row(row) -> str:
         import uuid
@@ -133,15 +144,15 @@ def enrich_dataframe_for_payments(
         return endtoend_id[:35]
 
     def accounting_comment_from_row(row: _pandas.Series) -> str:
-        endtoend_id = row["sepa_debit_endtoend_id"]
+        endtoend_id = row["sepa_dd_endtoend_id"]
         collection_date = row["collection_date"]
         collection_date_de = collection_date.strftime("%d.%m.%Y")
         sepa_name = row.get("sepa_name")
         sepa_iban = row.get("sepa_iban")
-        sepa_debit_type = row.get("sepa_debit_type")
+        sepa_dd_sequence_type = row.get("sepa_dd_sequence_type")
         return (
             f"SEPA Lastschrifteinzug {endtoend_id} zum {collection_date_de} "
-            f"(Kontoinhaber*in: {sepa_name}, IBAN: {sepa_iban}, Sequenz: {sepa_debit_type})"
+            f"(Kontoinhaber*in: {sepa_name}, IBAN: {sepa_iban}, Sequenz: {sepa_dd_sequence_type})"
         )
 
     collection_date = to_date(collection_date)
@@ -163,9 +174,9 @@ def enrich_dataframe_for_payments(
     df["amount"] = df.apply(
         lambda row: max(row["amount_due"] - row["amount_paid"], 0), axis=1
     )
-    df["sepa_debit_type"] = df.apply(dd_type_from_row, axis=1)
-    df["sepa_debit_description"] = df.apply(dd_description_from_row, axis=1)
-    df["sepa_debit_endtoend_id"] = df.apply(dd_endtoend_id_from_row, axis=1)
+    df["sepa_dd_sequence_type"] = df.apply(dd_type_from_row, axis=1)
+    df["sepa_dd_description"] = df.apply(dd_description_from_row, axis=1)
+    df["sepa_dd_endtoend_id"] = df.apply(dd_endtoend_id_from_row, axis=1)
     df["payment_status_reason"] = df["amount"].map(
         lambda amt: "" if amt > 0 else "amount = 0"
     )
@@ -181,14 +192,6 @@ def enrich_dataframe_for_payments(
     _check_iban_bic_in_payment_dataframe(df, pedantic=pedantic)
 
     return df.reindex(columns=PAYMENT_DATAFRAME_COLUMNS)
-
-
-def format_cents_as_eur_de(cents: int, zero_cents: str = ",—") -> str:
-    from babel.numbers import format_currency
-
-    return format_currency(cents / 100, "EUR", locale="de_DE").replace(
-        ",00", zero_cents
-    )
 
 
 def to_int_or_none(obj: object) -> int | None:
@@ -343,8 +346,6 @@ def insert_accounting_entry(
 ) -> int:
     import datetime
 
-    from psycopg.sql import SQL, Identifier, Literal
-
     from ._util import to_date
 
     if created_at is None:
@@ -362,16 +363,9 @@ def insert_accounting_entry(
         ("description", description),
         ("created_at", created_at),
     ]
-    cols = [*(Identifier(col_val[0]) for col_val in cols_vals)]
-    vals = [*(Literal(col_val[1]) for col_val in cols_vals)]
-    sql_string = (
-        SQL("INSERT INTO accounting_entries ({}) VALUES ({}) RETURNING {}")
-        .format(SQL(", ").join(cols), SQL(", ").join(vals), Identifier("id"))
-        .as_string()
-    )
-    _LOGGER.debug("[ACC] execute %s", sql_string)
-    cursor.execute(sql_string)
-
+    query = col_val_pairs_to_insert_sql_query("accounting_entries", cols_vals, "id")
+    _LOGGER.debug("[ACC] execute %s", query.as_string(context=cursor))
+    cursor.execute(query)
     return cursor.fetchone()[0]
 
 
@@ -392,6 +386,257 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
         description=row["accounting_comment"],
         created_at=booking_at,
     )
+
+
+def insert_payment_initiation(
+    cursor: _psycopg.Cursor,
+    *,
+    created_at: _datetime.datetime | str = "NOW",
+    updated_at: _datetime.datetime | str | None = None,
+    status: str = "planned",
+    sepa_schema: str = "pain.008.001.02",
+    message_identification: str | None = None,
+    number_of_transactions: int | None = None,
+    control_sum: int | None = None,
+    initiating_party_name: str | None = None,
+    initiating_party_iban: str | None = None,
+    initiating_party_bic: str | None = None,
+    sepa_dd_config: _sepa_direct_debit.SepaDirectDebitConfig | None = None,
+) -> int:
+    from . import _util
+
+    if sepa_dd_config:
+        if not initiating_party_name:
+            initiating_party_name = sepa_dd_config.get("name")
+        if not initiating_party_iban:
+            initiating_party_iban = sepa_dd_config.get("IBAN")
+        if not initiating_party_bic:
+            initiating_party_bic = sepa_dd_config.get("BIC")
+
+    cols_vals = [
+        ("created_at", _util.to_datetime(created_at)),
+        ("updated_at", _util.to_datetime(updated_at)),
+        ("status", status),
+        ("sepa_schema", sepa_schema),
+        ("message_identification", message_identification),
+        ("number_of_transactions", number_of_transactions),
+        ("control_sum", control_sum),
+        ("initiating_party_name", initiating_party_name),
+        ("initiating_party_iban", initiating_party_iban),
+        ("initiating_party_bic", initiating_party_bic),
+    ]
+    query = col_val_pairs_to_insert_sql_query(
+        "wsjrdp_payment_initiations", cols_vals, "id"
+    )
+    _LOGGER.debug("execute %s", query.as_string(context=cursor))
+    cursor.execute(query)
+    return cursor.fetchone()[0]  # type: ignore
+
+
+def insert_direct_debit_payment_info(
+    cursor: _psycopg.Cursor,
+    *,
+    created_at: _datetime.datetime | str | None = "NOW",
+    updated_at: _datetime.datetime | str | None = None,
+    payment_initiation_id: int | None = None,
+    payment_information_identification: str | None = None,
+    batch_booking: bool = True,
+    number_of_transactions: int | None = None,
+    control_sum: int | None = None,
+    payment_type_instrument: str = "CORE",
+    sequence_type: str = "OOFF",
+    requested_collection_date: _datetime.date | str = "TODAY",
+    cdtr_name: str | None = None,
+    cdtr_iban: str | None = None,
+    cdtr_bic: str | None = None,
+    creditor_id: str | None = None,
+    sepa_dd_config: _sepa_direct_debit.SepaDirectDebitConfig | None = None,
+) -> int:
+    import wsjrdp2027
+
+    from . import _util
+
+    creditor_id = creditor_id or wsjrdp2027.CREDITOR_ID
+
+    if sepa_dd_config:
+        if not cdtr_name:
+            cdtr_name = sepa_dd_config.get("name")
+        if not cdtr_iban:
+            cdtr_iban = sepa_dd_config.get("IBAN")
+        if not cdtr_bic:
+            cdtr_bic = sepa_dd_config.get("BIC")
+
+    cols_vals = [
+        ("created_at", _util.to_datetime(created_at)),
+        ("updated_at", _util.to_datetime(updated_at)),
+        ("payment_initiation_id", payment_initiation_id),
+        ("payment_information_identification", payment_information_identification),
+        ("batch_booking", batch_booking),
+        ("number_of_transactions", number_of_transactions),
+        ("control_sum", control_sum),
+        ("payment_type_instrument", payment_type_instrument),
+        ("sequence_type", sequence_type),
+        ("requested_collection_date", _util.to_date(requested_collection_date)),
+        ("cdtr_name", cdtr_name),
+        ("cdtr_iban", cdtr_iban),
+        ("cdtr_bic", cdtr_bic),
+        ("creditor_id", creditor_id),
+    ]
+    query = col_val_pairs_to_insert_sql_query(
+        "wsjrdp_direct_debit_payment_infos", cols_vals, "id"
+    )
+    _LOGGER.debug("execute %s", query.as_string(context=cursor))
+    cursor.execute(query)
+    return cursor.fetchone()[0]  # type: ignore
+
+
+def insert_direct_debit_pre_notification(
+    cursor: _psycopg.Cursor,
+    *,
+    created_at: _datetime.datetime | str | None = "NOW",
+    updated_at: _datetime.datetime | str | None = None,
+    payment_initiation_id: int | None = None,
+    direct_debit_payment_info_id: int | None = None,
+    subject_id: int | None = None,
+    subject_type: str | None = "Person",
+    author_id: int | None = None,
+    author_type: str | None = "Person",
+    try_skip: bool | None = None,
+    payment_status: str = "pre_notified",
+    email_from: str = "anmeldung@worldscoutjamboree.de",
+    email_to: _collections_abc.Iterable[str] | str | None = None,
+    email_cc: _collections_abc.Iterable[str] | str | None = None,
+    email_bcc: _collections_abc.Iterable[str] | str | None = None,
+    email_reply_to: _collections_abc.Iterable[str] | str | None = None,
+    dbtr_name: str,
+    dbtr_iban: str,
+    dbtr_bic: str | None = None,
+    dbtr_address: str | None = None,
+    amount_currency: str = "EUR",
+    amount_cents: int,
+    sequence_type: str = "OOFF",
+    collection_date: _datetime.date | str | None = None,
+    mandate_id: str | None = None,
+    mandate_date: _datetime.date | str | None = None,
+    description: str | None = None,
+    endtoend_id: str | None = None,
+    payment_role: str | _payment_role.PaymentRole | None = None,
+    early_payer: bool | None = None,
+    creditor_id: str | None = None,
+) -> int:
+    import wsjrdp2027
+
+    from . import _util
+
+    creditor_id = creditor_id or wsjrdp2027.CREDITOR_ID
+
+    if isinstance(payment_role, _payment_role.PaymentRole):
+        payment_role = payment_role.get_db_payment_role(early_payer=early_payer)
+
+    cols_vals = [
+        ("created_at", _util.to_datetime(created_at)),
+        ("updated_at", _util.to_datetime(updated_at)),
+        ("payment_initiation_id", payment_initiation_id),
+        ("direct_debit_payment_info_id", direct_debit_payment_info_id),
+        ("subject_id", subject_id),
+        ("subject_type", subject_type),
+        ("author_id", author_id),
+        ("author_type", author_type),
+        ("try_skip", try_skip),
+        ("payment_status", payment_status),
+        ("email_from", email_from or None),
+        ("email_to", _util.to_str_list(email_to)),
+        ("email_cc", _util.to_str_list(email_cc)),
+        ("email_bcc", _util.to_str_list(email_bcc)),
+        ("email_reply_to", _util.to_str_list(email_reply_to)),
+        ("dbtr_name", dbtr_name),
+        ("dbtr_iban", dbtr_iban),
+        ("dbtr_bic", dbtr_bic),
+        ("dbtr_address", dbtr_address),
+        ("amount_currency", amount_currency),
+        ("amount_cents", amount_cents),
+        ("sequence_type", sequence_type),
+        ("collection_date", _util.to_date(collection_date)),
+        ("mandate_id", mandate_id),
+        ("mandate_date", _util.to_date(mandate_date)),
+        ("description", description),
+        ("endtoend_id", endtoend_id),
+        ("payment_role", payment_role),
+        ("creditor_id", creditor_id),
+    ]
+    query = col_val_pairs_to_insert_sql_query(
+        "wsjrdp_direct_debit_pre_notifications", cols_vals, "id"
+    )
+    _LOGGER.debug("execute %s", query.as_string(context=cursor))
+    cursor.execute(query)
+    return cursor.fetchone()[0]  # type: ignore
+
+
+def insert_direct_debit_pre_notification_from_row(
+    cursor: _psycopg.Cursor,
+    row: _pandas.Series,
+    *,
+    created_at: _datetime.datetime | str | None = "NOW",
+    updated_at: _datetime.datetime | str | None = None,
+    payment_initiation_id: int | None = None,
+    direct_debit_payment_info_id: int | None = None,
+    creditor_id: str | None = None,
+) -> int:
+    from . import _util
+
+    return insert_direct_debit_pre_notification(
+        cursor,
+        created_at=created_at,
+        updated_at=updated_at,
+        payment_initiation_id=payment_initiation_id,
+        direct_debit_payment_info_id=direct_debit_payment_info_id,
+        subject_id=row["id"],
+        subject_type="Person",
+        author_id=row["accounting_author_id"],
+        author_type="Person",
+        email_from=row["sepa_mailing_from"],
+        email_to=row["sepa_mailing_to"],
+        email_cc=row["sepa_mailing_cc"],
+        email_bcc=row["sepa_mailing_bcc"],
+        email_reply_to=row["sepa_mailing_reply_to"],
+        dbtr_name=row["sepa_name"],
+        dbtr_iban=row["sepa_iban"],
+        dbtr_bic=row["sepa_bic"],
+        dbtr_address=row["sepa_address"],
+        amount_currency="EUR",
+        amount_cents=row["amount"],
+        sequence_type=row["sepa_dd_sequence_type"],
+        collection_date=row["collection_date"],
+        mandate_id=row["mandate_id"],
+        mandate_date=_util.to_date(row["mandate_date"]),
+        description=row["sepa_dd_description"],
+        endtoend_id=row["sepa_dd_endtoend_id"],
+        payment_role=row["payment_role"],
+        early_payer=row["early_payer"],
+        creditor_id=(creditor_id or None),
+    )
+
+
+def col_val_pairs_to_insert_sql_query(
+    table_name: str | _psycopg_sql.Identifier,
+    cols_vals,
+    returning: str | _psycopg_sql.Identifier = "id",
+) -> _psycopg_sql.Composed:
+    from psycopg.sql import SQL, Identifier, Literal
+
+    if isinstance(table_name, str):
+        table_name = Identifier(table_name)
+    if isinstance(returning, str):
+        returning = Identifier(returning)
+
+    cols = [*(Identifier(col_val[0]) for col_val in cols_vals)]
+    vals = [*(Literal(col_val[1]) for col_val in cols_vals)]
+    sql_cols = SQL(", ").join(cols)
+    sql_vals = SQL(", ").join(vals)
+    query = SQL("INSERT INTO {} ({}) VALUES ({}) RETURNING {}").format(
+        table_name, sql_cols, sql_vals, returning
+    )
+    return query
 
 
 def write_payment_dataframe_to_db(

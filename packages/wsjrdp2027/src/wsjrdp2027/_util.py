@@ -23,6 +23,7 @@ __all__ = [
     "create_dir",
     "date_to_datetime",
     "dedup",
+    "format_cents_as_eur_de",
     "in_expr",
     "render_template",
     "to_date",
@@ -208,6 +209,8 @@ def to_datetime(
     >>> to_datetime("01.06.2025")
     datetime.datetime(2025, 6, 1, 13, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
 
+    >>> to_datetime("NOW")
+    datetime.datetime(2025, 8, 15, 8, 30, 27, tzinfo=datetime.timezone.utc)
 
     >>> some_dt = dt.datetime(2025, 8, 15, 10, 30, 27, 1234, tzinfo=zi.ZoneInfo("Europe/Berlin"))
     >>> to_datetime(some_dt) == some_dt
@@ -274,7 +277,9 @@ def to_datetime(
     elif isinstance(dt, int):
         return datetime.datetime.fromtimestamp(dt, tz=datetime.timezone.utc)
     elif isinstance(dt, str):
-        if re.fullmatch("[0-9]+", dt):
+        if dt.upper() == "NOW":
+            return datetime.datetime.now(tz=datetime.timezone.utc)
+        elif re.fullmatch("[0-9]+", dt):
             return datetime.datetime.fromtimestamp(int(dt), tz=datetime.timezone.utc)
         elif re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", dt):
             return parse_date(dt, "%d.%m.%Y")
@@ -294,7 +299,15 @@ def to_datetime(
         )
 
 
-def to_date(date: _datetime.date | str) -> _datetime.date:
+@_typing.overload
+def to_date(date: _datetime.date | str, /) -> _datetime.date: ...
+
+
+@_typing.overload
+def to_date(date: None, /) -> None: ...
+
+
+def to_date(date: _datetime.date | str | None, /) -> _datetime.date | None:
     """Return a date.
 
     >>> to_date("2025-06-01")
@@ -305,7 +318,9 @@ def to_date(date: _datetime.date | str) -> _datetime.date:
     import datetime
     import re
 
-    if isinstance(date, str):
+    if date is None:
+        return None
+    elif isinstance(date, str):
         if date.upper() == "TODAY":
             return datetime.date.today()
         elif re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", date):
@@ -334,6 +349,14 @@ def compute_age(birthday: _datetime.date, today: _datetime.date) -> int:
         (today.month == birthday.month) and (today.day >= birthday.day)
     )
     return (today.year - birthday.year) - (0 if birthday_passed else 1)
+
+
+def format_cents_as_eur_de(cents: int, zero_cents: str = ",—") -> str:
+    from babel.numbers import format_currency
+
+    return format_currency(int(round(cents)) / 100, "EUR", locale="de_DE").replace(
+        ",00", zero_cents
+    )
 
 
 def render_template(
