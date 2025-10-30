@@ -18,7 +18,6 @@ import typing
 
 import pandas as pd
 import wsjrdp2027
-from wsjrdp2027._payment import format_cents_as_eur_de
 
 
 if typing.TYPE_CHECKING:
@@ -62,6 +61,12 @@ def parse_args(argv=None):
         metavar="TODAY",
         default="TODAY",
         help="Run as if the current date is TODAY",
+    )
+    p.add_argument(
+        "--print-at",
+        metavar="DATE",
+        default=None,
+        help="Run as if all people had print_at = DATE",
     )
     p.add_argument("id", nargs="+")
     return p.parse_args(argv[1:])
@@ -293,8 +298,10 @@ def create_special_agreement(
     replacements = installments_replacements_from_row(row, keys=doc_keys)
     replacements |= {
         "creditor_id": wsjrdp2027.CREDITOR_ID,
-        "total_fee": format_cents_as_eur_de(row["total_fee_cents"]),
-        "total_fee_reduction": format_cents_as_eur_de(total_fee_reduction_cents),
+        "total_fee": wsjrdp2027.format_cents_as_eur_de(row["total_fee_cents"]),
+        "total_fee_reduction": wsjrdp2027.format_cents_as_eur_de(
+            total_fee_reduction_cents
+        ),
         "rdp_representative_name": rdp_representative_name,
         "rdp_representative_town_date": rdp_representative_town_date,
         "special_agreement_title": special_agreement_title,
@@ -372,6 +379,7 @@ def main(argv=None):
             where=f"""people.id IN ({", ".join(str(x) for x in args.id)})""",
             fee_rules=["planned", "active"],
             today=args.today,
+            print_at=args.print_at,
         )
 
     if args.email:

@@ -70,6 +70,12 @@ def main(argv=None):
         )
 
         sum_amount = df["amount"].sum()
+
+        for _, row in df.iterrows():
+            if not isinstance(row["amount"], (int, float)):
+                print(row.to_string())
+                raise RuntimeError("Invalid row: 'amount' value is not int or float")
+
         _LOGGER.info("SUM(amount): %s EUR", sum_amount / 100)
 
         wsjrdp2027.write_accounting_dataframe_to_sepa_dd(

@@ -106,13 +106,13 @@ class SepaDirectDebit:
             "IBAN": row["sepa_iban"],
             "BIC": row["sepa_bic"],
             "amount": row["amount"],
-            "type": row.get("sepa_debit_type", "OOFF"),  # FRST,RCUR,OOFF,FNAL
+            "type": row.get("sepa_dd_sequence_type", "OOFF"),  # FRST,RCUR,OOFF,FNAL
             "collection_date": row["collection_date"],
             "mandate_id": row["mandate_id"],
             "mandate_date": row["mandate_date"],
-            "description": row["sepa_debit_description"],
+            "description": row["sepa_dd_description"],
         }
-        if endtoend_id := row.get("sepa_debit_endtoend_id"):
+        if endtoend_id := row.get("sepa_dd_endtoend_id"):
             payment["endtoend_id"] = endtoend_id
         return self.add_payment(payment, pedantic=pedantic)
 

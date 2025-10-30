@@ -40,7 +40,8 @@ def row_to_mailing_cc(row) -> list[str] | None:
                 other.add(row[k])
     for s in row["mailing_to"] or []:
         other.discard(s)
-    return sorted(other)
+    other = sorted(other)
+    return other or None
 
 
 def row_to_sepa_cc(row) -> list[str] | None:
@@ -51,9 +52,10 @@ def row_to_sepa_cc(row) -> list[str] | None:
         for k in ("additional_contact_email_a", "additional_contact_email_b"):
             if row[k]:
                 other.add(row[k])
-    for s in row["sepa_to"] or []:
+    for s in row["sepa_mailing_to"] or []:
         other.discard(s)
-    return sorted(filter(None, other))
+    other = sorted(filter(None, other))
+    return other or None
 
 
 def find_short_first_name(row) -> str:
@@ -78,6 +80,7 @@ def compute_installments_cents_from_row(
     fee_rules = id2fee_rules.get(id, {})
     year = _util.to_int_or_none(fee_rules.get("custom_installments_starting_year"))
     custom_installments_cents = fee_rules.get("custom_installments_cents")
+    fee_reduction_cents = fee_rules.get("total_fee_reduction_cents") or 0
     if payment_role is None:
         return None
     elif year is None or custom_installments_cents is None:
@@ -85,6 +88,7 @@ def compute_installments_cents_from_row(
             early_payer=early_payer,
             print_at=print_at,
             today=today,
+            fee_reduction_cents=fee_reduction_cents,
         )
     else:
         return {
@@ -157,6 +161,7 @@ def load_people_dataframe(
     exclude_deregistered: bool = True,
     log_resulting_data_frame: bool = True,
     today: _datetime.date | str | None = None,
+    print_at: _datetime.date | str | None = None,
 ) -> _pandas.DataFrame:
     import re
     import textwrap
@@ -168,6 +173,7 @@ def load_people_dataframe(
     from ._payment_role import PaymentRole
 
     today = _datetime.date.today() if today is None else _util.to_date(today)
+    print_at = None if print_at is None else _util.to_date(print_at)
 
     if extra_cols is not None:
         if isinstance(extra_cols, str):
@@ -256,18 +262,23 @@ ORDER BY people.id
     df["today"] = today
     df["today_de"] = df["today"].map(lambda d: d.strftime("%d.%m.%Y"))
     df["birthday_de"] = df["birthday"].map(lambda d: d.strftime("%d.%m.%Y"))
+    if print_at is not None:
+        df["print_at"] = print_at
     df["age"] = df["birthday"].map(
         lambda bday: _util.compute_age(bday, today) if bday is not None else None
     )
     df["mailing_to"] = df["email"].map(lambda s: ([s] if s else None))
     df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)
-    df["sepa_to"] = df["sepa_mail"].map(lambda s: [s] if s else None)
-    df["sepa_cc"] = df.apply(row_to_sepa_cc, axis=1)
+    df["sepa_mailing_from"] = "anmeldung@worldscoutjamboree.de"
+    df["sepa_mailing_to"] = df["sepa_mail"].map(lambda s: [s] if s else None)
+    df["sepa_mailing_cc"] = df.apply(row_to_sepa_cc, axis=1)
+    df["sepa_mailing_bcc"] = None
+    df["sepa_mailing_reply_to"] = df["id"].map(lambda _: ["info@worldscoutjamboree.de"])
 
     df["sepa_mandate_id"] = df["id"].map(sepa_mandate_id_from_hitobito_id)
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
     df["payment_role"] = df["payment_role"].map(lambda s: PaymentRole(s) if s else None)  # fmt: skip
-    df["total_fee_regular_cents"] = df["payment_role"].map(lambda p: (p.regular_full_fee_cents if p else None))  # fmt: skip
+    df["regular_full_fee_cents"] = df["payment_role"].map(lambda p: (p.regular_full_fee_cents if p else None))  # fmt: skip
 
     def col_from_fee_rules(
         col_name, *, fee_rules_col_name=None, f=lambda val: val
@@ -287,7 +298,7 @@ ORDER BY people.id
     col_from_fee_rules("total_fee_reduction_cents", f=lambda val: val or 0)
     col_from_fee_rules("total_fee_reduction_comment")
 
-    df["total_fee_cents"] = df.apply(lambda r: r["total_fee_regular_cents"] - r["total_fee_reduction_cents"], axis=1)  # fmt: skip
+    df["total_fee_cents"] = df.apply(lambda r: r["regular_full_fee_cents"] - r["total_fee_reduction_cents"], axis=1)  # fmt: skip
 
     df["status_de"] = df["status"].map(_STATUS_TO_DE.get)
     df["short_first_name"] = df.apply(find_short_first_name, axis=1)
