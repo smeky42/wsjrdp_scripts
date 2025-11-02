@@ -109,7 +109,10 @@ Daffi und Peter
     with open(eml_file, "wb") as f:
         f.write(msg.as_bytes())
 
-    smtp_client.send_message(msg)
+    if args.email:
+        smtp_client.send_message(msg)
+    else:
+        _LOGGER.warning("Skip actual email sending (--no-email given)")
     return msg
 
 
@@ -262,12 +265,11 @@ def main(argv=None):
                     creditor_id=wsjrdp2027.CREDITOR_ID,
                 )
 
-    if args.email:
-        ctx.require_approval_to_send_email_in_prod()
-        with ctx.smtp_login() as smtp_client:
-            send_pre_notification_mails(
-                args, ctx=ctx, smtp_client=smtp_client, df=df_ok
-            )
+    ctx.require_approval_to_send_email_in_prod()
+    with ctx.smtp_login() as smtp_client:
+        send_pre_notification_mails(
+            args, ctx=ctx, smtp_client=smtp_client, df=df_ok
+        )
 
     _LOGGER.info("")
     _LOGGER.info(
