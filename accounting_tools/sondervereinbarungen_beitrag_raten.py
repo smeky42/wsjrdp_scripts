@@ -57,6 +57,12 @@ def parse_args(argv=None):
         help="Send the created PDF out. Uses mailings_to, mailings_cc. Copies",
     )
     p.add_argument(
+        "--no-email",
+        dest="email",
+        action="store_false",
+        help="Create eml files, but do not send out the special agreement via SMTP.",
+    )
+    p.add_argument(
         "--today",
         metavar="TODAY",
         default="TODAY",
@@ -122,8 +128,9 @@ def _merge_mail_to(*args) -> list[str] | None:
 
 
 def send_pdf_via_email(
+    args,
     ctx: wsjrdp2027.WsjRdpContext,
-    smtp_client: _smtplib.SMTP,
+    smtp_client: _smtplib.SMTP | None,
     row: pd.Series,
     pdf_path: _pathlib.Path,
     *,
@@ -138,6 +145,7 @@ def send_pdf_via_email(
     pdf_bytes = pdf_path.read_bytes()
     msg = email.message.EmailMessage()
     subject = f"WSJ27 Sondervereinbarung {short_full_name} (id {id})"
+    cc = _merge_mail_to(row["mailing_cc"], _MAIL_CC)
     bcc = _MAIL_BCC
     if issue:
         subject = f"{subject} {issue}"
@@ -145,8 +153,10 @@ def send_pdf_via_email(
     msg["Subject"] = subject
     msg["From"] = "anmeldung@worldscoutjamboree.de"
     msg["To"] = row["mailing_to"]
-    msg["Cc"] = _merge_mail_to(row["mailing_cc"], _MAIL_CC)
-    msg["Bcc"] = bcc
+    if cc:
+        msg["Cc"] = cc
+    if bcc:
+        msg["Bcc"] = bcc
     msg["Reply-To"] = ["info@worldscoutjamboree.de"]
     msg.set_content(
         f"""Hallo {row["greeting_name"]},
@@ -190,7 +200,11 @@ Instagram: @wsjrdp
     with open(eml_file, "wb") as f:
         f.write(msg.as_bytes())
     _LOGGER.info("Wrote %s", eml_file)
-    smtp_client.send_message(msg)
+    if args.email:
+        assert smtp_client is not None
+        smtp_client.send_message(msg)
+    else:
+        _LOGGER.warning("Skip actual email sending (--no-email given)")
 
 
 def installments_replacements_from_row(row: pd.Series, keys) -> dict[str, str]:
@@ -344,11 +358,9 @@ def create_special_agreement(
         if args.pdf:
             tmp_pdf = convert_docx_to_pdf(tmp_docx)
             tmp_pdf.rename(pdf_name)
-            if args.email:
-                assert smtp_client is not None
-                send_pdf_via_email(
-                    ctx, smtp_client, row, pdf_name, pdf_filename=pdf_filename
-                )
+            send_pdf_via_email(
+                args, ctx, smtp_client, row, pdf_name, pdf_filename=pdf_filename
+            )
         elif args.email:
             _LOGGER.warning("Cannot send email without producing PDFs")
     finally:
