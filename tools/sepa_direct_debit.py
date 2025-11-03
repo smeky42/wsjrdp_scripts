@@ -35,6 +35,7 @@ def parse_args(argv=None):
     p.add_argument("--accounting", action="store_true", default=True)
     p.add_argument("--no-accounting", dest="accounting", action="store_false")
     p.add_argument("--collection-date", type=to_date, default=DEFAULT_COLLECTION_DATE)
+    p.add_argument("--payment-initiation-id", type=int)
     return p.parse_args(argv[1:])
 
 
@@ -61,13 +62,22 @@ def main(argv=None):
     ctx.require_approval_to_run_in_prod()
 
     with ctx.psycopg_connect() as conn:
-        df = wsjrdp2027.load_payment_dataframe(
-            conn,
-            collection_date=args.collection_date,
-            booking_at=ctx.start_time,
-            pedantic=False,
-            today=ctx.start_time.date(),
-        )
+        if args.payment_initiation_id:
+            df = wsjrdp2027.load_payment_dataframe_from_payment_initiation(
+                conn,
+                payment_initiation_id=args.payment_initiation_id,
+                pedantic=False,
+                # booking_at=ctx.start_time,
+                # today=ctx.start_time.date(),
+            )
+        else:
+            df = wsjrdp2027.load_payment_dataframe(
+                conn,
+                collection_date=args.collection_date,
+                booking_at=ctx.start_time,
+                pedantic=False,
+                today=ctx.start_time.date(),
+            )
 
         sum_amount = df["amount"].sum()
 

@@ -460,11 +460,17 @@ def combine_where(where: str, expr: str) -> str:
 
 
 def in_expr(expr, elts) -> str:
+    def sql_repr(x):
+        if isinstance(x, (int, float)):
+            return repr(x)
+        else:
+            return f"'{x}'"
+
     if isinstance(elts, str):
         elts = [elts]
     if not elts:
         return ""
-    elts_list_str = ", ".join(f"'{s}'" for s in elts)
+    elts_list_str = ", ".join(sql_repr(x) for x in elts)
     return f"{expr} IN ({elts_list_str})"
 
 

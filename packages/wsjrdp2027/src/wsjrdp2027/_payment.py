@@ -76,7 +76,11 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "sepa_dd_sequence_type",
     "sepa_dd_description",
     "sepa_dd_endtoend_id",
+    "sepa_dd_payment_initiation_id",
+    "sepa_dd_direct_debit_payment_info_id",
+    "sepa_dd_pre_notification_id",
     "accounting_entries_count",
+    "accounting_entries_amounts_cents",
     "accounting_entry_id",
     "accounting_author_id",
     "accounting_value_date",
@@ -86,6 +90,7 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "total_fee_cents",
     "total_fee_reduction_comment",
     "total_fee_reduction_cents",
+    "pre_notified_amount",
     "amount_paid",
     "amount_due",
     "amount",
@@ -98,11 +103,12 @@ def mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:
     return f"wsjrdp2027{hitobito_id}"
 
 
-def enrich_dataframe_for_payments(
+def enrich_people_dataframe_for_payments(
     df: _pandas.DataFrame,
     collection_date: _datetime.date | str = "2025-01-01",
     booking_at: _datetime.datetime | None = None,
     pedantic: bool = True,
+    endtoend_ids: dict[int, str] | None = None,
 ) -> _pandas.DataFrame:
     import datetime
 
@@ -121,7 +127,7 @@ def enrich_dataframe_for_payments(
     def dd_description_from_row(row) -> str:
         prefix = "WSJ 2027"
         if payment_role := row["payment_role"]:
-            prefix = f'{prefix} {payment_role.short_role_name}'
+            prefix = f"{prefix} {payment_role.short_role_name}"
         name_and_id = f"{row['short_full_name']} {row['id']}"
         if row["early_payer"]:
             return f"{prefix} Beitrag {name_and_id}"
@@ -132,10 +138,15 @@ def enrich_dataframe_for_payments(
             # TODO: determine Ratenzahlungsmonat from collection_date
             return f"{prefix} {year_month} Rate {name_and_id}"
 
-    def dd_endtoend_id_from_row(row) -> str:
+    def dd_endtoend_id_from_row(
+        row, *, endtoend_ids: dict[int, str] | None = None
+    ) -> str:
         import uuid
 
         from ._payment import mandate_id_from_hitobito_id
+
+        if endtoend_id := (endtoend_ids or {}).get(row["id"]):
+            return endtoend_id
 
         mandate_id = mandate_id_from_hitobito_id(row["id"])
         count_accounting_entries = row.get("accounting_entries_count", "0")
@@ -176,7 +187,9 @@ def enrich_dataframe_for_payments(
     )
     df["sepa_dd_sequence_type"] = df.apply(dd_type_from_row, axis=1)
     df["sepa_dd_description"] = df.apply(dd_description_from_row, axis=1)
-    df["sepa_dd_endtoend_id"] = df.apply(dd_endtoend_id_from_row, axis=1)
+    df["sepa_dd_endtoend_id"] = df.apply(
+        lambda row: dd_endtoend_id_from_row(row, endtoend_ids=endtoend_ids), axis=1
+    )
     df["payment_status_reason"] = df["amount"].map(
         lambda amt: "" if amt > 0 else "amount = 0"
     )
@@ -343,15 +356,23 @@ def insert_accounting_entry(
     amount: int,
     description: str,
     created_at: _datetime.date | str | None = None,
+    payment_initiation_id: int | None = None,
+    direct_debit_payment_info_id: int | None = None,
+    direct_debit_pre_notification_id: int | None = None,
+    end_to_end_identifier: str | None = None,
+    mandate_id: str | None = None,
+    mandate_date: _datetime.date | str | None = None,
+    debit_sequence_type: str | None = None,
+    value_date: _datetime.date | str | None = None,
 ) -> int:
     import datetime
 
-    from ._util import to_date
+    from . import _util
 
     if created_at is None:
         created_at = datetime.datetime.now().date()
     else:
-        created_at = to_date(created_at)
+        created_at = _util.to_date(created_at)
 
     cols_vals = [
         ("subject_type", "Person"),
@@ -362,6 +383,14 @@ def insert_accounting_entry(
         ("amount_cents", int(amount)),
         ("description", description),
         ("created_at", created_at),
+        ("payment_initiation_id", payment_initiation_id),
+        ("direct_debit_payment_info_id", direct_debit_payment_info_id),
+        ("direct_debit_pre_notification_id", direct_debit_pre_notification_id),
+        ("end_to_end_identifier", end_to_end_identifier),
+        ("mandate_id", mandate_id),
+        ("mandate_date", _util.to_date(mandate_date)),
+        ("debit_sequence_type", debit_sequence_type),
+        ("value_date", _util.to_date(value_date)),
     ]
     query = col_val_pairs_to_insert_sql_query("accounting_entries", cols_vals, "id")
     _LOGGER.debug("[ACC] execute %s", query.as_string(context=cursor))
@@ -385,6 +414,14 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
         amount=int(row.get("amount", 0)),
         description=row["accounting_comment"],
         created_at=booking_at,
+        payment_initiation_id=row.get("sepa_dd_payment_initiation_id"),
+        direct_debit_payment_info_id=row.get("sepa_dd_direct_debit_payment_info_id"),
+        direct_debit_pre_notification_id=row.get("sepa_dd_pre_notification_id"),
+        end_to_end_identifier=row.get("sepa_dd_endtoend_id"),
+        debit_sequence_type=row.get("sepa_dd_sequence_type"),
+        mandate_id=row.get("mandate_id"),
+        mandate_date=row.get("mandate_date"),
+        value_date=row.get("collection_date"),
     )
 
 
@@ -702,6 +739,164 @@ def write_payment_dataframe_to_xlsx(
     writer.close()
 
 
+def load_payment_dataframe_from_payment_initiation(
+    conn: _psycopg.Connection,
+    *,
+    payment_initiation_id: int,
+    pedantic: bool = True,
+    where: str = "",
+) -> _pandas.DataFrame:
+    import re
+    import textwrap
+
+    import pandas as pd
+    import psycopg.rows
+    from psycopg.sql import SQL, Identifier, Literal
+
+    from . import _util
+
+    raw_query = """
+SELECT
+  wsjrdp_direct_debit_pre_notifications.id,
+  direct_debit_payment_info_id,
+  subject_id,
+  author_id,
+  author_type,
+  COALESCE(try_skip, FALSE) AS try_skip,
+  payment_status,
+  email_from,
+  email_to,
+  email_cc,
+  email_bcc,
+  email_reply_to,
+  dbtr_name,
+  dbtr_iban,
+  dbtr_bic,
+  dbtr_address,
+  amount_currency,
+  amount_cents,
+  sequence_type,
+  collection_date,
+  mandate_id,
+  mandate_date,
+  description,
+  endtoend_id,
+  people.first_name,
+  people.last_name
+FROM wsjrdp_direct_debit_pre_notifications
+LEFT OUTER JOIN people
+  ON people.id = wsjrdp_direct_debit_pre_notifications.subject_id
+     AND wsjrdp_direct_debit_pre_notifications.subject_type = 'Person'
+WHERE
+  wsjrdp_direct_debit_pre_notifications.payment_initiation_id = {payment_initiation_id}
+  AND wsjrdp_direct_debit_pre_notifications.subject_type = 'Person'
+"""
+
+    query = SQL(raw_query).format(
+        payment_initiation_id=Literal(payment_initiation_id),
+    )
+
+    with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        sql_stmt = re.sub(
+            r"\n+", "\n", textwrap.dedent(query.as_string(context=cur)).strip()
+        )
+
+        _LOGGER.info(
+            "Fetch pre notifications SQL Query:\n%s", textwrap.indent(sql_stmt, "  ")
+        )
+        cur.execute(query)
+        rows = cur.fetchall()
+        cur.close()
+
+    raw_pn_df = pd.DataFrame(rows)
+    raw_pn_df["full_name"] = raw_pn_df["first_name"] + " " + raw_pn_df["last_name"]
+
+    id_to_pn_row = {row["subject_id"]: row for _, row in raw_pn_df.iterrows()}
+
+    _LOGGER.info("all pre notifications:\n%s", textwrap.indent(str(raw_pn_df), "  | "))
+    all_pn_ids = set(raw_pn_df["id"])
+    _LOGGER.info(
+        "all pre notification id's (%s):\n  | all_pn_ids = %s",
+        len(all_pn_ids),
+        sorted(all_pn_ids),
+    )
+
+    pn_df = raw_pn_df[raw_pn_df["try_skip"] == False]
+    keep_pn_ids = set(pn_df["id"])
+
+    _LOGGER.info(
+        "not skipped pre notification id's (%s):\n  | keep_pn_ids = %s",
+        len(keep_pn_ids),
+        sorted(keep_pn_ids),
+    )
+    skipped_pn_df = raw_pn_df[~raw_pn_df["id"].isin(keep_pn_ids)]
+
+    if len(skipped_pn_df):
+        for _, row in skipped_pn_df.iterrows():
+            _LOGGER.info(
+                """skipped pre notification (do not collect) for %s %s (pre notification id: %s):
+  try_skip: %s
+  payment_status: %s
+  row:
+%s""",
+                row["subject_id"],
+                row["full_name"],
+                row["id"],
+                row["try_skip"],
+                row["payment_status"],
+                textwrap.indent(row.to_string(), "    | "),
+            )
+
+        _LOGGER.info(
+            "skipped pre notifications:\n%s",
+            textwrap.indent(str(skipped_pn_df), "  | "),
+        )
+    else:
+        _LOGGER.info("No pre notifications have been skipped")
+
+    ids = list(pn_df["subject_id"])
+    collection_dates = set(pn_df["collection_date"])
+    assert len(collection_dates) == 1
+    collection_date = list(collection_dates)[0]
+    endtoend_ids = {k: v["endtoend_id"] for k, v in id_to_pn_row.items()}
+
+    where = _util.combine_where(where, _util.in_expr("people.id", ids))
+
+    df = load_payment_dataframe(
+        conn,
+        where=where,
+        pedantic=pedantic,
+        collection_date=collection_date,
+        endtoend_ids=endtoend_ids,
+    )
+    df["sepa_dd_payment_initiation_id"] = payment_initiation_id
+    df["sepa_dd_direct_debit_payment_info_id"] = df["id"].map(
+        lambda person_id: id_to_pn_row[person_id]["direct_debit_payment_info_id"]
+    )
+    df["sepa_dd_pre_notification_id"] = df["id"].map(
+        lambda person_id: id_to_pn_row[person_id]["id"]
+    )
+    df["pre_notified_amount"] = df["id"].map(
+        lambda person_id: id_to_pn_row[person_id]["amount_cents"]
+    )
+
+    amount_changed_df = df[df["amount"] != df["pre_notified_amount"]]
+    if len(amount_changed_df):
+        for _, row in amount_changed_df.iterrows():
+            _LOGGER.info(
+                "amount different between pre notification and current computation for %s %s:\n%s",
+                row["id"],
+                row["full_name"],
+                textwrap.indent(row.to_string(), "  | "),
+            )
+    else:
+        _LOGGER.info(
+            "All due amounts are the same between pre notification and current computation"
+        )
+
+    return df
+
+
 def load_payment_dataframe(
     conn: _psycopg.Connection,
     *,
@@ -715,6 +910,7 @@ def load_payment_dataframe(
     fee_rules: str | _collections_abc.Iterable[str] = "active",
     sepa_status: str | _collections_abc.Iterable[str] = "ok",
     today: _datetime.date | str | None = None,
+    endtoend_ids: dict[int, str] | None = None,
 ) -> _pandas.DataFrame:
     import textwrap
 
@@ -753,11 +949,12 @@ def load_payment_dataframe(
 
     collection_date = _util.to_date(collection_date)
     today = collection_date if today is None else min(today, collection_date)
-    df = enrich_dataframe_for_payments(
+    df = enrich_people_dataframe_for_payments(
         df,
         collection_date=collection_date,
         booking_at=booking_at,
         pedantic=pedantic,
+        endtoend_ids=endtoend_ids,
     )
     _LOGGER.info("Resulting pandas DataFrame:\n%s", textwrap.indent(str(df), "  "))
     return df
