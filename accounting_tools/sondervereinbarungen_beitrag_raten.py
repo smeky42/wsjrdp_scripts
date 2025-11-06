@@ -161,7 +161,7 @@ def send_pdf_via_email(
     msg.set_content(
         f"""Hallo {row["greeting_name"]},
 
-in der angehängten PDF-Datei findest du die Sondervereinbarung zum Vertag für deinen Ratenplan und ein entsprechend angepasstes SEPA-Mandat.
+in der angehängten PDF-Datei findest du die Sondervereinbarung zum Vertrag für deinen Ratenplan und ein entsprechend angepasstes SEPA-Mandat.
 
 Du musst jetzt beide Seiten des angehängten Dokuments unterschreiben und als eine Datei anstelle des regulären SEPA-Mandats im Anmeldesystem hochladen. Wenn du dann auch die restlichen Dokumente (Anmeldung, Medizinbogen, Fotoeinwilligung, usw.) hochgeladen hast, werden wir deine Anmeldung überprüfen - genau wie bei allen anderen Anmeldungen.
 
