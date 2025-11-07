@@ -745,6 +745,7 @@ def load_payment_dataframe_from_payment_initiation(
     payment_initiation_id: int,
     pedantic: bool = True,
     where: str = "",
+    report_amount_differences: bool = True,
 ) -> _pandas.DataFrame:
     import re
     import textwrap
@@ -881,18 +882,19 @@ WHERE
     )
 
     amount_changed_df = df[df["amount"] != df["pre_notified_amount"]]
-    if len(amount_changed_df):
-        for _, row in amount_changed_df.iterrows():
+    if report_amount_differences:
+        if len(amount_changed_df):
+            for _, row in amount_changed_df.iterrows():
+                _LOGGER.info(
+                    "amount different between pre notification and current computation for %s %s:\n%s",
+                    row["id"],
+                    row["full_name"],
+                    textwrap.indent(row.to_string(), "  | "),
+                )
+        else:
             _LOGGER.info(
-                "amount different between pre notification and current computation for %s %s:\n%s",
-                row["id"],
-                row["full_name"],
-                textwrap.indent(row.to_string(), "  | "),
+                "All due amounts are the same between pre notification and current computation"
             )
-    else:
-        _LOGGER.info(
-            "All due amounts are the same between pre notification and current computation"
-        )
 
     return df
 
