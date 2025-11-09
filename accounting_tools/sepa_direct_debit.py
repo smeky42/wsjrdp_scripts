@@ -86,7 +86,7 @@ def main(argv=None):
                 print(row.to_string())
                 raise RuntimeError("Invalid row: 'amount' value is not int or float")
 
-        _LOGGER.info("SUM(amount): %s EUR", sum_amount / 100)
+        _LOGGER.info("SUM(amount): %s", wsjrdp2027.format_cents_as_eur_de(sum_amount))
 
         wsjrdp2027.write_accounting_dataframe_to_sepa_dd(
             df,
@@ -117,7 +117,10 @@ def main(argv=None):
         "  Skipped payments DataFrame (payment_status != 'ok'):\n%s",
         textwrap.indent(str(df_not_ok), "  | "),
     )
-    _LOGGER.info("  SUM(amount): %s EUR", df_not_ok["amount"].sum() / 100)
+    _LOGGER.info(
+        "  SUM(amount): %s",
+        wsjrdp2027.format_cents_as_eur_de(df_not_ok["amount"].sum()),
+    )
 
     _LOGGER.info("")
     _LOGGER.info("==== Payments")
@@ -126,7 +129,9 @@ def main(argv=None):
         "  Payments DataFrame (payment_status == 'ok'):\n%s",
         textwrap.indent(str(df_ok), "  | "),
     )
-    _LOGGER.info("  SUM(amount): %s EUR", df_ok["amount"].sum() / 100)
+    _LOGGER.info(
+        "  SUM(amount): %s", wsjrdp2027.format_cents_as_eur_de(df_ok["amount"].sum())
+    )
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)
     _LOGGER.info("  SEPA XML: %s", xml_filename)
