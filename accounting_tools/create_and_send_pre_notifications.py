@@ -15,7 +15,7 @@ import wsjrdp2027
 _LOGGER = logging.getLogger(__name__)
 
 
-COLLECTION_DATE = datetime.date(2025, 11, 5)
+COLLECTION_DATE = datetime.date(2025, 12, 5)
 
 
 def parse_args(argv=None):
@@ -25,6 +25,8 @@ def parse_args(argv=None):
     if argv is None:
         argv = sys.argv
     p = argparse.ArgumentParser()
+    p.add_argument("--accounting", action="store_true", default=True)
+    p.add_argument("--no-accounting", dest="accounting", action="store_false")
     p.add_argument(
         "--email",
         action="store_true",
@@ -90,7 +92,7 @@ Betrag: {wsjrdp2027.format_cents_as_eur_de(row["amount"])}
 
 Kontoinhaber*in: {row["sepa_name"]}
 IBAN: {row["sepa_iban"]}
-Mandatsreferenz: {row["mandate_id"]}
+Mandatsreferenz: {row["sepa_mandate_id"]}
 Verwendungszweck: {row["sepa_dd_description"]}
 Kundenreferenz: {row["sepa_dd_endtoend_id"]}
 
@@ -143,6 +145,43 @@ def send_pre_notification_mails(
         )
 
 
+def insert_pre_notifications_into_db(
+    args,
+    *,
+    ctx: wsjrdp2027.WsjRdpContext,
+    df: pd.DataFrame,
+    sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig,
+) -> None:
+    if not args.accounting:
+        _LOGGER.info("")
+        _LOGGER.info("SKIP ACCOUNTING (--no-accounting given)")
+        _LOGGER.info("")
+        return
+
+    with ctx.psycopg_connect() as conn:
+        with conn.cursor() as cur:
+            pain_id = wsjrdp2027.insert_payment_initiation(
+                cursor=cur,
+                sepa_dd_config=sepa_dd_config,
+            )
+            _LOGGER.info("payment initiation id: %s", pain_id)
+            pymnt_inf_id = wsjrdp2027.insert_direct_debit_payment_info(
+                cur,
+                payment_initiation_id=pain_id,
+                sepa_dd_config=sepa_dd_config,
+            )
+            _LOGGER.info("direct debit payment info id: %s", pymnt_inf_id)
+
+            for _, row in df.iterrows():
+                wsjrdp2027.insert_direct_debit_pre_notification_from_row(
+                    cur,
+                    row=row,
+                    payment_initiation_id=pain_id,
+                    direct_debit_payment_info_id=pymnt_inf_id,
+                    creditor_id=wsjrdp2027.CREDITOR_ID,
+                )
+
+
 def main(argv=None):
     args = parse_args(argv=argv)
 
@@ -163,11 +202,11 @@ def main(argv=None):
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
-            early_payer=True,
+            # early_payer=True,
             pedantic=False,
             max_print_at=args.collection_date,
             collection_date=args.collection_date,
-            where="people.payment_role NOT LIKE '%::Unit::Leader'",
+            # where="people.payment_role NOT LIKE '%::Unit::Leader'",
         )
 
     df_ok = df[df["payment_status"] == "ok"]
@@ -210,6 +249,7 @@ def main(argv=None):
         wsjrdp2027.EARLY_PAYER_AUGUST_IDS_SUPERSET
     )
     overlapping_ids -= set([623, 671])  # fehlgeschalgene August Einzüge
+    overlapping_ids -= set([204, 208])  # Auf Ratenzahlung umgestellt
     if overlapping_ids:
         df_overlap = df_ok[df["id"].isin(overlapping_ids)]
         _LOGGER.error("")
@@ -242,34 +282,13 @@ def main(argv=None):
         "Do you want to store pre-notification data in the PRODUCTION Hitobito database?"
     )
 
-    with ctx.psycopg_connect() as conn:
-        with conn.cursor() as cur:
-            pain_id = wsjrdp2027.insert_payment_initiation(
-                cursor=cur,
-                sepa_dd_config=sepa_dd_config,
-            )
-            _LOGGER.info("payment initiation id: %s", pain_id)
-            pymnt_inf_id = wsjrdp2027.insert_direct_debit_payment_info(
-                cur,
-                payment_initiation_id=pain_id,
-                sepa_dd_config=sepa_dd_config,
-            )
-            _LOGGER.info("direct debit payment info id: %s", pymnt_inf_id)
-
-            for _, row in df_ok.iterrows():
-                wsjrdp2027.insert_direct_debit_pre_notification_from_row(
-                    cur,
-                    row=row,
-                    payment_initiation_id=pain_id,
-                    direct_debit_payment_info_id=pymnt_inf_id,
-                    creditor_id=wsjrdp2027.CREDITOR_ID,
-                )
+    insert_pre_notifications_into_db(
+        args, ctx=ctx, df=df_ok, sepa_dd_config=sepa_dd_config
+    )
 
     ctx.require_approval_to_send_email_in_prod()
     with ctx.smtp_login() as smtp_client:
-        send_pre_notification_mails(
-            args, ctx=ctx, smtp_client=smtp_client, df=df_ok
-        )
+        send_pre_notification_mails(args, ctx=ctx, smtp_client=smtp_client, df=df_ok)
 
     _LOGGER.info("")
     _LOGGER.info(

@@ -27,6 +27,97 @@ _STATUS_TO_DE = {
     "deregistered": "Abgemeldet",
 }
 
+PEOPLE_DATAFRAME_COLUMNS = [
+    "id",
+    "status",
+    "status_de",
+    "first_name",
+    "last_name",
+    "short_first_name",
+    "nickname",
+    "greeting_name",
+    "full_name",
+    "short_full_name",
+    "street",
+    "housenumber",
+    "town",
+    "zip_code",
+    "country",
+    "longitude",
+    "latitude",
+    "email",
+    "birthday",
+    "birthday_de",
+    "age",
+    "gender",
+    "primary_group_id",
+    #
+    "rdp_association",
+    "rdp_association_region",
+    "rdp_association_sub_region",
+    "rdp_association_group",
+    "additional_contact_name_a",
+    "additional_contact_adress_a",
+    "additional_contact_email_a",
+    "additional_contact_phone_a",
+    "additional_contact_name_b",
+    "additional_contact_adress_b",
+    "additional_contact_email_b",
+    "additional_contact_phone_b",
+    "additional_contact_single",
+    "tags",
+    "mailing_from",
+    "mailing_to",
+    "mailing_cc",
+    "mailing_bcc",
+    "mailing_reply_to",
+    "created_at",
+    "updated_at",
+    "print_at",
+    "contract_upload_at",
+    "complete_document_upload_at",
+    "today",
+    "today_de",
+    #
+    "fee_rule_id",
+    "fee_rule_status",
+    "payment_role",
+    "early_payer",
+    "sepa_name",
+    "sepa_mail",
+    "sepa_address",
+    "sepa_mailing_from",
+    "sepa_mailing_to",
+    "sepa_mailing_cc",
+    "sepa_mailing_bcc",
+    "sepa_mailing_reply_to",
+    "sepa_iban",
+    "sepa_bic",
+    "sepa_bic_status",
+    "sepa_bic_status_reason",
+    "sepa_status",
+    "collection_date",
+    "sepa_mandate_id",
+    "sepa_mandate_date",
+    "sepa_dd_sequence_type",
+    "accounting_entries_count",
+    "accounting_entries_amounts_cents",
+    "regular_full_fee_cents",
+    "total_fee_cents",
+    "total_fee_reduction_comment",
+    "total_fee_reduction_cents",
+    "installments_cents_dict",
+    "installments_cents_sum",
+    "custom_installments_comment",
+    "custom_installments_issue",
+    "pre_notified_amount",
+    "amount_paid",
+    "amount_due",
+    "amount",
+    "payment_status_reason",
+    "payment_status",
+]
+
 
 def sepa_mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:
     return f"wsjrdp2027{hitobito_id}"
@@ -98,6 +189,17 @@ def compute_installments_cents_from_row(
         }
 
 
+def _sepa_dd_sequence_type_from_row(row) -> str:
+    # FRST, RCUR, OOFF, FNAL
+    if row["early_payer"]:
+        return "OOFF"
+    else:
+        # It seems that it is OK to always use RCUR for recurring
+        # payments, even if FRST or FNAL would be somewhat more
+        # correct.
+        return "RCUR"
+
+
 def fetch_id2fee_rules(
     conn: _psycopg.Connection,
     fee_rules: str | _collections_abc.Iterable[str] = "active",
@@ -157,10 +259,13 @@ def load_people_dataframe(
     where: str = "",
     group_by: str = "",
     status: str | _collections_abc.Iterable[str] | None = None,
+    early_payer: bool | None = None,
+    sepa_status: str | _collections_abc.Iterable[str] | None = None,
     fee_rules: str | _collections_abc.Iterable[str] = "active",
     exclude_deregistered: bool = True,
     log_resulting_data_frame: bool = True,
     today: _datetime.date | str | None = None,
+    collection_date: _datetime.date | str | None = None,
     print_at: _datetime.date | str | None = None,
 ) -> _pandas.DataFrame:
     import re
@@ -172,8 +277,9 @@ def load_people_dataframe(
     from . import _util
     from ._payment_role import PaymentRole
 
-    today = _datetime.date.today() if today is None else _util.to_date(today)
-    print_at = None if print_at is None else _util.to_date(print_at)
+    today = _util.to_date(today) or _datetime.date.today()
+    print_at = _util.to_date(print_at)
+    collection_date = _util.to_date(collection_date) or collection_date
 
     if extra_cols is not None:
         if isinstance(extra_cols, str):
@@ -191,6 +297,17 @@ def load_people_dataframe(
         where = _util.combine_where(
             where, "people.status NOT IN ('deregistration_noted', 'deregistered')"
         )
+    if early_payer is not None:
+        if early_payer:
+            where = _util.combine_where(where, "people.early_payer = TRUE")
+        else:
+            where = _util.combine_where(
+                where, "(people.early_payer = FALSE OR people.early_payer IS NULL)"
+            )
+    if sepa_status is not None:
+        where = _util.combine_where(
+            where, _util.in_expr("COALESCE(people.sepa_status, 'ok')", sepa_status)
+        )
 
     where_clause = f"WHERE {where}" if where else ""
     group_by_clause = f"GROUP BY {group_by}" if group_by else ""
@@ -198,18 +315,25 @@ def load_people_dataframe(
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
         sql_stmt = f"""
 SELECT
-  people.id, people.primary_group_id,
+  people.id,
+  people.primary_group_id,
+  people.created_at,
+  people.updated_at,
   people.print_at,
+  people.contract_upload_at,
+  people.complete_document_upload_at,
   people.status,
   people.first_name, people.last_name, people.nickname,
   people.birthday,
   people.email,
   people.street, people.housenumber, people.town, people.zip_code, people.country,
+  people.longitude,
+  people.latitude,
+  people.gender,
   people.rdp_association,
   people.rdp_association_region,
   people.rdp_association_sub_region,
   people.rdp_association_group,
-  people.longitude, people.latitude,
   people.additional_contact_name_a,
   people.additional_contact_adress_a,
   people.additional_contact_email_a,
@@ -233,7 +357,11 @@ SELECT
       AND taggings.taggable_type = 'Person'
     WHERE taggings.taggable_id = people.id
   ) AS tags,
-  people.gender,
+  ARRAY(
+    SELECT COALESCE(e.amount_cents, 0)
+    FROM accounting_entries AS e
+    WHERE e.subject_type = 'Person' AND e.subject_id = people."id" AND COALESCE(e.amount_currency, 'EUR') = 'EUR'
+  ) AS accounting_entries_amounts_cents,
   people.payment_role,
   COALESCE(people.sepa_status, 'ok') AS sepa_status,
   people.sepa_name,
@@ -267,8 +395,11 @@ ORDER BY people.id
     df["age"] = df["birthday"].map(
         lambda bday: _util.compute_age(bday, today) if bday is not None else None
     )
+    df["mailing_from"] = "anmeldung@worldscoutjamboree.de"
     df["mailing_to"] = df["email"].map(lambda s: ([s] if s else None))
     df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)
+    df["mailing_bcc"] = None
+    df["mailing_reply_to"] = df["id"].map(lambda _: ["info@worldscoutjamboree.de"])
     df["sepa_mailing_from"] = "anmeldung@worldscoutjamboree.de"
     df["sepa_mailing_to"] = df["sepa_mail"].map(lambda s: [s] if s else None)
     df["sepa_mailing_cc"] = df.apply(row_to_sepa_cc, axis=1)
@@ -276,6 +407,8 @@ ORDER BY people.id
     df["sepa_mailing_reply_to"] = df["id"].map(lambda _: ["info@worldscoutjamboree.de"])
 
     df["sepa_mandate_id"] = df["id"].map(sepa_mandate_id_from_hitobito_id)
+    df["sepa_mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
+
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
     df["payment_role"] = df["payment_role"].map(lambda s: PaymentRole(s) if s else None)  # fmt: skip
     df["regular_full_fee_cents"] = df["payment_role"].map(lambda p: (p.regular_full_fee_cents if p else None))  # fmt: skip
@@ -294,11 +427,16 @@ ORDER BY people.id
     col_from_fee_rules("custom_installments_comment")
     col_from_fee_rules("custom_installments_issue")
     col_from_fee_rules("custom_installments_sum_cents")
-    df["installments_cents"] = df.apply(lambda row: compute_installments_cents_from_row(row, id2fee_rules), axis=1)  # fmt: skip
+    df["installments_cents_dict"] = df.apply(lambda row: compute_installments_cents_from_row(row, id2fee_rules), axis=1)  # fmt: skip
+    df["installments_cents_sum"] = df["installments_cents_dict"].map(
+        lambda d: sum(d.values())
+    )
     col_from_fee_rules("total_fee_reduction_cents", f=lambda val: val or 0)
     col_from_fee_rules("total_fee_reduction_comment")
-
     df["total_fee_cents"] = df.apply(lambda r: r["regular_full_fee_cents"] - r["total_fee_reduction_cents"], axis=1)  # fmt: skip
+    df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
+    df["amount_paid"] = df["accounting_entries_amounts_cents"].map(sum)
+    df["sepa_dd_sequence_type"] = df.apply(_sepa_dd_sequence_type_from_row, axis=1)
 
     df["status_de"] = df["status"].map(_STATUS_TO_DE.get)
     df["short_first_name"] = df.apply(find_short_first_name, axis=1)
@@ -308,9 +446,49 @@ ORDER BY people.id
     df["full_name"] = df["first_name"] + " " + df["last_name"]
     df["short_full_name"] = df["short_first_name"] + " " + df["last_name"]
 
+    assert_all_people_rows_consistent(df)
+    df.drop(
+        columns=[
+            "additional_emails_for_mailings",
+            "custom_installments_sum_cents",
+        ],
+        inplace=True,
+    )
+    if not (set(df) <= set(PEOPLE_DATAFRAME_COLUMNS)):
+        warn_msg = "Some columns of the resulting dataframe are not listed in PEOPLE_DATAFRAME_COLUMNS"
+        for col_name in list(df):
+            if col_name not in PEOPLE_DATAFRAME_COLUMNS:
+                warn_msg += (
+                    f'\n  column "{col_name}" not present in PEOPLE_DATAFRAME_COLUMNS'
+                )
+        _LOGGER.warning(warn_msg)
+    df = df.reindex(columns=PEOPLE_DATAFRAME_COLUMNS)
+
     if log_resulting_data_frame:
         _LOGGER.info("Resulting pandas DataFrame:\n%s", textwrap.indent(str(df), "  "))
     return df
+
+
+def assert_all_people_rows_consistent(df: _pandas.DataFrame) -> None:
+    import textwrap
+
+    inconsistent_ids_set = set()
+    for _, row in df.iterrows():
+        if row["installments_cents_sum"] != row["total_fee_cents"]:
+            inconsistent_ids_set.add(row["id"])
+            _LOGGER.debug(
+                "Inconsistent row:\n%s",
+                textwrap.indent(row.to_string(), "    | "),
+            )
+    inconsistent_ids = sorted(inconsistent_ids_set)
+    inconsistent_df = df[df["id"].isin(inconsistent_ids_set)]
+    if inconsistent_ids:
+        err_msg = (
+            f"Found {len(inconsistent_ids)} inconsistent rows:\n"
+            + textwrap.indent(str(inconsistent_df), "  | ")
+        )
+        _LOGGER.error("%s", err_msg)
+        raise RuntimeError(err_msg)
 
 
 def write_people_dataframe_to_xlsx(

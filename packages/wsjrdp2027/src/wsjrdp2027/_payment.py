@@ -43,17 +43,55 @@ DB_PEOPLE_ALL_SEPA_STATUS = [
 
 PAYMENT_DATAFRAME_COLUMNS = [
     "id",
-    "primary_group_id",
+    "status",
+    "status_de",
     "first_name",
     "last_name",
-    "status",
     "short_first_name",
     "nickname",
     "greeting_name",
     "full_name",
     "short_full_name",
+    "street",
+    "housenumber",
+    "town",
+    "zip_code",
+    "country",
+    "longitude",
+    "latitude",
     "email",
+    "birthday",
+    "age",
     "gender",
+    "primary_group_id",
+    #
+    "rdp_association",
+    "rdp_association_region",
+    "rdp_association_sub_region",
+    "rdp_association_group",
+    "additional_contact_name_a",
+    "additional_contact_adress_a",
+    "additional_contact_email_a",
+    "additional_contact_phone_a",
+    "additional_contact_name_b",
+    "additional_contact_adress_b",
+    "additional_contact_email_b",
+    "additional_contact_phone_b",
+    "additional_contact_single",
+    "tags",
+    "mailing_from",
+    "mailing_to",
+    "mailing_cc",
+    "mailing_bcc",
+    "mailing_reply_to",
+    "created_at",
+    "updated_at",
+    "print_at",
+    "contract_upload_at",
+    "complete_document_upload_at",
+    #
+    "fee_rule_id",
+    "fee_rule_status",
     "payment_role",
     "early_payer",
     "sepa_name",
@@ -69,10 +107,9 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "sepa_bic_status",
     "sepa_bic_status_reason",
     "sepa_status",
-    "print_at",
     "collection_date",
-    "mandate_id",
-    "mandate_date",
+    "sepa_mandate_id",
+    "sepa_mandate_date",
     "sepa_dd_sequence_type",
     "sepa_dd_description",
     "sepa_dd_endtoend_id",
@@ -90,6 +127,9 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "total_fee_cents",
     "total_fee_reduction_comment",
     "total_fee_reduction_cents",
+    "installments_cents",
+    "custom_installments_comment",
+    "custom_installments_issue",
     "pre_notified_amount",
     "amount_paid",
     "amount_due",
@@ -113,16 +153,6 @@ def enrich_people_dataframe_for_payments(
     import datetime
 
     from ._util import to_date
-
-    def dd_type_from_row(row) -> str:
-        # FRST, RCUR, OOFF, FNAL
-        if row["early_payer"] or row["amount_due"] == 0:
-            return "OOFF"
-        else:
-            # It seems that it is OK to always use RCUR for recurring
-            # payments, even if FRST or FNAL would be somewhat more
-            # correct.
-            return "RCUR"
 
     def dd_description_from_row(row) -> str:
         prefix = "WSJ 2027"
@@ -176,16 +206,11 @@ def enrich_people_dataframe_for_payments(
     df["sepa_bic_status_reason"] = ""
 
     df["collection_date"] = collection_date
-    df["mandate_id"] = df["id"].map(mandate_id_from_hitobito_id)
-    df["mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
 
-    df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
-    df["amount_paid"] = df["accounting_entries_amounts_cents"].map(lambda amounts: sum(amounts))  # fmt: skip
     df["amount_due"] = df.apply(compute_total_fee_due, axis=1)
     df["amount"] = df.apply(
         lambda row: max(row["amount_due"] - row["amount_paid"], 0), axis=1
     )
-    df["sepa_dd_sequence_type"] = df.apply(dd_type_from_row, axis=1)
     df["sepa_dd_description"] = df.apply(dd_description_from_row, axis=1)
     df["sepa_dd_endtoend_id"] = df.apply(
         lambda row: dd_endtoend_id_from_row(row, endtoend_ids=endtoend_ids), axis=1
@@ -250,7 +275,7 @@ def fee_due_by_date_in_cent_from_plan(
 
 
 def compute_total_fee_due(row) -> int:
-    installments_cents = row["installments_cents"]
+    installments_cents = row["installments_cents_dict"]
     collection_date: _datetime.date = row["collection_date"]
     if installments_cents is None:
         return 0
@@ -383,9 +408,12 @@ def insert_accounting_entry(
         ("amount_cents", int(amount)),
         ("description", description),
         ("created_at", created_at),
-        ("payment_initiation_id", payment_initiation_id),
-        ("direct_debit_payment_info_id", direct_debit_payment_info_id),
-        ("direct_debit_pre_notification_id", direct_debit_pre_notification_id),
+        ("payment_initiation_id", to_int_or_none(payment_initiation_id)),
+        ("direct_debit_payment_info_id", to_int_or_none(direct_debit_payment_info_id)),
+        (
+            "direct_debit_pre_notification_id",
+            to_int_or_none(direct_debit_pre_notification_id),
+        ),
         ("end_to_end_identifier", end_to_end_identifier),
         ("mandate_id", mandate_id),
         ("mandate_date", _util.to_date(mandate_date)),
@@ -419,8 +447,8 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
         direct_debit_pre_notification_id=row.get("sepa_dd_pre_notification_id"),
         end_to_end_identifier=row.get("sepa_dd_endtoend_id"),
         debit_sequence_type=row.get("sepa_dd_sequence_type"),
-        mandate_id=row.get("mandate_id"),
-        mandate_date=row.get("mandate_date"),
+        mandate_id=row.get("sepa_mandate_id"),
+        mandate_date=row.get("sepa_mandate_date"),
         value_date=row.get("collection_date"),
     )
 
@@ -506,7 +534,7 @@ def insert_direct_debit_payment_info(
     cols_vals = [
         ("created_at", _util.to_datetime(created_at)),
         ("updated_at", _util.to_datetime(updated_at)),
-        ("payment_initiation_id", payment_initiation_id),
+        ("payment_initiation_id", to_int_or_none(payment_initiation_id)),
         ("payment_information_identification", payment_information_identification),
         ("batch_booking", batch_booking),
         ("number_of_transactions", number_of_transactions),
@@ -573,8 +601,8 @@ def insert_direct_debit_pre_notification(
     cols_vals = [
         ("created_at", _util.to_datetime(created_at)),
         ("updated_at", _util.to_datetime(updated_at)),
-        ("payment_initiation_id", payment_initiation_id),
-        ("direct_debit_payment_info_id", direct_debit_payment_info_id),
+        ("payment_initiation_id", to_int_or_none(payment_initiation_id)),
+        ("direct_debit_payment_info_id", to_int_or_none(direct_debit_payment_info_id)),
         ("subject_id", subject_id),
         ("subject_type", subject_type),
         ("author_id", author_id),
@@ -644,8 +672,8 @@ def insert_direct_debit_pre_notification_from_row(
         amount_cents=row["amount"],
         sequence_type=row["sepa_dd_sequence_type"],
         collection_date=row["collection_date"],
-        mandate_id=row["mandate_id"],
-        mandate_date=_util.to_date(row["mandate_date"]),
+        mandate_id=row["sepa_mandate_id"],
+        mandate_date=_util.to_date(row["sepa_mandate_date"]),
         description=row["sepa_dd_description"],
         endtoend_id=row["sepa_dd_endtoend_id"],
         payment_role=row["payment_role"],
@@ -918,16 +946,6 @@ def load_payment_dataframe(
 
     from . import _people, _util
 
-    where = _util.combine_where(
-        where, _util.in_expr("COALESCE(people.sepa_status, 'ok')", sepa_status)
-    )
-    if early_payer is not None:
-        if early_payer:
-            where = _util.combine_where(where, "people.early_payer = TRUE")
-        else:
-            where = _util.combine_where(
-                where, "(people.early_payer = FALSE OR people.early_payer IS NULL)"
-            )
     if max_print_at is not None:
         where = _util.combine_where(
             where, f"people.print_at <= '{_util.to_date(max_print_at).isoformat()}'"
@@ -936,17 +954,13 @@ def load_payment_dataframe(
     df = _people.load_people_dataframe(
         conn,
         where=where,
-        extra_cols=[
-            """ARRAY(
-    SELECT COALESCE(e.amount_cents, 0)
-    FROM accounting_entries AS e
-    WHERE e.subject_type = 'Person' AND e.subject_id = people."id" AND e.amount_currency = 'EUR'
-  ) AS accounting_entries_amounts_cents""",
-        ],
         status=status,
+        early_payer=early_payer,
+        sepa_status=sepa_status,
         fee_rules=fee_rules,
         log_resulting_data_frame=False,
         today=today,
+        collection_date=collection_date,
     )
 
     collection_date = _util.to_date(collection_date)

@@ -217,7 +217,7 @@ def installments_replacements_from_row(row: pd.Series, keys) -> dict[str, str]:
         return wsjrdp2027.format_cents_as_eur_de(cents, zero_cents="")
 
     keys_set = set(keys)
-    installments_cents = row["installments_cents"]
+    installments_cents = row["installments_cents_dict"]
     replacements = {
         key: to_eur(cents)
         for (year, month), cents in installments_cents.items()
@@ -274,7 +274,7 @@ def create_special_agreement(
     )
     issue = row["custom_installments_issue"]
     total_fee_cents = row["total_fee_cents"]
-    installments_cents = row["installments_cents"]
+    installments_cents = row["installments_cents_dict"]
     sum_installments_cents = sum((installments_cents or {}).values())
     if total_fee_cents != sum_installments_cents:
         err_msg = f"""Raten ergeben nicht zu zahlenden Betrag:

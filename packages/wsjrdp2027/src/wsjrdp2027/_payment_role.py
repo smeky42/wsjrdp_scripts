@@ -271,6 +271,8 @@ class PaymentRole(_enum.Enum):
             start_of_next_month = (
                 single_payment_at.replace(day=1) + _datetime.timedelta(days=32)
             ).replace(day=1)
+            if start_of_next_month.year == 2025 and start_of_next_month.month == 12:
+                start_of_next_month = start_of_next_month.replace(year=2026, month=1)
             return {
                 (
                     start_of_next_month.year,

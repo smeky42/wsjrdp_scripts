@@ -108,8 +108,8 @@ class SepaDirectDebit:
             "amount": row["amount"],
             "type": row.get("sepa_dd_sequence_type", "OOFF"),  # FRST,RCUR,OOFF,FNAL
             "collection_date": row["collection_date"],
-            "mandate_id": row["mandate_id"],
-            "mandate_date": row["mandate_date"],
+            "mandate_id": row["sepa_mandate_id"],
+            "mandate_date": row["sepa_mandate_date"],
             "description": row["sepa_dd_description"],
         }
         if endtoend_id := row.get("sepa_dd_endtoend_id"):
