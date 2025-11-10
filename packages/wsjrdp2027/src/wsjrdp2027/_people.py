@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections.abc as _collections_abc
+import dataclasses as _dataclasses
 import datetime as _datetime
 import logging as _logging
 import typing as _typing
@@ -11,6 +12,8 @@ if _typing.TYPE_CHECKING:
 
     import pandas as _pandas
     import psycopg as _psycopg
+
+    from . import _role
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -117,6 +120,41 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "payment_status_reason",
     "payment_status",
 ]
+
+
+@_dataclasses.dataclass(kw_only=True)
+class SelectPeopleConfig:
+    exclude_deregistered: bool = True
+    roles: tuple[_role.WsjRole] | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict | None, /) -> _typing.Self:
+        from . import _role
+
+        d = d.copy() if d else {}
+        roles = d.setdefault("roles", None)
+        if isinstance(roles, (str, _role.WsjRole)):
+            roles = [roles]
+        if roles is not None:
+            d["roles"] = tuple(_role.WsjRole.from_any(r) for r in roles)
+        return cls(**d)
+
+    def as_where_condition(self, *, people_table: str = "people") -> str:
+        from ._util import combine_where, in_expr
+
+        where = ""
+        if self.exclude_deregistered:
+            where = combine_where(
+                where, "people.status NOT IN ('deregistration_noted', 'deregistered')"
+            )
+        if self.roles is not None:
+            payment_roles = []
+            for role in self.roles:
+                payment_roles.extend(
+                    [role.regular_payer_payment_role, role.early_payer_payment_role]
+                )
+            where = combine_where(where, in_expr("people.payment_role", payment_roles))
+        return where
 
 
 def sepa_mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:
@@ -256,7 +294,7 @@ def load_people_dataframe(
     *,
     extra_cols: str | list[str] | None = None,
     join: str = "",
-    where: str = "",
+    where: str | SelectPeopleConfig | None = "",
     group_by: str = "",
     status: str | _collections_abc.Iterable[str] | None = None,
     early_payer: bool | None = None,
@@ -289,6 +327,11 @@ def load_people_dataframe(
     extra_cols_clause = f",\n  {extra_cols}" if extra_cols else ""
 
     join_clause = join
+
+    if where is None:
+        where = ""
+    elif isinstance(where, SelectPeopleConfig):
+        where = where.as_where_condition(people_table="people")
 
     status = _util.to_str_list(status)
     if status is not None:

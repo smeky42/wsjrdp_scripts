@@ -365,6 +365,8 @@ def render_template(
     *,
     extra_context: dict | None = None,
     extra_filters: dict[str, _typing.Callable] | None = None,
+    trim_blocks: bool = False,
+    lstrip_blocks: bool = False,
 ) -> str:
     """Render the Jinja2 *template* using *vars*.
 
@@ -403,7 +405,11 @@ def render_template(
     def _isoformat(dt: _datetime.datetime, sep=" ", timespec="seconds") -> str:
         return dt.isoformat(sep=sep, timespec=timespec)
 
-    jinja_env = _jinja2.Environment(undefined=_jinja2.StrictUndefined)
+    jinja_env = _jinja2.Environment(
+        undefined=_jinja2.StrictUndefined,
+        trim_blocks=trim_blocks,
+        lstrip_blocks=lstrip_blocks,
+    )
     jinja_env.filters["strftime"] = _strftime
     jinja_env.filters["isoformat"] = _isoformat
     jinja_env.filters["to_ext"] = lambda s: f".{s}" if s else ""
