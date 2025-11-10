@@ -4,6 +4,11 @@ from ._context import (
     WsjRdpContext as WsjRdpContext,
     WsjRdpContextConfig as WsjRdpContextConfig,
 )
+from ._mailing import (
+    MailingConfig as MailingConfig,
+    PreparedMailing as PreparedMailing,
+    send_mailings as send_mailings,
+)
 from ._payment import (
     DB_PEOPLE_ALL_SEPA_STATUS as DB_PEOPLE_ALL_SEPA_STATUS,
     DB_PEOPLE_ALL_STATUS as DB_PEOPLE_ALL_STATUS,
@@ -54,7 +59,9 @@ __all__ = [
     "WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG",
     "WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG",
     #
+    "MailingConfig",
     "PaymentRole",
+    "PreparedMailing",
     "SepaDirectDebit",
     "SepaDirectDebitConfig",
     "SepaDirectDebitPayment",
@@ -73,6 +80,7 @@ __all__ = [
     "load_payment_dataframe_from_payment_initiation",
     "load_people_dataframe",
     "mandate_id_from_hitobito_id",
+    "send_mailings",
     "to_date",
     "to_datetime",
     "write_accounting_dataframe_to_sepa_dd",
