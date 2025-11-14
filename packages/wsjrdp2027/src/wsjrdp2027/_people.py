@@ -519,8 +519,8 @@ def assert_all_people_rows_consistent(df: _pandas.DataFrame) -> None:
     for _, row in df.iterrows():
         if row["installments_cents_sum"] != row["total_fee_cents"]:
             inconsistent_ids_set.add(row["id"])
-            _LOGGER.debug(
-                "Inconsistent row:\n%s",
+            _LOGGER.info(
+                "Inconsistent row (installments_cents_sum != total_fee_cents):\n%s",
                 textwrap.indent(row.to_string(), "    | "),
             )
     inconsistent_ids = sorted(inconsistent_ids_set)
