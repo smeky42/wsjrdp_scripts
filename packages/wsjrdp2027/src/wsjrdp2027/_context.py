@@ -293,6 +293,10 @@ class WsjRdpContext:
     def out_dir(self) -> _pathlib.Path:
         return self._out_dir
 
+    @out_dir.setter
+    def out_dir(self, value: str | _pathlib.Path | None) -> None:
+        self._out_dir = self._determine_out_dir(value)
+
     @property
     def relative_out_dir(self) -> _pathlib.Path:
         import pathlib as _pathlib

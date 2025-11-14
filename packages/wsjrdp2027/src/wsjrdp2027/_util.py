@@ -279,6 +279,8 @@ def to_datetime(
     elif isinstance(dt, str):
         if dt.upper() == "NOW":
             return datetime.datetime.now(tz=datetime.timezone.utc)
+        elif dt.upper() == "TODAY":
+            return date_to_datetime(to_date("TODAY"))
         elif re.fullmatch("[0-9]+", dt):
             return datetime.datetime.fromtimestamp(int(dt), tz=datetime.timezone.utc)
         elif re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", dt):
