@@ -1375,6 +1375,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "schwifty" },
     { name = "sshtunnel" },
+    { name = "typst" },
 ]
 
 [package.dev-dependencies]
@@ -1395,6 +1396,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "schwifty", specifier = ">=2025.7.0" },
     { name = "sshtunnel", specifier = ">=0.4.0" },
+    { name = "typst", specifier = ">=0.14" },
 ]
 
 [package.metadata.requires-dev]
