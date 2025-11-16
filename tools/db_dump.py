@@ -8,6 +8,7 @@ import sys
 
 import wsjrdp2027
 
+
 _FORMAT_TO_EXT = {
     "p": ".sql",
     "plain": ".sql",
@@ -22,6 +23,12 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv
     p = argparse.ArgumentParser()
+    p.add_argument(
+        "--column-inserts",
+        action="store_true",
+        default=False,
+        help="Dump data as INSERT commands with explicit column names. Restoration will be very slow.",
+    )
     p.add_argument(
         "--format",
         help="Selects the format of the output",
@@ -42,7 +49,7 @@ def main(argv=None):
         if ext := _FORMAT_TO_EXT.get(args.format, ""):
             dump_path = dump_path.with_name(dump_path.name + ext)
 
-    ctx.pg_dump(dump_path=dump_path, format=args.format)
+    ctx.pg_dump(dump_path=dump_path, format=args.format, column_inserts=args.column_inserts)
 
 
 if __name__ == "__main__":

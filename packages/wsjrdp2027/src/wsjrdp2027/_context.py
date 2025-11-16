@@ -437,6 +437,7 @@ class WsjRdpContext:
         format: _typing.Literal[
             "p", "plain", "c", "custom", "d", "directory", "t", "tar"
         ] = "plain",
+        column_inserts: bool = False,
     ) -> None:
         import contextlib
         import os as _os
@@ -478,6 +479,8 @@ class WsjRdpContext:
                 f"--format={format}",
                 f"--file={rel_dump_path}",
             ]
+            if column_inserts:
+                pg_dump_cmd.append("--column-inserts")
             pg_dump_cmd_str = " ".join(shlex.quote(a) for a in pg_dump_cmd)
 
             _LOGGER.info(
