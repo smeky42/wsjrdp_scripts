@@ -181,8 +181,6 @@ def create_cancellation_request(
 ) -> None:
     import json
 
-    import typst
-
     id = row["id"]
     short_full_name = row["short_full_name"]
     full_name = row["full_name"]
@@ -211,10 +209,9 @@ def create_cancellation_request(
 
     names = get_names_from_row(row)
 
-    typst.compile(
+    wsjrdp2027.typst_compile(
         SELFDIR / "cancellation_request.typ",
         output=pdf_path,
-        font_paths=[SELFDIR / "Montserrat" / "static"],
         sys_inputs={
             "hitobitoid": str(row["id"]),
             "full_name": full_name,

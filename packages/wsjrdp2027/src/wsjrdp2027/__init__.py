@@ -38,6 +38,10 @@ from ._sepa_direct_debit import (
     SepaDirectDebitPayment as SepaDirectDebitPayment,
     write_accounting_dataframe_to_sepa_dd as write_accounting_dataframe_to_sepa_dd,
 )
+from ._typst import (
+    get_typst_font_paths as get_typst_font_paths,
+    typst_compile as typst_compile,
+)
 from ._util import (
     configure_file_logging as configure_file_logging,
     console_confirm as console_confirm,
@@ -72,6 +76,7 @@ __all__ = [
     "console_confirm",
     "create_dir",
     "format_cents_as_eur_de",
+    "get_typst_font_paths",
     "insert_direct_debit_payment_info",
     "insert_direct_debit_pre_notification",
     "insert_direct_debit_pre_notification_from_row",
@@ -85,6 +90,7 @@ __all__ = [
     "send_mailings",
     "to_date",
     "to_datetime",
+    "typst_compile",
     "write_accounting_dataframe_to_sepa_dd",
     "write_dataframe_to_xlsx",
     "write_payment_dataframe_to_db",
