@@ -41,7 +41,8 @@ class PreparedMailing:
     name: str = "mailing"
     df: _pandas.DataFrame
     messages: tuple[PreparedEmailMessage, ...] = ()
-    config_yaml: str | None
+    action_arguments: dict = _dataclasses.field(default_factory=lambda: {})
+    config_yaml: bytes | None
     out_dir: _pathlib.Path | None = None
 
 
@@ -55,7 +56,9 @@ class MailingConfig:
     content: str = ""
     name: str = "mailing"
     summary: str = "To: {{msg.To}}; Cc: {{msg.Cc}}"
-    raw_yaml: str | None = None
+
+    action_arguments: dict = _dataclasses.field(default_factory=lambda: {})
+    raw_yaml: bytes | None = None
 
     @classmethod
     def from_yaml(cls, path: str | _pathlib.Path) -> _typing.Self:
@@ -67,7 +70,7 @@ class MailingConfig:
 
         with open(path, "r", encoding="utf-8") as f:
             config = _yaml.load(f, Loader=_yaml.FullLoader)
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "rb") as f:
             config["raw_yaml"] = f.read()
 
         _LOGGER.info("Read mailing config %s", path)
@@ -102,12 +105,22 @@ class MailingConfig:
         ctx: _wsjrdp2027.WsjRdpContext,
         conn: _psycopg.Connection | None = None,
     ) -> PreparedMailing:
+        import time
+
         df = self.load_people_dataframe(ctx=ctx, conn=conn)
+        _LOGGER.info("Prepare mailing...")
+        tic = time.monotonic()
         messages = tuple(
             self.prepare_email_message_for_row(row) for _, row in df.iterrows()
         )
+        toc = time.monotonic()
+        _LOGGER.info("  finished preperation of mailing (%g seconds)", toc - tic)
         return PreparedMailing(
-            name=self.name, df=df, messages=messages, config_yaml=self.raw_yaml
+            name=self.name,
+            df=df,
+            messages=messages,
+            config_yaml=self.raw_yaml,
+            action_arguments=self.action_arguments,
         )
 
     def prepare_email_message_for_row(
@@ -204,7 +217,7 @@ def email_message_from_row(
 def send_mailings(
     ctx: _wsjrdp2027.WsjRdpContext,
     *,
-    mailings: _collections_abc.Iterable[PreparedMailing],
+    mailings: PreparedMailing | _collections_abc.Iterable[PreparedMailing],
     send_message: bool = True,
     out_dir: str | _pathlib.Path | None = None,
 ) -> None:
@@ -213,7 +226,10 @@ def send_mailings(
 
     import wsjrdp2027
 
-    mailings = list(mailings)
+    if isinstance(mailings, PreparedMailing):
+        mailings = [mailings]
+    else:
+        mailings = list(mailings)
 
     out_dir = _pathlib.Path(out_dir or ctx.out_dir or "data/mailings")
     num_messages = sum(len(m.messages) for m in mailings)
@@ -239,7 +255,7 @@ def send_mailings(
         wsjrdp2027.write_people_dataframe_to_xlsx(mailing.df, xlsx_path)
         _LOGGER.info("  wrote xlsx %s", eml_zip_path)
         if mailing.config_yaml:
-            with open(yml_path, "w", encoding="utf-8", newline="\n") as f:
+            with open(yml_path, "wb") as f:
                 f.write(mailing.config_yaml)
             _LOGGER.info("  wrote yml %s", yml_path)
 

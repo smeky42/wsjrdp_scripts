@@ -125,18 +125,42 @@ PEOPLE_DATAFRAME_COLUMNS = [
 @_dataclasses.dataclass(kw_only=True)
 class SelectPeopleConfig:
     exclude_deregistered: bool = True
-    roles: tuple[_role.WsjRole] | None = None
+    role: tuple[_role.WsjRole, ...] | None = None
+    status: _collections_abc.Sequence[str] | None = None
+    id: _collections_abc.Sequence[int] | None = None
+    primary_group_id: _collections_abc.Sequence[int] | None = None
+
+    def __init__(
+        self,
+        *,
+        role: str
+        | _role.WsjRole
+        | _collections_abc.Iterable[str | _role.WsjRole]
+        | None = None,
+        status: str | _collections_abc.Iterable[str] | None = None,
+        id: str | int | _collections_abc.Iterable[str | int] | None = None,
+        primary_group_id: str
+        | int
+        | _collections_abc.Sequence[str | int]
+        | None = None,
+    ) -> None:
+        from . import _role, _util
+
+        if role is not None:
+            if isinstance(role, (str, _role.WsjRole)):
+                self.role = (_role.WsjRole.from_any(role),)
+            else:
+                self.role = tuple(_role.WsjRole.from_any(r) for r in role)
+        if status is not None:
+            self.status = _util.to_str_list(status)
+        if id is not None:
+            self.id = _util.to_int_list(id)
+        if primary_group_id is not None:
+            self.primary_group_id = _util.to_int_list(primary_group_id)
 
     @classmethod
     def from_dict(cls, d: dict | None, /) -> _typing.Self:
-        from . import _role
-
         d = d.copy() if d else {}
-        roles = d.setdefault("roles", None)
-        if isinstance(roles, (str, _role.WsjRole)):
-            roles = [roles]
-        if roles is not None:
-            d["roles"] = tuple(_role.WsjRole.from_any(r) for r in roles)
         return cls(**d)
 
     def as_where_condition(self, *, people_table: str = "people") -> str:
@@ -145,15 +169,25 @@ class SelectPeopleConfig:
         where = ""
         if self.exclude_deregistered:
             where = combine_where(
-                where, "people.status NOT IN ('deregistration_noted', 'deregistered')"
+                where,
+                f"{people_table}.status NOT IN ('deregistration_noted', 'deregistered')",
             )
-        if self.roles is not None:
+        if self.role is not None:
             payment_roles = []
-            for role in self.roles:
+            for role in self.role:
                 payment_roles.extend(
                     [role.regular_payer_payment_role, role.early_payer_payment_role]
                 )
-            where = combine_where(where, in_expr("people.payment_role", payment_roles))
+            where = combine_where(
+                where, in_expr(f"{people_table}.payment_role", payment_roles)
+            )
+        if self.id is not None:
+            where = combine_where(where, in_expr(f"{people_table}.id", self.id))
+        if self.primary_group_id is not None:
+            where = combine_where(
+                where,
+                in_expr(f"{people_table}.primary_group_id", self.primary_group_id),
+            )
         return where
 
 
@@ -289,6 +323,86 @@ ORDER BY array_position(ARRAY[{fee_rules_str}], status) ASC
     return id2fee_rules
 
 
+def _enrich_people_dataframe(
+    df: _pandas.DataFrame,
+    *,
+    id2fee_rules: dict,
+    today: _datetime.date,
+    print_at: _datetime.date | None = None,
+    collection_date: _datetime.date,
+) -> None:
+    from . import _util
+    from ._payment_role import PaymentRole
+
+    df["today"] = today
+    df["today_de"] = df["today"].map(lambda d: d.strftime("%d.%m.%Y"))
+    df["birthday_de"] = df["birthday"].map(lambda d: d.strftime("%d.%m.%Y"))
+    if print_at is not None:
+        df["print_at"] = print_at
+    df["age"] = df["birthday"].map(
+        lambda bday: _util.compute_age(bday, today) if bday is not None else None
+    )
+    df["mailing_from"] = "anmeldung@worldscoutjamboree.de"
+    df["mailing_to"] = df["email"].map(lambda s: ([s] if s else None))
+    df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)
+    df["mailing_bcc"] = None
+    df["mailing_reply_to"] = df["id"].map(lambda _: ["info@worldscoutjamboree.de"])
+    df["sepa_mailing_from"] = "anmeldung@worldscoutjamboree.de"
+    df["sepa_mailing_to"] = df["sepa_mail"].map(lambda s: [s] if s else None)
+    df["sepa_mailing_cc"] = df.apply(row_to_sepa_cc, axis=1)
+    df["sepa_mailing_bcc"] = None
+    df["sepa_mailing_reply_to"] = df["id"].map(lambda _: ["info@worldscoutjamboree.de"])
+
+    df["sepa_mandate_id"] = df["id"].map(sepa_mandate_id_from_hitobito_id)
+    df["sepa_mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
+
+    df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
+    df["payment_role"] = df["payment_role"].map(lambda s: PaymentRole(s) if s else None)  # fmt: skip
+    df["regular_full_fee_cents"] = df["payment_role"].map(lambda p: (p.regular_full_fee_cents if p else None))  # fmt: skip
+
+    def col_from_fee_rules(
+        col_name, *, fee_rules_col_name=None, f=lambda val: val
+    ) -> None:
+        if not fee_rules_col_name:
+            fee_rules_col_name = col_name
+        df[col_name] = df["id"].map(
+            lambda id: f(id2fee_rules.get(id, {}).get(fee_rules_col_name))
+        )
+
+    col_from_fee_rules("fee_rule_id", fee_rules_col_name="id")
+    col_from_fee_rules("fee_rule_status", fee_rules_col_name="status")
+    col_from_fee_rules("custom_installments_comment")
+    col_from_fee_rules("custom_installments_issue")
+    col_from_fee_rules("custom_installments_sum_cents")
+    df["installments_cents_dict"] = df.apply(lambda row: compute_installments_cents_from_row(row, id2fee_rules), axis=1)  # fmt: skip
+    df["installments_cents_sum"] = df["installments_cents_dict"].map(
+        lambda d: sum(d.values())
+    )
+    col_from_fee_rules("total_fee_reduction_cents", f=lambda val: val or 0)
+    col_from_fee_rules("total_fee_reduction_comment")
+    df["total_fee_cents"] = df.apply(lambda r: r["regular_full_fee_cents"] - r["total_fee_reduction_cents"], axis=1)  # fmt: skip
+    df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
+    df["amount_paid"] = df["accounting_entries_amounts_cents"].map(sum)
+    df["sepa_dd_sequence_type"] = df.apply(_sepa_dd_sequence_type_from_row, axis=1)
+
+    df["status_de"] = df["status"].map(_STATUS_TO_DE.get)
+    df["short_first_name"] = df.apply(find_short_first_name, axis=1)
+    df["greeting_name"] = df.apply(
+        lambda row: row["nickname"] or row["short_first_name"], axis=1
+    )
+    df["full_name"] = df["first_name"] + " " + df["last_name"]
+    df["short_full_name"] = df["short_first_name"] + " " + df["last_name"]
+
+    assert_all_people_rows_consistent(df)
+    df.drop(
+        columns=[
+            "additional_emails_for_mailings",
+            "custom_installments_sum_cents",
+        ],
+        inplace=True,
+    )
+
+
 def load_people_dataframe(
     conn: _psycopg.Connection,
     *,
@@ -313,11 +427,10 @@ def load_people_dataframe(
     import psycopg.rows
 
     from . import _util
-    from ._payment_role import PaymentRole
 
     today = _util.to_date(today) or _datetime.date.today()
     print_at = _util.to_date(print_at)
-    collection_date = _util.to_date(collection_date) or collection_date
+    collection_date = _util.to_date(collection_date) or today
 
     if extra_cols is not None:
         if isinstance(extra_cols, str):
@@ -426,77 +539,17 @@ ORDER BY people.id
         rows = cur.fetchall()
         cur.close()
 
-    id2fee_rules = fetch_id2fee_rules(conn, fee_rules=fee_rules)
-
     df = pd.DataFrame(rows)
 
-    df["today"] = today
-    df["today_de"] = df["today"].map(lambda d: d.strftime("%d.%m.%Y"))
-    df["birthday_de"] = df["birthday"].map(lambda d: d.strftime("%d.%m.%Y"))
-    if print_at is not None:
-        df["print_at"] = print_at
-    df["age"] = df["birthday"].map(
-        lambda bday: _util.compute_age(bday, today) if bday is not None else None
-    )
-    df["mailing_from"] = "anmeldung@worldscoutjamboree.de"
-    df["mailing_to"] = df["email"].map(lambda s: ([s] if s else None))
-    df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)
-    df["mailing_bcc"] = None
-    df["mailing_reply_to"] = df["id"].map(lambda _: ["info@worldscoutjamboree.de"])
-    df["sepa_mailing_from"] = "anmeldung@worldscoutjamboree.de"
-    df["sepa_mailing_to"] = df["sepa_mail"].map(lambda s: [s] if s else None)
-    df["sepa_mailing_cc"] = df.apply(row_to_sepa_cc, axis=1)
-    df["sepa_mailing_bcc"] = None
-    df["sepa_mailing_reply_to"] = df["id"].map(lambda _: ["info@worldscoutjamboree.de"])
-
-    df["sepa_mandate_id"] = df["id"].map(sepa_mandate_id_from_hitobito_id)
-    df["sepa_mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
-
-    df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
-    df["payment_role"] = df["payment_role"].map(lambda s: PaymentRole(s) if s else None)  # fmt: skip
-    df["regular_full_fee_cents"] = df["payment_role"].map(lambda p: (p.regular_full_fee_cents if p else None))  # fmt: skip
-
-    def col_from_fee_rules(
-        col_name, *, fee_rules_col_name=None, f=lambda val: val
-    ) -> None:
-        if not fee_rules_col_name:
-            fee_rules_col_name = col_name
-        df[col_name] = df["id"].map(
-            lambda id: f(id2fee_rules.get(id, {}).get(fee_rules_col_name))
+    if len(df) != 0:
+        id2fee_rules = fetch_id2fee_rules(conn, fee_rules=fee_rules)
+        _enrich_people_dataframe(
+            df,
+            id2fee_rules=id2fee_rules,
+            today=today,
+            print_at=print_at,
+            collection_date=collection_date,
         )
-
-    col_from_fee_rules("fee_rule_id", fee_rules_col_name="id")
-    col_from_fee_rules("fee_rule_status", fee_rules_col_name="status")
-    col_from_fee_rules("custom_installments_comment")
-    col_from_fee_rules("custom_installments_issue")
-    col_from_fee_rules("custom_installments_sum_cents")
-    df["installments_cents_dict"] = df.apply(lambda row: compute_installments_cents_from_row(row, id2fee_rules), axis=1)  # fmt: skip
-    df["installments_cents_sum"] = df["installments_cents_dict"].map(
-        lambda d: sum(d.values())
-    )
-    col_from_fee_rules("total_fee_reduction_cents", f=lambda val: val or 0)
-    col_from_fee_rules("total_fee_reduction_comment")
-    df["total_fee_cents"] = df.apply(lambda r: r["regular_full_fee_cents"] - r["total_fee_reduction_cents"], axis=1)  # fmt: skip
-    df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
-    df["amount_paid"] = df["accounting_entries_amounts_cents"].map(sum)
-    df["sepa_dd_sequence_type"] = df.apply(_sepa_dd_sequence_type_from_row, axis=1)
-
-    df["status_de"] = df["status"].map(_STATUS_TO_DE.get)
-    df["short_first_name"] = df.apply(find_short_first_name, axis=1)
-    df["greeting_name"] = df.apply(
-        lambda row: row["nickname"] or row["short_first_name"], axis=1
-    )
-    df["full_name"] = df["first_name"] + " " + df["last_name"]
-    df["short_full_name"] = df["short_first_name"] + " " + df["last_name"]
-
-    assert_all_people_rows_consistent(df)
-    df.drop(
-        columns=[
-            "additional_emails_for_mailings",
-            "custom_installments_sum_cents",
-        ],
-        inplace=True,
-    )
     if not (set(df) <= set(PEOPLE_DATAFRAME_COLUMNS)):
         warn_msg = "Some columns of the resulting dataframe are not listed in PEOPLE_DATAFRAME_COLUMNS"
         for col_name in list(df):
