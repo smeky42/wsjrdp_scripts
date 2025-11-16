@@ -31,6 +31,7 @@ __all__ = [
     "to_int_or_none",
     "to_log_level",
     "to_str_list",
+    "to_int_list",
     "dataframe_copy_for_xlsx",
 ]
 
@@ -433,6 +434,24 @@ def dedup(iterable):
 
 
 @_typing.overload
+def to_int_list(int_or_list: None) -> None: ...
+
+
+@_typing.overload
+def to_int_list(
+    int_or_list: int | str | _collections_abc.Iterable[int | str],
+) -> list[int]: ...
+
+
+def to_int_list(int_or_list) -> list[int] | None:
+    if int_or_list is None:
+        return None
+    if isinstance(int_or_list, (int, str)):
+        int_or_list = [int_or_list]
+    return [int(x) for x in int_or_list if x]
+
+
+@_typing.overload
 def to_str_list(str_or_list: None) -> None: ...
 
 
@@ -468,18 +487,44 @@ def combine_where(where: str, expr: str) -> str:
 
 
 def in_expr(expr, elts) -> str:
+    """
+
+    >>> in_expr("x", [1, 2])
+    'x IN (1, 2)'
+    >>> in_expr("x", [1])
+    'x = 1'
+    >>> in_expr("x", [])
+    'FALSE'
+    >>> in_expr("x", [1, 2, None])
+    '(x IN (1, 2) OR x IS NULL)'
+    >>> in_expr("x", None)
+    'FALSE'
+    """
+
     def sql_repr(x):
         if isinstance(x, (int, float)):
             return repr(x)
         else:
             return f"'{x}'"
 
-    if isinstance(elts, str):
+    if elts is None:
+        return "FALSE"
+    elif isinstance(elts, (int, float, str)):
         elts = [elts]
     if not elts:
-        return ""
-    elts_list_str = ", ".join(sql_repr(x) for x in elts)
-    return f"{expr} IN ({elts_list_str})"
+        return "FALSE"
+    elif any(x is None for x in elts):
+        elts_wo_none = [x for x in elts if x is not None]
+        if not elts_wo_none:
+            return f"{expr} IS NULL"
+        else:
+            return f"({in_expr(expr, elts_wo_none)} OR {expr} IS NULL)"
+    else:
+        if len(elts) == 1:
+            return f"{expr} = {sql_repr(elts[0])}"
+        else:
+            elts_list_str = ", ".join(sql_repr(x) for x in elts)
+            return f"{expr} IN ({elts_list_str})"
 
 
 def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:

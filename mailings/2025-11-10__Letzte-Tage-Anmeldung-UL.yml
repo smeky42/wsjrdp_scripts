@@ -1,5 +1,5 @@
 select:
-  roles: UL
+  role: UL
 email_subject: Letzte Tage der UL Anmeldung zum Jamboree 2027 in Polen (id {{ row.id }})
 email_reply_to: info@worldscoutjamboree.de
 summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
