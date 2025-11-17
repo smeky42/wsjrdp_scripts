@@ -22,7 +22,7 @@ def parse_args(argv=None):
     p.add_argument(
         "--email",
         action="store_true",
-        default=False,
+        default=True,
         help="Actually send out email messages",
     )
     p.add_argument(
@@ -51,7 +51,7 @@ def change_primary_group_id(conn: _psycopg.Connection, *, df: pd.DataFrame) -> N
     )
     update_roles_query = (
         "UPDATE roles SET group_id = %(new_primary_group_id)s "
-        "WHERE person_id = %(id)s -- AND group_id = %(primary_group_id)s\n "
+        "WHERE person_id = %(id)s AND group_id = %(primary_group_id)s "
         "RETURNING id"
     )
 
@@ -61,28 +61,32 @@ def change_primary_group_id(conn: _psycopg.Connection, *, df: pd.DataFrame) -> N
     df_len = len(df)
 
     with conn.cursor() as cur:
-        for i, (_, row) in enumerate(df.iterrows(), start=1):
-            pcnt = (i / df_len) * 100.0
+        with conn.transaction() as db_tx:
+            for i, (_, row) in enumerate(df.iterrows(), start=1):
+                pcnt = (i / df_len) * 100.0
 
-            summary = f"{i}/{df_len} ({pcnt:.1f}) {row['id']} {row['short_full_name']}"
-            if row["primary_group_id"] == row["new_primary_group_id"]:
-                _LOGGER.info(
-                    "%s SKIPPED primary_group_id stays at %s",
-                    summary,
-                    row["primary_group_id"],
+                summary = (
+                    f"{i}/{df_len} ({pcnt:.1f}) {row['id']} {row['short_full_name']}"
                 )
-                skipped_ids.add(row["id"])
-                continue
-            params = {
-                "id": row["id"],
-                "primary_group_id": row["primary_group_id"],
-                "new_primary_group_id": row["new_primary_group_id"],
-            }
-            with conn.transaction() as db_tx:
+                if row["primary_group_id"] == row["new_primary_group_id"]:
+                    _LOGGER.info(
+                        "%s SKIPPED primary_group_id stays at %s",
+                        summary,
+                        row["primary_group_id"],
+                    )
+                    skipped_ids.add(row["id"])
+                    continue
+                params = {
+                    "id": row["id"],
+                    "primary_group_id": row["primary_group_id"],
+                    "new_primary_group_id": row["new_primary_group_id"],
+                }
                 _LOGGER.debug("  update_people_query: %s", update_people_query)
                 cur.execute(update_people_query, params)
                 update_people_results = cur.fetchall()
-                _LOGGER.debug("  update people results: %s", repr(update_people_results))
+                _LOGGER.debug(
+                    "  update people results: %s", repr(update_people_results)
+                )
                 updated_ids = set(r[0] for r in update_people_results)
                 if updated_ids != set([row["id"]]):
                     _LOGGER.error("%s - failed to update people table", summary)
@@ -92,7 +96,6 @@ def change_primary_group_id(conn: _psycopg.Connection, *, df: pd.DataFrame) -> N
                     _LOGGER.error("  expected to find updated id %s", row["id"])
                     skipped_ids.add(row["id"])
                     failed_ids.add(row["id"])
-                    raise _psycopg.Rollback(db_tx)
                 _LOGGER.debug("  update_roles_query: %s", update_roles_query)
                 cur.execute(update_roles_query, params)
                 update_roles_results = cur.fetchall()
@@ -106,13 +109,20 @@ def change_primary_group_id(conn: _psycopg.Connection, *, df: pd.DataFrame) -> N
                     _LOGGER.error("  expected to find _one_ updated id")
                     skipped_ids.add(row["id"])
                     failed_ids.add(row["id"])
-                    raise _psycopg.Rollback(db_tx)
-            _LOGGER.info(
-                "%s updated primary_group_id: %s -> %s",
-                summary,
-                row["primary_group_id"],
-                row["new_primary_group_id"],
-            )
+                _LOGGER.info(
+                    "%s updated primary_group_id: %s -> %s",
+                    summary,
+                    row["primary_group_id"],
+                    row["new_primary_group_id"],
+                )
+            if skipped_ids or failed_ids:
+                raise _psycopg.Rollback(db_tx)
+    if skipped_ids or failed_ids:
+        _LOGGER.error("")
+        _LOGGER.error("Failed to update all people: ROLLBACK")
+        _LOGGER.error("  skipped_ids: %s", sorted(skipped_ids))
+        _LOGGER.error("  failed_ids: %s", sorted(failed_ids))
+        raise RuntimeError("Failed to update all people: ROLLBACK")
 
 
 def main(argv=None):
@@ -136,6 +146,9 @@ def main(argv=None):
     df["new_primary_group_id"] = int(
         mailing_config.action_arguments["new_primary_group_id"]
     )
+
+    if not mailing_config.action_arguments.get("email", True):
+        args.email = False
 
     ctx.require_approval_to_run_in_prod()
 

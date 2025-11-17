@@ -133,6 +133,7 @@ class SelectPeopleConfig:
     def __init__(
         self,
         *,
+        exclude_deregistered: bool = True,
         role: str
         | _role.WsjRole
         | _collections_abc.Iterable[str | _role.WsjRole]
@@ -146,6 +147,8 @@ class SelectPeopleConfig:
     ) -> None:
         from . import _role, _util
 
+        if exclude_deregistered is not None:
+            self.exclude_deregistered = exclude_deregistered
         if role is not None:
             if isinstance(role, (str, _role.WsjRole)):
                 self.role = (_role.WsjRole.from_any(role),)
@@ -188,6 +191,8 @@ class SelectPeopleConfig:
                 where,
                 in_expr(f"{people_table}.primary_group_id", self.primary_group_id),
             )
+        if self.status is not None:
+            where = combine_where(where, in_expr(f"{people_table}.status", self.status))
         return where
 
 
@@ -376,7 +381,7 @@ def _enrich_people_dataframe(
     col_from_fee_rules("custom_installments_sum_cents")
     df["installments_cents_dict"] = df.apply(lambda row: compute_installments_cents_from_row(row, id2fee_rules), axis=1)  # fmt: skip
     df["installments_cents_sum"] = df["installments_cents_dict"].map(
-        lambda d: sum(d.values())
+        lambda d: sum(d.values()) if d is not None else None
     )
     col_from_fee_rules("total_fee_reduction_cents", f=lambda val: val or 0)
     col_from_fee_rules("total_fee_reduction_comment")
@@ -414,7 +419,7 @@ def load_people_dataframe(
     early_payer: bool | None = None,
     sepa_status: str | _collections_abc.Iterable[str] | None = None,
     fee_rules: str | _collections_abc.Iterable[str] = "active",
-    exclude_deregistered: bool = True,
+    exclude_deregistered: bool | None = None,
     log_resulting_data_frame: bool = True,
     today: _datetime.date | str | None = None,
     collection_date: _datetime.date | str | None = None,
@@ -444,7 +449,12 @@ def load_people_dataframe(
     if where is None:
         where = ""
     elif isinstance(where, SelectPeopleConfig):
+        if exclude_deregistered is None:
+            exclude_deregistered = where.exclude_deregistered
         where = where.as_where_condition(people_table="people")
+
+    if exclude_deregistered is None:
+        exclude_deregistered = True
 
     status = _util.to_str_list(status)
     if status is not None:
@@ -568,14 +578,38 @@ ORDER BY people.id
 def assert_all_people_rows_consistent(df: _pandas.DataFrame) -> None:
     import textwrap
 
+    def nan_to_none(num: float | None) -> float | None:
+        import math
+
+        if num is None:
+            return None
+        if not isinstance(num, float):
+            try:
+                num = float(num)
+            except Exception:
+                return None
+        if math.isnan(num):
+            return None
+        else:
+            return num
+
     inconsistent_ids_set = set()
     for _, row in df.iterrows():
-        if row["installments_cents_sum"] != row["total_fee_cents"]:
+        installments_cents_sum = nan_to_none(row["installments_cents_sum"])
+        total_fee_cents = nan_to_none(row["total_fee_cents"])
+        if installments_cents_sum != total_fee_cents:
             inconsistent_ids_set.add(row["id"])
-            _LOGGER.info(
+            _LOGGER.warning(
                 "Inconsistent row (installments_cents_sum != total_fee_cents):\n%s",
                 textwrap.indent(row.to_string(), "    | "),
             )
+            _LOGGER.warning(
+                "  id: %s short_full_name: %s", row["id"], row["short_full_name"]
+            )
+            _LOGGER.warning(
+                "  installments_cents_sum: %s", row["installments_cents_sum"]
+            )
+            _LOGGER.warning("  total_fee_cents: %s", row["total_fee_cents"])
     inconsistent_ids = sorted(inconsistent_ids_set)
     inconsistent_df = df[df["id"].isin(inconsistent_ids_set)]
     if inconsistent_ids:
