@@ -1,0 +1,24 @@
+action_arguments:
+  new_primary_group_id: 7
+  email: false
+select:
+  # role: IST  # Hinweis: `role: IST` matcht nicht Personen, die noch keine payment_role haben
+  status: ['deregistration_noted', 'deregistered']
+  exclude_deregistered: false
+  primary_group_id: 4
+email_subject: "IST Anmeldung zum Jamboree 2027 in Polen geschlossen: {{ row.short_full_name }} (id {{ row.id }}) - Willkommen auf der Warteliste"
+email_reply_to: ist@worldscoutjamboree.de
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir haben die Anmeldung zum Jamboree geschlossen. Du hast nicht alle Dokumente hochgeladen und damit ist deine Anmeldung nicht rechtzeitig abgeschlossen.
+  Deswegen stehst du jetzt auf der Warteliste.
+
+  Wenn du weiterhin Interesse an einer Teilnahme am Jamboree hast, solltest du die fehlenden Dokumente hochladen und damit deine Anmeldung vervollständigen. Um als Nachrücker*in von der Warteliste in Betracht zu kommen, müssen deine Unterlagen vollständig hochgeladen und stimmig sein.
+
+  Der aktuelle Status deiner Anmeldung auf der Warteliste ist „{{ row.status_de }}“ (Stand {{ row.today_de }}).
+
+
+  Dein Contingent Management Team

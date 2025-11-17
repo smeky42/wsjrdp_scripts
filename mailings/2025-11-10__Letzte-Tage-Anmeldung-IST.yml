@@ -12,7 +12,7 @@ content: |
   Mit großen Schritten laufen wir auf den Anmeldeschluss am 16.11.2025 zu — nur noch eine Woche bleibt, bis die Anmeldung schließt und wir unser Kontingent zusammenstellen können.
 
   {% if row.status in ['reviewed', 'confirmed'] %}
-  Der aktuelle Status deiner Anmeldung ist „{{ row.status_de }}“ (Stand {{ row.today_de }}), d.h. deine Anmeldung ist vollständig und stimmig.  Achtung! Dies ist noch kein offizieller Vertragsschluss. Dieser geschieht erst, wenn wir aus Polen die offizielle Bestätigung unserer Anmeldung als Kontingent erhalten haben. Dies wird voraussichtlich Anfang Dezember sein. Solange müssen auch wir im Contigent Management Team (CMT) warten, ob wir zum Jamboree fahren dürfen.
+  Der aktuelle Status deiner Anmeldung ist „{{ row.status_de }}“ (Stand {{ row.today_de }}), d.h. deine Anmeldung ist vollständig und stimmig.  Achtung! Dies ist noch kein offizieller Vertragsschluss. Dieser geschieht erst, wenn wir aus Polen die offizielle Bestätigung unserer Anmeldung als Kontingent erhalten haben. Dies wird voraussichtlich Anfang Dezember sein. Solange müssen auch wir im Contingent Management Team (CMT) warten, ob wir zum Jamboree fahren dürfen.
   {% else %}
   Bitte überprüfe deshalb jetzt, ob deine Anmeldung vollständig abgegeben ist.
 
@@ -20,7 +20,7 @@ content: |
 
   Der aktuelle Status deiner Anmeldung ist „{{ row.status_de }}“ (Stand {{ row.today_de }}).
 
-  Sollte der Status noch auf „Registriert“, „Anmeldung gedruckt“ oder „Dokumente in Überprüfung durch CMT“ stehen, hast du noch nicht alle Dokumente vollständig hochgeladen, oder bei der Überprüfung deiner Anmeldung sind uns Unstimmigkeiten aufgefallen und du wurdest gebeten, eines oder mehrere Dokumente erneut hochzuladen. Ist der Status „Upload vollständig“, musst du nichts weiter tun. Wir werden deine Anmeldung prüfen und bei einer erfolgreichen Prüfung den Status ändern zu „Dokumente vollständig überprüft“.  Dies ist dein Zeichen, dass bei deiner Anmeldung alles stimmig ist.  Achtung! Dies ist noch kein offizieller Vertragsschluss. Dieser geschieht erst, wenn wir aus Polen die offizielle Bestätigung unserer Anmeldung als Kontingent erhalten haben. Dies wird voraussichtlich Anfang Dezember sein. Solange müssen auch wir im Contigent Management Team (CMT) warten, ob wir zum Jamboree fahren dürfen.
+  Sollte der Status noch auf „Registriert“, „Anmeldung gedruckt“ oder „Dokumente in Überprüfung durch CMT“ stehen, hast du noch nicht alle Dokumente vollständig hochgeladen, oder bei der Überprüfung deiner Anmeldung sind uns Unstimmigkeiten aufgefallen und du wurdest gebeten, eines oder mehrere Dokumente erneut hochzuladen. Ist der Status „Upload vollständig“, musst du nichts weiter tun. Wir werden deine Anmeldung prüfen und bei einer erfolgreichen Prüfung den Status ändern zu „Dokumente vollständig überprüft“.  Dies ist dein Zeichen, dass bei deiner Anmeldung alles stimmig ist.  Achtung! Dies ist noch kein offizieller Vertragsschluss. Dieser geschieht erst, wenn wir aus Polen die offizielle Bestätigung unserer Anmeldung als Kontingent erhalten haben. Dies wird voraussichtlich Anfang Dezember sein. Solange müssen auch wir im Contingent Management Team (CMT) warten, ob wir zum Jamboree fahren dürfen.
 
   Du kannst den Status auch jederzeit auf deiner Startseite in unserem Anmeldetool (https://anmeldung.worldscoutjamboree.de) überprüfen.
   {% endif %}
@@ -30,4 +30,4 @@ content: |
 
   Bald sind wir ein Kontingent — wir freuen uns schon auf euch!
 
-  Dein Contigent Management Team
+  Dein Contingent Management Team

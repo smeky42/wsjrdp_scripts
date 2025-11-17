@@ -62,7 +62,7 @@ Sprich deine Freund*innen und Leiter*innen an oder teile den Anmeldelink (https:
 
 Wir freuen uns auf eine unvergessliche Zeit
 
-Dein Contigent Management Team
+Dein Contingent Management Team
 """
                 + wsjrdp2027.EMAIL_SIGNATURE_CMT
             )

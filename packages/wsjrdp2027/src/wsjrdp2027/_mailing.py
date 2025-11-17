@@ -259,7 +259,8 @@ def send_mailings(
                 f.write(mailing.config_yaml)
             _LOGGER.info("  wrote yml %s", yml_path)
 
-    ctx.require_approval_to_send_email_in_prod()
+    if send_message:
+        ctx.require_approval_to_send_email_in_prod()
 
     with ctx.smtp_login() as smtp_client:
         for i, (mailing, prep_msg) in enumerate(_iter_mailings(mailings), start=1):
