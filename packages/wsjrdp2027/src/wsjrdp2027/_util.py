@@ -577,7 +577,6 @@ def write_dataframe_to_xlsx(
     from . import _util
 
     df = _util.dataframe_copy_for_xlsx(df)
-    print(df)
 
     _LOGGER.info("Write %s", path)
     writer = pd.ExcelWriter(
