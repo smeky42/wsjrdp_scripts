@@ -563,7 +563,13 @@ def write_dataframe_to_xlsx(
     df: _pandas.DataFrame,
     path: str | _pathlib.Path,
     *,
+    add_autofilter: bool = True,
+    columns: _typing.Sequence[_typing.Hashable] | None = None,
+    float_format: str | None = None,
+    header: _typing.Sequence[_typing.Hashable] | bool = True,
     index: bool = False,
+    merge_cells: bool = True,
+    na_rep: str = "",
     sheet_name: str = "Sheet 1",
 ) -> None:
     import pandas as pd
@@ -571,18 +577,30 @@ def write_dataframe_to_xlsx(
     from . import _util
 
     df = _util.dataframe_copy_for_xlsx(df)
+    print(df)
 
     _LOGGER.info("Write %s", path)
     writer = pd.ExcelWriter(
         path, engine="xlsxwriter", engine_kwargs={"options": {"remove_timezone": True}}
     )
-    df.to_excel(writer, engine="xlsxwriter", index=index, sheet_name=sheet_name)
+    df.to_excel(
+        writer,
+        engine="xlsxwriter",
+        columns=columns,
+        float_format=float_format,
+        header=header,
+        index=index,
+        merge_cells=merge_cells,
+        na_rep=na_rep,
+        sheet_name=sheet_name,
+    )
     (max_row, max_col) = df.shape
 
     # workbook: xlsxwriter.Workbook = writer.book  # type: ignore
     worksheet = writer.sheets[sheet_name]
     worksheet.freeze_panes(1, 0)
-    worksheet.autofilter(0, 0, max_row, max_col - 1)
+    if add_autofilter:
+        worksheet.autofilter(0, 0, max_row, max_col - 1)
     worksheet.autofit()
 
     writer.close()
