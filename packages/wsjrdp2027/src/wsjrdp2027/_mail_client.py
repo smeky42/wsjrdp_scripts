@@ -295,10 +295,7 @@ def _imap_append(
             imap_flags = f"({flags})"
     else:
         imap_flags = "(" + " ".join(flags) + ")"
-    if date_time is None:
-        imap_date_time = _typing.cast(str, None)
-    else:
-        imap_date_time = imaplib.Time2Internaldate(_util.to_datetime(date_time))
+    imap_date_time = imaplib.Time2Internaldate(_util.to_datetime(date_time))
     message = _NEWLINE_RE.sub(b"\r\n", message)
     append_args = [
         mailbox,

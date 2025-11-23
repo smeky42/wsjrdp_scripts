@@ -172,9 +172,9 @@ def main(argv=None):
         argv=argv,
     )
     args = ctx.parsed_args
-    args.today = wsjrdp2027.to_date(args.today)
+    args.today = wsjrdp2027.to_date_or_none(args.today)
     if args.collection_date:
-        args.collection_date = wsjrdp2027.to_date(args.collection_date)
+        args.collection_date = wsjrdp2027.to_date_or_none(args.collection_date)
     else:
         args.collection_date = COLLECTION_DATE
 

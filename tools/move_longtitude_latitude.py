@@ -10,14 +10,13 @@ import random
 from requests.structures import CaseInsensitiveDict
 from urllib.parse import quote
 
+
 _LOGGER = _logging.getLogger(__name__)
 
-def main():
-    start_time = None
 
+def main():
     ctx = wsjrdp2027.WsjRdpContext(
-        start_time=start_time,
-        out_dir="data",
+        out_dir="data"
     )
     out_base = ctx.make_out_path("example_people_dataframe_{{ filename_suffix }}")
     ctx.configure_log_file(out_base.with_suffix(".log"))

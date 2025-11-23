@@ -53,8 +53,9 @@ from ._util import (
     get_default_email_policy as get_default_email_policy,
     merge_mail_addresses as merge_mail_addresses,
     render_template as render_template,
-    to_date as to_date,
+    to_date_or_none as to_date_or_none,
     to_datetime as to_datetime,
+    to_datetime_or_none as to_datetime_or_none,
     write_dataframe_to_xlsx as write_dataframe_to_xlsx,
 )
 
@@ -100,8 +101,9 @@ __all__ = [
     "merge_mail_addresses",
     "render_template",
     "send_mailings",
-    "to_date",
+    "to_date_or_none",
     "to_datetime",
+    "to_datetime_or_none",
     "typst_compile",
     "write_accounting_dataframe_to_sepa_dd",
     "write_dataframe_to_xlsx",

@@ -229,13 +229,13 @@ class PaymentRole(_enum.Enum):
         """
         import bisect
 
-        from ._util import to_date
+        from ._util import to_date_or_none
 
-        date = to_date(date)
+        date = to_date_or_none(date)
         pos = max(bisect.bisect_right(_PAYMENT_DATES, date) - 1, 0)
         amount = _PAYMENT_ROLE_TO_ACCUMULATED_INSTALLMENTS[self][pos]
         if self.is_early_payer and print_at is not None:
-            print_at = to_date(print_at)
+            print_at = to_date_or_none(print_at)
             if date < _NOV_25 and print_at >= _AUG_25:
                 return 0
         return amount
@@ -276,7 +276,7 @@ class PaymentRole(_enum.Enum):
         from . import _util
 
         single_payment_at = (
-            _util.to_date(print_at) if print_at is not None else _util.to_date(today)
+            _util.to_date_or_none(print_at) if print_at is not None else _util.to_date_or_none(today)
         )
         if early_payer is None:
             early_payer = self.is_early_payer

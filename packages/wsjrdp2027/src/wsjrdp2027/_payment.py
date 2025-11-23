@@ -35,9 +35,11 @@ DB_PEOPLE_ALL_STATUS = [
 
 
 DB_PEOPLE_ALL_SEPA_STATUS = [
-    "OK",
-    "In Überprüfung",
-    "Zahlung ausstehend",
+    "ok",
+    "in_review",
+    "invalid_account",
+    "missing",
+    "paused",
 ]
 
 
@@ -152,7 +154,7 @@ def enrich_people_dataframe_for_payments(
 ) -> _pandas.DataFrame:
     import datetime
 
-    from ._util import to_date
+    from ._util import to_date_or_none
 
     def dd_description_from_row(row) -> str:
         prefix = "WSJ 2027"
@@ -196,38 +198,39 @@ def enrich_people_dataframe_for_payments(
             f"(Kontoinhaber*in: {sepa_name}, IBAN: {sepa_iban}, Sequenz: {sepa_dd_sequence_type})"
         )
 
-    collection_date = to_date(collection_date)
+    collection_date = to_date_or_none(collection_date)
     if booking_at is None:
         booking_at = datetime.datetime.now()
 
-    df["sepa_iban"] = df["sepa_iban"].map(lambda s: s.replace(" ", "").upper() if s else None)  # fmt: skip
-    df["sepa_bic"] = df["sepa_bic"].map(lambda s: s.replace(" ", "").upper() if s else None)  # fmt: skip
-    df["sepa_bic_status"] = None
-    df["sepa_bic_status_reason"] = ""
+    if len(df):
+        df["sepa_iban"] = df["sepa_iban"].map(lambda s: s.replace(" ", "").upper() if s else None)  # fmt: skip
+        df["sepa_bic"] = df["sepa_bic"].map(lambda s: s.replace(" ", "").upper() if s else None)  # fmt: skip
+        df["sepa_bic_status"] = None
+        df["sepa_bic_status_reason"] = ""
 
-    df["collection_date"] = collection_date
+        df["collection_date"] = collection_date
 
-    df["amount_due"] = df.apply(compute_total_fee_due, axis=1)
-    df["amount"] = df.apply(
-        lambda row: max(row["amount_due"] - row["amount_paid"], 0), axis=1
-    )
-    df["sepa_dd_description"] = df.apply(dd_description_from_row, axis=1)
-    df["sepa_dd_endtoend_id"] = df.apply(
-        lambda row: dd_endtoend_id_from_row(row, endtoend_ids=endtoend_ids), axis=1
-    )
-    df["payment_status_reason"] = df["amount"].map(
-        lambda amt: "" if amt > 0 else "amount = 0"
-    )
-    df["payment_status"] = df["payment_status_reason"].map(
-        lambda rsn: "ok" if not rsn else "skipped"
-    )
-    df["accounting_entry_id"] = None  # accounting_entries.id
-    df["accounting_author_id"] = 65  # TODO: maybe (2 - Peter or 65 - Daffi)
-    df["accounting_value_date"] = df["collection_date"]  # best guess we can do
-    df["accounting_booking_at"] = booking_at
-    df["accounting_comment"] = df.apply(accounting_comment_from_row, axis=1)
+        df["amount_due"] = df.apply(compute_total_fee_due, axis=1)
+        df["amount"] = df.apply(
+            lambda row: max(row["amount_due"] - row["amount_paid"], 0), axis=1
+        )
+        df["sepa_dd_description"] = df.apply(dd_description_from_row, axis=1)
+        df["sepa_dd_endtoend_id"] = df.apply(
+            lambda row: dd_endtoend_id_from_row(row, endtoend_ids=endtoend_ids), axis=1
+        )
+        df["payment_status_reason"] = df["amount"].map(
+            lambda amt: "" if amt > 0 else "amount = 0"
+        )
+        df["payment_status"] = df["payment_status_reason"].map(
+            lambda rsn: "ok" if not rsn else "skipped"
+        )
+        df["accounting_entry_id"] = None  # accounting_entries.id
+        df["accounting_author_id"] = 65  # TODO: maybe (2 - Peter or 65 - Daffi)
+        df["accounting_value_date"] = df["collection_date"]  # best guess we can do
+        df["accounting_booking_at"] = booking_at
+        df["accounting_comment"] = df.apply(accounting_comment_from_row, axis=1)
 
-    _check_iban_bic_in_payment_dataframe(df, pedantic=pedantic)
+        _check_iban_bic_in_payment_dataframe(df, pedantic=pedantic)
 
     return df.reindex(columns=PAYMENT_DATAFRAME_COLUMNS)
 
@@ -397,7 +400,7 @@ def insert_accounting_entry(
     if created_at is None:
         created_at = datetime.datetime.now().date()
     else:
-        created_at = _util.to_date(created_at)
+        created_at = _util.to_date_or_none(created_at)
 
     cols_vals = [
         ("subject_type", "Person"),
@@ -416,9 +419,9 @@ def insert_accounting_entry(
         ),
         ("end_to_end_identifier", end_to_end_identifier),
         ("mandate_id", mandate_id),
-        ("mandate_date", _util.to_date(mandate_date)),
+        ("mandate_date", _util.to_date_or_none(mandate_date)),
         ("debit_sequence_type", debit_sequence_type),
-        ("value_date", _util.to_date(value_date)),
+        ("value_date", _util.to_date_or_none(value_date)),
     ]
     query = col_val_pairs_to_insert_sql_query("accounting_entries", cols_vals, "id")
     _LOGGER.debug("[ACC] execute %s", query.as_string(context=cursor))
@@ -479,8 +482,8 @@ def insert_payment_initiation(
             initiating_party_bic = sepa_dd_config.get("BIC")
 
     cols_vals = [
-        ("created_at", _util.to_datetime(created_at)),
-        ("updated_at", _util.to_datetime(updated_at)),
+        ("created_at", _util.to_datetime_or_none(created_at)),
+        ("updated_at", _util.to_datetime_or_none(updated_at)),
         ("status", status),
         ("sepa_schema", sepa_schema),
         ("message_identification", message_identification),
@@ -532,8 +535,8 @@ def insert_direct_debit_payment_info(
             cdtr_bic = sepa_dd_config.get("BIC")
 
     cols_vals = [
-        ("created_at", _util.to_datetime(created_at)),
-        ("updated_at", _util.to_datetime(updated_at)),
+        ("created_at", _util.to_datetime_or_none(created_at)),
+        ("updated_at", _util.to_datetime_or_none(updated_at)),
         ("payment_initiation_id", to_int_or_none(payment_initiation_id)),
         ("payment_information_identification", payment_information_identification),
         ("batch_booking", batch_booking),
@@ -541,7 +544,7 @@ def insert_direct_debit_payment_info(
         ("control_sum", control_sum),
         ("payment_type_instrument", payment_type_instrument),
         ("sequence_type", sequence_type),
-        ("requested_collection_date", _util.to_date(requested_collection_date)),
+        ("requested_collection_date", _util.to_date_or_none(requested_collection_date)),
         ("cdtr_name", cdtr_name),
         ("cdtr_iban", cdtr_iban),
         ("cdtr_bic", cdtr_bic),
@@ -599,8 +602,8 @@ def insert_direct_debit_pre_notification(
         payment_role = payment_role.get_db_payment_role(early_payer=early_payer)
 
     cols_vals = [
-        ("created_at", _util.to_datetime(created_at)),
-        ("updated_at", _util.to_datetime(updated_at)),
+        ("created_at", _util.to_datetime_or_none(created_at)),
+        ("updated_at", _util.to_datetime_or_none(updated_at)),
         ("payment_initiation_id", to_int_or_none(payment_initiation_id)),
         ("direct_debit_payment_info_id", to_int_or_none(direct_debit_payment_info_id)),
         ("subject_id", subject_id),
@@ -621,9 +624,9 @@ def insert_direct_debit_pre_notification(
         ("amount_currency", amount_currency),
         ("amount_cents", amount_cents),
         ("sequence_type", sequence_type),
-        ("collection_date", _util.to_date(collection_date)),
+        ("collection_date", _util.to_date_or_none(collection_date)),
         ("mandate_id", mandate_id),
-        ("mandate_date", _util.to_date(mandate_date)),
+        ("mandate_date", _util.to_date_or_none(mandate_date)),
         ("description", description),
         ("endtoend_id", endtoend_id),
         ("payment_role", payment_role),
@@ -673,7 +676,7 @@ def insert_direct_debit_pre_notification_from_row(
         sequence_type=row["sepa_dd_sequence_type"],
         collection_date=row["collection_date"],
         mandate_id=row["sepa_mandate_id"],
-        mandate_date=_util.to_date(row["sepa_mandate_date"]),
+        mandate_date=_util.to_date_or_none(row["sepa_mandate_date"]),
         description=row["sepa_dd_description"],
         endtoend_id=row["sepa_dd_endtoend_id"],
         payment_role=row["payment_role"],
@@ -948,7 +951,8 @@ def load_payment_dataframe(
 
     if max_print_at is not None:
         where = _util.combine_where(
-            where, f"people.print_at <= '{_util.to_date(max_print_at).isoformat()}'"
+            where,
+            f"people.print_at <= '{_util.to_date_or_none(max_print_at).isoformat()}'",
         )
 
     df = _people.load_people_dataframe(
@@ -963,7 +967,7 @@ def load_payment_dataframe(
         collection_date=collection_date,
     )
 
-    collection_date = _util.to_date(collection_date)
+    collection_date = _util.to_date_or_none(collection_date)
     today = collection_date if today is None else min(today, collection_date)
     df = enrich_people_dataframe_for_payments(
         df,
