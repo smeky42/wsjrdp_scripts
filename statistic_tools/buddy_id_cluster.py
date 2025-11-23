@@ -110,14 +110,17 @@ def _write_cluster_codes(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> Non
     _LOGGER.info("Write cluster-codes to database")
     ctx.require_approval_to_run_in_prod()
 
-    query = """UPDATE people SET cluster_code = %(new_cluster_code)s WHERE id = %(id)s"""
+    query = (
+        """UPDATE people SET cluster_code = %(new_cluster_code)s WHERE id = %(id)s"""
+    )
     values = [
         {
             "id": row["id"],
             "new_cluster_code": row["new_cluster_code"],
         }
         for _, row in df.iterrows()
-        if row["new_cluster_code"] and row["new_cluster_code"] != row["old_cluster_code"]
+        if row["new_cluster_code"]
+        and row["new_cluster_code"] != row["old_cluster_code"]
     ]
     _LOGGER.info("  query: %s", query)
     _LOGGER.info("  %s rows to be updated", len(values))
@@ -134,9 +137,9 @@ def _write_cluster_codes(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> Non
         _LOGGER.info("Skipped cluster_code update (nothing to do)")
 
 
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv
+def create_argument_parser():
+    import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument(
         "--write-cluster-codes",
@@ -151,9 +154,14 @@ def main(argv=None):
         action="store_true",
         default=False,
     )
-    args = p.parse_args(argv[1:])
+    return p
 
-    ctx = wsjrdp2027.WsjRdpContext(out_dir="data")
+
+def main(argv=None):
+    ctx = wsjrdp2027.WsjRdpContext(
+        out_dir="data", argument_parser=create_argument_parser(), argv=argv
+    )
+    args = ctx.parsed_args
     out_base = ctx.make_out_path("buddy_id_cluster_{{ filename_suffix }}")
     xlsx_filename = out_base.with_suffix(".xlsx")
 
@@ -164,11 +172,6 @@ def main(argv=None):
                 "buddy_id",
                 "buddy_id_ul",
                 "buddy_id_yp",
-                "rdp_association",
-                "rdp_association_region",
-                "rdp_association_sub_region",
-                "rdp_association_group",
-                "zip_code",
                 "unit_code",
                 "cluster_code",
             ],

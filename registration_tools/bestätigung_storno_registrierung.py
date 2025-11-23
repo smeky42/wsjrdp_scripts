@@ -1,0 +1,103 @@
+#!/usr/bin/env -S uv run
+"""Tool to produce a cancellation request letter."""
+
+from __future__ import annotations
+
+import logging
+import pathlib as _pathlib
+import sys
+
+import wsjrdp2027
+
+
+SELFDIR = _pathlib.Path(__file__).parent.resolve()
+
+
+_LOGGER = logging.getLogger()
+
+
+def create_argument_parser():
+    import argparse
+
+    p = argparse.ArgumentParser()
+    p.add_argument("--issue")
+    p.add_argument("person_id")
+    return p
+
+
+def attach_cancellation_confirmation(
+    ctx, prepared: wsjrdp2027.PreparedEmailMessage
+) -> None:
+    import textwrap
+
+    row = prepared.row
+    assert row is not None
+
+    _LOGGER.info(
+        "id: %s, full_name: %s, row:\n%s",
+        row["id"],
+        row.get("full_name", None),
+        textwrap.indent(row.to_string(), "  | "),
+    )
+
+    pdf_filename = f"{prepared.mailing_name}.pdf"
+    pdf_path = ctx.make_out_path(pdf_filename)
+
+    wsjrdp2027.typst_compile(
+        SELFDIR / "bestätigung_storno_registrierung.typ",
+        output=pdf_path,
+        sys_inputs={
+            "hitobitoid": str(row["id"]),
+            "full_name": row["full_name"],
+            "birthday_de": row["birthday_de"],
+            "deregistration_issue": (row["deregistration_issue"] or ""),
+        },
+    )
+    _LOGGER.info(f"Wrote {pdf_path}")
+    pdf_bytes = pdf_path.read_bytes()
+    prepared.message.add_attachment(
+        pdf_bytes, maintype="application", subtype="pdf", filename=pdf_filename
+    )
+    prepared.eml_name = f"{prepared.mailing_name}.eml"
+
+
+def main(argv=None):
+    ctx = wsjrdp2027.WsjRdpContext(
+        out_dir="data/storno_registrierung{{ kind | omit_unless_prod | upper | to_ext }}",
+        argument_parser=create_argument_parser(),
+        argv=argv,
+    )
+
+    mailing_config = wsjrdp2027.MailingConfig.from_yaml(
+        SELFDIR / "bestätigung_storno_registrierung.yml",
+        where=wsjrdp2027.SelectPeopleConfig(
+            id=ctx.parsed_args.person_id,
+            exclude_deregistered=False,
+        ),
+    )
+    issue = ctx.parsed_args.issue or ""
+    df = ctx.load_person_dataframe_for_mailing(
+        mailing_config,
+        extra_static_df_cols={"deregistration_issue": issue},
+        extra_mailing_bcc=("unit-management@worldscoutjamboree.de" if issue else None),
+    )
+
+    row = df.iloc[0]
+    id_and_name = f"{row['id']} {row['short_full_name']}"
+    ctx.out_dir = ctx.out_dir / id_and_name
+    mailing_config.name = f"WSJ27 Bestätigung Storno Registrierung {id_and_name}"
+
+    out_base = ctx.make_out_path(mailing_config.name)
+    ctx.configure_log_file(out_base.with_suffix(".log"))
+
+    mailing = mailing_config.prepare_mailing_for_dataframe(
+        df,
+        msg_cb=lambda p: attach_cancellation_confirmation(ctx, p),
+        out_dir=ctx.out_dir,
+    )
+
+    ctx.send_mailing(mailing, zip_eml=False)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

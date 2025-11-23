@@ -9,18 +9,27 @@ import os as _os
 import pathlib as _pathlib
 import typing as _typing
 
+from ._mail_config import WsjRdpMailConfig
+
 
 if _typing.TYPE_CHECKING:
+    import argparse as _argparse
+    import collections.abc as _collections_abc
     import datetime as _datetime
+    import email.message as _email_message
     import smtplib as _smtplib
 
+    import pandas as _pandas
     import psycopg as _psycopg
     import sshtunnel as _sshtunnel
+
+    from . import _mail_client, _mailing
 
 
 __all__ = [
     "WsjRdpContext",
     "WsjRdpContextConfig",
+    "WsjRdpMailConfig",
 ]
 
 
@@ -47,6 +56,10 @@ class WsjRdpContextConfig:
     smtp_port: int = 0
     smtp_username: str = ""
     smtp_password: str = ""
+
+    mail_accounts: dict[str, WsjRdpMailConfig] = _dataclasses.field(
+        default_factory=lambda: {}
+    )
 
     geo_api_key: str = ""
     hitobito_url: str = ""
@@ -108,7 +121,22 @@ class WsjRdpContextConfig:
                 ssh_username=ssh_username,
                 ssh_private_key=ssh_private_key,
             )
-
+        mail_accounts: dict[str, WsjRdpMailConfig] = {
+            "": WsjRdpMailConfig(
+                smtp_server=config["smtp_server"],
+                smtp_port=config["smtp_port"],
+                smtp_username=str(config.get("smtp_username", "")),
+                smtp_password=str(config.get("smtp_password", "")),
+                email_from="anmeldung@worldscoutjamboree.de",
+            )
+        }
+        if (mail_accounts_config := config.get("mail_accounts")) is not None:
+            mail_accounts.update(
+                {
+                    k: WsjRdpMailConfig(**{"email_from": k, **v})
+                    for k, v in mail_accounts_config.items()
+                }
+            )
         self = cls(
             is_production=is_production,
             use_ssh_tunnel=use_ssh_tunnel,
@@ -127,6 +155,7 @@ class WsjRdpContextConfig:
             hitobito_url=str(
                 config.get("hitobito_url", "https://anmeldung.worldscoutjamboree.de")
             ),
+            mail_accounts=mail_accounts,
             **kwargs,  # type: ignore
         )
         return self
@@ -153,10 +182,13 @@ class WsjRdpContext:
     """Context (prod or dev?, hosts, ports, ...) of a script execution."""
 
     _config: WsjRdpContextConfig
+    _logger: _logging.Logger | _logging.LoggerAdapter
     _buffering_handler: _UnlimitedBufferingHandler | None = None
     _kind: WsjRdpContextKind
     _start_time: _datetime.datetime
     _out_dir: _pathlib.Path = _typing.cast("_pathlib.Path", None)
+    _dry_run: bool = False
+    _parsed_args: _argparse.Namespace | None = None
 
     def __init__(
         self,
@@ -166,6 +198,11 @@ class WsjRdpContext:
         log_level: int | str | None = None,
         start_time: _datetime.datetime | str | None = None,
         out_dir: _pathlib.Path | str | None = "data",
+        dry_run: bool | None = None,
+        parse_arguments: bool = True,
+        argument_parser: _argparse.ArgumentParser | None = None,
+        argv: list[str] | None = None,
+        logger: _logging.Logger | _logging.LoggerAdapter | None = None,
     ) -> None:
         """Initialize this context.
 
@@ -176,6 +213,12 @@ class WsjRdpContext:
           log_level: Console logging level (default INFO)
           start_time: Start time of script execution (default now)
           out_dir: Output directory (default ``"data"``)
+          dry_run: Run in dry-run mode if `True`.
+          parse_argument: Parse command line argument if `True`.
+          argument_parser: Custom argument parser to use as a starting
+            point before adding wsjrdp2027 default arguments.
+          argv: The argument vector to parse if *parse_arguments* is
+            `True`.
 
         ..
            >>> import datetime, zoneinfo, pathlib
@@ -208,6 +251,13 @@ class WsjRdpContext:
                 format="%(asctime)s %(levelname)-1s %(message)s",
                 handlers=[stream_handler, self._buffering_handler],
             )
+        if logger is None:
+            self._logger = _util.PrefixLoggerAdapter(_LOGGER, prefix="[ctx]")
+        else:
+            self._logger = logger
+
+        if parse_arguments:
+            self.parse_arguments(argument_parser=argument_parser, argv=argv)
 
         # wsjrdp_scripts config
         if config is None:
@@ -224,6 +274,8 @@ class WsjRdpContext:
         # start_time, output_directory, ...
         self._start_time = self._determine_start_time(start_time=start_time)
         self._out_dir = self._determine_out_dir(out_dir)
+        if dry_run is not None:
+            self._dry_run = dry_run
 
     def _determine_start_time(
         self, start_time: _datetime.datetime | str | None = None, *, env=None
@@ -276,6 +328,47 @@ class WsjRdpContext:
         _LOGGER.info("[ctx] output_directory=%s", _os.path.relpath(out_dir, "."))
         return out_dir
 
+    def parse_arguments(
+        self,
+        *,
+        argument_parser: _argparse.ArgumentParser | None = None,
+        argv: list[str] | None = None,
+    ) -> _argparse.Namespace:
+        import argparse as _argparse
+        import copy as _copy
+        import sys as _sys
+
+        if argv is None:
+            argv = _sys.argv
+        if argument_parser:
+            argument_parser = _copy.deepcopy(argument_parser)
+        else:
+            argument_parser = _argparse.ArgumentParser()
+
+        argument_parser.add_argument(
+            "--dry-run",
+            "-n",
+            action="store_true",
+            default=None,
+            help="""Run in dry-run mode.""",
+        )
+
+        args = argument_parser.parse_args(argv[1:])
+        if args.dry_run is not None:
+            self._dry_run = args.dry_run
+
+        self._parsed_args = args
+        return self._parsed_args
+
+    @property
+    def parsed_args(self) -> _argparse.Namespace:
+        if self._parsed_args is None:
+            err_msg = "Command line have not been parsed"
+            self._logger.error(err_msg)
+            raise RuntimeError(err_msg)
+        else:
+            return self._parsed_args
+
     @property
     def config(self) -> WsjRdpContextConfig:
         return self._config
@@ -284,6 +377,15 @@ class WsjRdpContext:
     def is_production(self) -> bool:
         """`True` in production config, `False` otherwise."""
         return self._config.is_production
+
+    @property
+    def dry_run(self) -> bool:
+        """`True` if in dry run mode, `False` otherwise."""
+        return self._dry_run
+
+    @dry_run.setter
+    def dry_run(self, value: bool) -> None:
+        self._dry_run = bool(value)
 
     @property
     def start_time(self) -> _datetime.datetime:
@@ -574,17 +676,163 @@ class WsjRdpContext:
             )
             _LOGGER.info("[pg_restore] Finished restore")
 
+    @staticmethod
+    def __normalize_email_addr(addr: str | None) -> str:
+        import email.utils
+
+        if addr:
+            old_addr = addr
+            new_addr = email.utils.parseaddr(old_addr)[1]
+            if new_addr != old_addr:
+                _LOGGER.info("Parse '%s' as '%s'", old_addr, new_addr)
+            return new_addr
+        else:
+            return ""
+
+    def get_mail_config(self, from_addr: str | None) -> WsjRdpMailConfig:
+        from_addr = self.__normalize_email_addr(from_addr)
+        return self._config.mail_accounts[from_addr]
+
+    def __get_mail_config(
+        self,
+        mail_config: WsjRdpMailConfig | None = None,
+        from_addr: str | None = None,
+    ) -> WsjRdpMailConfig:
+        if mail_config is not None:
+            if from_addr:
+                raise ValueError("Only one of mail_config and email_from must be given")
+            return mail_config
+        else:
+            from_addr = self.__normalize_email_addr(from_addr)
+            return self._config.mail_accounts[from_addr]
+
     @_contextlib.contextmanager
-    def smtp_login(self) -> _typing.Iterator[_smtplib.SMTP]:
+    def mail_login(
+        self,
+        *,
+        mail_config: WsjRdpMailConfig | None = None,
+        from_addr: str | None = None,
+        dry_run: bool | None = None,
+    ) -> _typing.Iterator[_mail_client.MailClient]:
+        from . import _mail_client
+
+        def confirm_send_callback(
+            config: WsjRdpMailConfig, message: _email_message.EmailMessage
+        ) -> bool:
+            prompt = (
+                f"Do you want to send email messages in a PRODUCTION environment "
+                f"via SMTP server {config.smtp_server}:{config.smtp_port}?"
+            )
+            self.require_approval_to_run_in_prod(prompt=prompt)
+            return True
+
+        _LOGGER.info("[ctx] mail_login")
+        _LOGGER.info("[ctx]   mail_config: %s", mail_config)
+        _LOGGER.info("[ctx]   from_addr: %s", from_addr)
+        _LOGGER.info("[ctx]   dry_run: %s", dry_run)
+        mail_config = self.__get_mail_config(
+            mail_config=mail_config, from_addr=from_addr
+        )
+        if dry_run is None:
+            dry_run = self._dry_run
+        _LOGGER.info("[ctx]   => mail_config: %s", mail_config)
+        _LOGGER.info("[ctx]   => dry_run: %s", dry_run)
+        client = _mail_client.MailClient(
+            config=mail_config,
+            dry_run=dry_run,
+            confirm_send_callback=confirm_send_callback,
+        )
+        with client:
+            yield client
+
+    def send_mailing(
+        self,
+        mailing: _mailing.PreparedMailing,
+        *,
+        zip_eml: bool | None = None,
+        dry_run: bool | None = None,
+    ) -> None:
+        from . import _mailing
+
+        if dry_run is None:
+            dry_run = self._dry_run
+        _mailing.send_mailing(
+            self,
+            mailing,
+            dry_run=dry_run,
+            out_dir=self.out_dir,
+            zip_eml=zip_eml,
+        )
+
+    def send_mailings(
+        self,
+        mailings: _mailing.PreparedMailing
+        | _collections_abc.Iterable[_mailing.PreparedMailing],
+        *,
+        zip_eml: bool = True,
+        dry_run: bool | None = None,
+    ) -> None:
+        from . import _mailing
+
+        if dry_run is None:
+            dry_run = self._dry_run
+        _mailing.send_mailings(
+            self,
+            mailings=mailings,
+            dry_run=dry_run,
+            out_dir=self.out_dir,
+            zip_eml=zip_eml,
+        )
+
+    def load_person_dataframe_for_mailing(
+        self,
+        mailing_config: _mailing.MailingConfig,
+        /,
+        *,
+        extra_static_df_cols: dict[str, _typing.Any] | None = None,
+        extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
+    ) -> _pandas.DataFrame:
+        import textwrap
+
+        df = mailing_config.load_people_dataframe(
+            ctx=self,
+            extra_static_df_cols=extra_static_df_cols,
+            extra_mailing_bcc=extra_mailing_bcc,
+            log_resulting_data_frame=False,
+        )
+        if len(df) == 0:
+            err_msg = "Query returned empty dataframe"
+            self._logger.error(err_msg)
+            raise RuntimeError(err_msg)
+        elif len(df) != 1:
+            err_msg = f"Query returned dataframe with {len(df)} rows, expected one row"
+            self._logger.error(err_msg)
+            self._logger.info(
+                "Resulting pandas DataFrame:\n%s", textwrap.indent(str(df), "  ")
+            )
+            raise RuntimeError(err_msg)
+        return df
+
+    @_contextlib.contextmanager
+    def smtp_login(
+        self,
+        *,
+        mail_config: WsjRdpMailConfig | None = None,
+        email_from: str | None = None,
+    ) -> _typing.Iterator[_smtplib.SMTP]:
         import smtplib
+
+        mail_config = self.__get_mail_config(
+            mail_config=mail_config, from_addr=email_from
+        )
 
         _LOGGER.info(
             "[SMTP] Connect to server %s:%s",
-            self._config.smtp_server,
-            self._config.smtp_port,
+            mail_config.smtp_server,
+            mail_config.smtp_port,
         )
 
-        client = smtplib.SMTP(self._config.smtp_server, self._config.smtp_port)
+        client = smtplib.SMTP(mail_config.smtp_server, mail_config.smtp_port)
 
         client.ehlo()
 
@@ -599,9 +847,9 @@ class WsjRdpContext:
                 _LOGGER.error("[SMTP] STARTTLS failed: %s", str(exc))
                 raise
 
-        if self._config.smtp_username and self._config.smtp_password:
-            _LOGGER.info("[SMTP] login as %s", self._config.smtp_username)
-            client.login(self._config.smtp_username, self._config.smtp_password)
+        if mail_config.smtp_username and mail_config.smtp_password:
+            _LOGGER.info("[SMTP] login as %s", mail_config.smtp_username)
+            client.login(mail_config.smtp_username, mail_config.smtp_password)
         else:
             _LOGGER.info("[SMTP] Skip login (credentials empty)")
 

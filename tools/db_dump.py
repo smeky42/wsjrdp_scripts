@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import sys
 
 import wsjrdp2027
@@ -19,9 +18,9 @@ _FORMAT_TO_EXT = {
 }
 
 
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv
+def create_argument_parser():
+    import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument(
         "--column-inserts",
@@ -36,9 +35,14 @@ def main(argv=None):
         choices=["p", "plain", "c", "custom", "d", "directory", "t", "tar"],
     )
     p.add_argument("dump_path", nargs="?")
-    args = p.parse_args(argv[1:])
+    return p
 
-    ctx = wsjrdp2027.WsjRdpContext(out_dir="data")
+
+def main(argv=None):
+    ctx = wsjrdp2027.WsjRdpContext(
+        out_dir="data", argument_parser=create_argument_parser(), argv=argv
+    )
+    args = ctx.parsed_args
 
     if args.dump_path:
         dump_path = args.dump_path
@@ -49,7 +53,9 @@ def main(argv=None):
         if ext := _FORMAT_TO_EXT.get(args.format, ""):
             dump_path = dump_path.with_name(dump_path.name + ext)
 
-    ctx.pg_dump(dump_path=dump_path, format=args.format, column_inserts=args.column_inserts)
+    ctx.pg_dump(
+        dump_path=dump_path, format=args.format, column_inserts=args.column_inserts
+    )
 
 
 if __name__ == "__main__":

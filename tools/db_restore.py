@@ -6,21 +6,23 @@
 
 from __future__ import annotations
 
-import argparse
 import sys
 
 import wsjrdp2027
 
 
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv
-    p = argparse.ArgumentParser()
-    p.add_argument("dump_path")
-    args = p.parse_args(argv[1:])
-    dump_path = args.dump_path
+def create_argument_parser():
+    import argparse
 
-    ctx = wsjrdp2027.WsjRdpContext()
+    p = argparse.ArgumentParser()
+    p.add_argument("dump_path", nargs="?")
+    return p
+
+
+def main(argv=None):
+    ctx = wsjrdp2027.WsjRdpContext(argument_parser=create_argument_parser(), argv=argv)
+    dump_path = ctx.parsed_args.dump_path
+
     if ctx.is_production or ctx.config.db_name in ["hitobito_production"]:
         ctx.require_approval_to_run_in_prod()
     ctx.pg_restore(dump_path=dump_path, restore_into_production=False)

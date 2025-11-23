@@ -31,7 +31,7 @@ def main():
 
     for index, row in df.iterrows(): # .iloc[500:1500].iterrows()
         longitude = row['longitude'] if _pandas.notna(row['longitude']) else "0"
-        latitude = row['latitude'] if _pandas.notna(row['latitude']) else "0"   
+        latitude = row['latitude'] if _pandas.notna(row['latitude']) else "0"
         print(f"id: {row['id']} Coords: {longitude}, {latitude}")
 
         if not (longitude == "0" or latitude == "0"):
@@ -46,13 +46,13 @@ def main():
                     with conn.cursor() as cur:
                         cur.execute("""
                             UPDATE people
-                            SET longitude = %s, latitude = %s 
+                            SET longitude = %s, latitude = %s
                             WHERE id = %s
                         """, (longitude, latitude, row['id']))
-                    
+
                     conn.commit()
                     print(f"id: {row['id']} Updated! {row['first_name']}, {row['last_name']}")
-                
+
                 except Exception as update_error:
                     conn.rollback()
                     print(f"id: {row['id']} Error updating coordinates for {row['first_name']} {row['last_name']}: {update_error}")
@@ -60,15 +60,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
-
-
-
-
-
-
-
-
-
-
-

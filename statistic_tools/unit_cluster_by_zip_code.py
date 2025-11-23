@@ -31,7 +31,7 @@ def data_frame_by_zip_code(zip_codes: list[str], df: pd.DataFrame) -> None:
     if yp_count == 0:
         print("No YPs, cannot calculate factor")
         return
-    
+
     ul_untis = ul_count / 4
     yp_units = yp_count / 36
     print(
@@ -46,7 +46,7 @@ def main():
     with ctx.psycopg_connect() as conn:
         print("query db")
         cur = conn.cursor()
-        cur.execute(f"""SELECT first_name, email, nickname, primary_group_id, zip_code, status, rdp_association, rdp_association_region, payment_role FROM people 
+        cur.execute(f"""SELECT first_name, email, nickname, primary_group_id, zip_code, status, rdp_association, rdp_association_region, payment_role FROM people
     WHERE status = 'printed' OR status = 'upload' OR status = 'in_review' OR status = 'reviewed' OR status = 'confirmed'
     ORDER BY id""")
         rows = cur.fetchall()

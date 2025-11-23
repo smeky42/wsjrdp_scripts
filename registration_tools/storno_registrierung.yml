@@ -1,0 +1,11 @@
+from_addr: unit-management@worldscoutjamboree.de
+email_from: Unit Management <unit-management@worldscoutjamboree.de>
+email_subject: "WSJ27 Storno Registrierung {{ row.short_full_name }} (id {{ row.id }}){% if row.deregistration_issue %} {{ row.deregistration_issue }}{% endif %}"
+signature: "{{ EMAIL_SIGNATURE_DAVID_FRITZSCHE }}"
+content: |
+  {% for name in row.contract_names %}Hallo {{ name }}{% if not loop.last %}, {% endif %}{% endfor %},
+
+  {% set num_names = row.contract_names | length %}schade, dass {% if num_names > 1 %}{{ row.greeting_name }}{% else %}Du{% endif %} nicht mit zum Jamboree {% if num_names > 1 %}kommt{% else %}kommst{% endif %}. Um die Abmeldung vornehmen zu können, benötigen wir das angehängte Stornierungs-Formular unterschreiben zurück.{% if row.status in ["deregistration_noted", "deregistered"] %} Wir haben die Stornierung auch schon im Anmeldesystem vermerkt.{% endif %} Wenn wir das unterschriebene Formular per E-Mail zurück erhalten haben, setzen wir die Registrierung auf Abgemeldet und {% if num_names > 1 %}ihr bekommt für eure{% else %}du bekommst für deine{% endif %} Unterlagen eine Bestätigung der Stornierung.
+
+  Liebe Grüße und Gut Pfad
+  Daffi

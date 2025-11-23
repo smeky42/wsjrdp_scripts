@@ -7,6 +7,8 @@ import typing as _typing
 
 if _typing.TYPE_CHECKING:
     import datetime as _datetime
+    import email.policy as _email_policy
+    import imaplib as _imaplib
     import logging as _logging
     import pathlib as _pathlib
 
@@ -17,25 +19,43 @@ _LOGGER = _logging.getLogger(__name__)
 
 
 __all__ = [
+    "PrefixLoggerAdapter",
     "combine_where",
     "configure_file_logging",
     "console_confirm",
     "create_dir",
+    "dataframe_copy_for_xlsx",
     "date_to_datetime",
     "dedup",
     "format_cents_as_eur_de",
+    "get_default_email_policy",
     "in_expr",
+    "merge_mail_addresses",
+    "parse_imap_list_item",
     "render_template",
     "to_date",
     "to_datetime",
+    "to_int_list",
     "to_int_or_none",
     "to_log_level",
     "to_str_list",
-    "to_int_list",
-    "dataframe_copy_for_xlsx",
 ]
 
 _T = _typing.TypeVar("_T")
+
+
+class PrefixLoggerAdapter(_logging.LoggerAdapter):
+    def __init__(
+        self,
+        logger: _logging.Logger | _logging.LoggerAdapter,
+        *,
+        prefix: str,
+    ) -> None:
+        self._prefix = prefix
+        super().__init__(logger)
+
+    def process(self, msg, kwargs):
+        return (f"{self._prefix} {msg}", kwargs)
 
 
 _CONSOLE_CONFIRM_DEFAULT_TO_CHOICE_DISPLAY = {
@@ -179,7 +199,9 @@ def date_to_datetime(
 
 
 @_typing.overload
-def to_datetime(dt: _datetime.datetime | str) -> _datetime.datetime: ...
+def to_datetime(
+    dt: _datetime.datetime | _datetime.date | str | float | int,
+) -> _datetime.datetime: ...
 
 
 @_typing.overload
@@ -187,7 +209,7 @@ def to_datetime(dt: None) -> None: ...
 
 
 def to_datetime(
-    dt: _datetime.datetime | _datetime.date | str | int | None,
+    dt: _datetime.datetime | _datetime.date | str | float | int | None,
 ) -> _datetime.datetime | None:
     """Return a datetime.
 
@@ -275,7 +297,7 @@ def to_datetime(
         return normalize_tz(dt)
     elif isinstance(dt, datetime.date):
         return date_to_datetime(dt)
-    elif isinstance(dt, int):
+    elif isinstance(dt, (float, int)):
         return datetime.datetime.fromtimestamp(dt, tz=datetime.timezone.utc)
     elif isinstance(dt, str):
         if dt.upper() == "NOW":
@@ -482,6 +504,30 @@ def to_int_or_none(obj):
         return None
 
 
+def merge_mail_addresses(*args) -> list[str] | None:
+    if all(arg is None for arg in args):
+        return None
+    addrs = []
+    for arg in args:
+        addrs.extend(to_str_list(arg) or [])
+    addrs = list(dedup(addrs))
+    return addrs or None
+
+
+def get_default_email_policy() -> _email_policy.EmailPolicy:
+    import email.policy
+
+    policy = email.policy.SMTP.clone(
+        raise_on_defect=True, cte_type="7bit", verify_generated_headers=True
+    )
+    return policy  # type: ignore
+
+
+# ==============================================================================
+# SQL
+# ==============================================================================
+
+
 def combine_where(where: str, expr: str) -> str:
     return f"{where}\n    AND {expr}" if where else expr
 
@@ -571,6 +617,7 @@ def write_dataframe_to_xlsx(
     merge_cells: bool = True,
     na_rep: str = "",
     sheet_name: str = "Sheet 1",
+    log_level: int | None = None,
 ) -> None:
     import pandas as pd
 
@@ -578,7 +625,9 @@ def write_dataframe_to_xlsx(
 
     df = _util.dataframe_copy_for_xlsx(df)
 
-    _LOGGER.info("Write %s", path)
+    if log_level is None:
+        log_level = _logging.INFO
+    _LOGGER.log(log_level, "Write %s", path)
     writer = pd.ExcelWriter(
         path, engine="xlsxwriter", engine_kwargs={"options": {"remove_timezone": True}}
     )
