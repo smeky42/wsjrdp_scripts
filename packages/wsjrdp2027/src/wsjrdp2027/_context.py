@@ -39,6 +39,7 @@ _LOGGER = _logging.getLogger(__name__)
 @_dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
 class WsjRdpContextConfig:
     is_production: bool = True
+    is_staging: bool = False
 
     use_ssh_tunnel: bool = True
     ssh_host: str = ""
@@ -289,24 +290,27 @@ class WsjRdpContext:
             env = _os.environ
         env_name = "WSJRDP_SCRIPTS_START_TIME"
         env_val = env.get(f"{env_name}")
-        _LOGGER.debug(
-            "[ctx] found %s%s",
+        self._logger.debug(
+            "found %s%s",
             env_name,
             (" not set" if env_val is None else f"={env_val}"),
         )
         if self._config.is_production and env_val is not None:
-            _LOGGER.warning("[ctx] Production run: Ignore %s", env_name)
+            self._logger.warning("Production run: Ignore %s", env_name)
             env_val = None
 
         if start_time is not None:
-            result = _util.to_datetime(start_time)
-            _LOGGER.info("[ctx] start_time=%s (explicitly given)", result.isoformat())
+            result = _util.to_datetime_or_none(start_time)
+            self._logger.info("start_time=%s (explicitly given)", result.isoformat())
+        elif self._parsed_args and self._parsed_args.start_time:
+            result = _util.to_datetime_or_none(self._parsed_args.start_time)
+            self._logger.info("start_time=%s (from command line)", result.isoformat())
         elif env_val:
-            result = _util.to_datetime(env_val)
-            _LOGGER.info("[ctx] start_time=%s (from %s)", result.isoformat(), env_name)
+            result = _util.to_datetime_or_none(env_val)
+            self._logger.info("start_time=%s (from %s)", result.isoformat(), env_name)
         else:
             result = _datetime.datetime.now().astimezone()
-            _LOGGER.info("[ctx] start_time=%s (current time)", result.isoformat())
+            self._logger.info("start_time=%s (current time)", result.isoformat())
         return result
 
     def _determine_out_dir(self, p: _pathlib.Path | str | None = None) -> _pathlib.Path:
@@ -328,6 +332,28 @@ class WsjRdpContext:
         _LOGGER.info("[ctx] output_directory=%s", _os.path.relpath(out_dir, "."))
         return out_dir
 
+    def add_common_argument_parser_arguments(
+        self, p: _argparse.ArgumentParser, /
+    ) -> None:
+        p.add_argument(
+            "--dry-run",
+            "-n",
+            action="store_true",
+            default=None,
+            help="""Run in dry-run mode.""",
+        )
+        p.add_argument(
+            "--start-time",
+            metavar="<datetime>",
+            help="Simulate that the script was started at <datetime>",
+        )
+        p.add_argument(
+            "--today",
+            metavar="<today>",
+            dest="start_time",
+            help="Simulate that the script was started at date TODAY (alias for --start-time)",
+        )
+
     def parse_arguments(
         self,
         *,
@@ -338,24 +364,21 @@ class WsjRdpContext:
         import copy as _copy
         import sys as _sys
 
+        from . import _util
+
         if argv is None:
             argv = _sys.argv
         if argument_parser:
-            argument_parser = _copy.deepcopy(argument_parser)
+            p = _copy.deepcopy(argument_parser)
         else:
-            argument_parser = _argparse.ArgumentParser()
+            p = _argparse.ArgumentParser()
 
-        argument_parser.add_argument(
-            "--dry-run",
-            "-n",
-            action="store_true",
-            default=None,
-            help="""Run in dry-run mode.""",
-        )
+        self.add_common_argument_parser_arguments(p)
 
-        args = argument_parser.parse_args(argv[1:])
+        args = p.parse_args(argv[1:])
         if args.dry_run is not None:
             self._dry_run = args.dry_run
+        args.start_time = _util.to_datetime_or_none(args.start_time or None)
 
         self._parsed_args = args
         return self._parsed_args
@@ -390,6 +413,10 @@ class WsjRdpContext:
     @property
     def start_time(self) -> _datetime.datetime:
         return self._start_time
+
+    @property
+    def today(self) -> _datetime.date:
+        return self._start_time.date()
 
     @property
     def out_dir(self) -> _pathlib.Path:

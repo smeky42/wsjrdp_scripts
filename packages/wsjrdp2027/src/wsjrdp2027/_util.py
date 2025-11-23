@@ -8,7 +8,6 @@ import typing as _typing
 if _typing.TYPE_CHECKING:
     import datetime as _datetime
     import email.policy as _email_policy
-    import imaplib as _imaplib
     import logging as _logging
     import pathlib as _pathlib
 
@@ -31,10 +30,10 @@ __all__ = [
     "get_default_email_policy",
     "in_expr",
     "merge_mail_addresses",
-    "parse_imap_list_item",
     "render_template",
-    "to_date",
+    "to_date_or_none",
     "to_datetime",
+    "to_datetime_or_none",
     "to_int_list",
     "to_int_or_none",
     "to_log_level",
@@ -199,18 +198,34 @@ def date_to_datetime(
 
 
 @_typing.overload
-def to_datetime(
-    dt: _datetime.datetime | _datetime.date | str | float | int,
+def to_datetime_or_none(
+    dt: _datetime.datetime | _datetime.date | str | float | int, /
 ) -> _datetime.datetime: ...
 
 
 @_typing.overload
-def to_datetime(dt: None) -> None: ...
+def to_datetime_or_none(dt: None, /) -> None: ...
+
+
+def to_datetime_or_none(
+    dt: _datetime.datetime | _datetime.date | str | float | int | None, /
+) -> _datetime.datetime | None:
+    """Return a datetime.
+
+    >>> import datetime as dt, zoneinfo as zi
+
+    >>> to_datetime_or_none(None) is None
+    True
+    >>> to_datetime_or_none("0")
+    datetime.datetime(1970, 1, 1, 0, 0, tzinfo=datetime.timezone.utc)
+
+    """
+    return None if dt is None else to_datetime(dt)
 
 
 def to_datetime(
-    dt: _datetime.datetime | _datetime.date | str | float | int | None,
-) -> _datetime.datetime | None:
+    dt: _datetime.datetime | _datetime.date | str | float | int | None, /
+) -> _datetime.datetime:
     """Return a datetime.
 
     >>> import datetime as dt, zoneinfo as zi
@@ -232,8 +247,19 @@ def to_datetime(
     >>> to_datetime("01.06.2025")
     datetime.datetime(2025, 6, 1, 13, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
 
+    ..
+       >>> _tm.move_to(_dt.datetime(2025, 8, 15, 10, 30, 27, tzinfo=_zi.ZoneInfo("Europe/Berlin")))
+
     >>> to_datetime("NOW")
-    datetime.datetime(2025, 8, 15, 8, 30, 27, tzinfo=datetime.timezone.utc)
+    datetime.datetime(2025, 8, 15, 10, 30, 27, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
+    >>> to_datetime("TODAY")
+    datetime.datetime(2025, 8, 15, 13, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
+
+    ..
+       >>> _tm.move_to(_dt.datetime(2025, 8, 15, 10, 30, 27, tzinfo=_zi.ZoneInfo("Europe/Berlin")))
+
+    >>> to_datetime(None)
+    datetime.datetime(2025, 8, 15, 10, 30, 27, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
 
     >>> some_dt = dt.datetime(2025, 8, 15, 10, 30, 27, 1234, tzinfo=zi.ZoneInfo("Europe/Berlin"))
     >>> to_datetime(some_dt) == some_dt
@@ -292,7 +318,7 @@ def to_datetime(
         return date_to_datetime(naive)
 
     if dt is None:
-        return None
+        return datetime.datetime.now().astimezone()
     elif isinstance(dt, datetime.datetime):
         return normalize_tz(dt)
     elif isinstance(dt, datetime.date):
@@ -301,9 +327,9 @@ def to_datetime(
         return datetime.datetime.fromtimestamp(dt, tz=datetime.timezone.utc)
     elif isinstance(dt, str):
         if dt.upper() == "NOW":
-            return datetime.datetime.now(tz=datetime.timezone.utc)
+            return datetime.datetime.now().astimezone()
         elif dt.upper() == "TODAY":
-            return date_to_datetime(to_date("TODAY"))
+            return date_to_datetime(to_date_or_none("TODAY"))
         elif re.fullmatch("[0-9]+", dt):
             return datetime.datetime.fromtimestamp(int(dt), tz=datetime.timezone.utc)
         elif re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", dt):
@@ -325,20 +351,24 @@ def to_datetime(
 
 
 @_typing.overload
-def to_date(date: _datetime.date | str, /) -> _datetime.date: ...
+def to_date_or_none(date: _datetime.date | str, /) -> _datetime.date: ...
 
 
 @_typing.overload
-def to_date(date: None, /) -> None: ...
+def to_date_or_none(date: None, /) -> None: ...
 
 
-def to_date(date: _datetime.date | str | None, /) -> _datetime.date | None:
+def to_date_or_none(date: _datetime.date | str | None, /) -> _datetime.date | None:
     """Return a date.
 
-    >>> to_date("2025-06-01")
-    datetime.date(2025, 6, 1)
-    >>> to_date("01.06.2025")
-    datetime.date(2025, 6, 1)
+    Examples:
+
+      >>> to_date_or_none(None) is None
+      True
+      >>> to_date_or_none("2025-06-01")
+      datetime.date(2025, 6, 1)
+      >>> to_date_or_none("01.06.2025")
+      datetime.date(2025, 6, 1)
     """
     import datetime
     import re
@@ -357,6 +387,29 @@ def to_date(date: _datetime.date | str | None, /) -> _datetime.date | None:
                 raise ValueError(f"Unsupported date format: {date!r}") from None
     else:
         return date
+
+
+def to_date(date: _datetime.date | str | None, /) -> _datetime.date:
+    """Return a datetime date object for *date*.
+
+    ..
+       >>> import datetime
+       >>> import datetime as _dt, zoneinfo as _zi
+       >>> _tm = getfixture("time_machine")
+       >>> _tm.move_to(_dt.datetime(2025, 8, 15, 10, 30, 27, tzinfo=_zi.ZoneInfo("Europe/Berlin")))
+
+    Examples:
+
+      >>> to_date(None)
+      datetime.date(2025, 8, 15)
+      >>> to_date("2025-06-01")
+      datetime.date(2025, 6, 1)
+      >>> to_date("01.06.2025")
+      datetime.date(2025, 6, 1)
+    """
+    import datetime
+
+    return datetime.date.today() if date is None else to_date_or_none(date)
 
 
 def compute_age(birthday: _datetime.date, today: _datetime.date) -> int:

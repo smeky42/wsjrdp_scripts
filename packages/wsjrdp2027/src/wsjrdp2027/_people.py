@@ -304,8 +304,8 @@ def compute_installments_cents_from_row(
     id = row["id"]
     payment_role: _payment_role.PaymentRole = row["payment_role"]
     early_payer = bool(row["early_payer"])
-    print_at = _util.to_date(row["print_at"])
-    today = _util.to_date(row["today"])
+    print_at = _util.to_date_or_none(row["print_at"])
+    today = _util.to_date_or_none(row["today"])
     fee_rules = id2fee_rules.get(id, {})
     year = _util.to_int_or_none(fee_rules.get("custom_installments_starting_year"))
     custom_installments_cents = fee_rules.get("custom_installments_cents")
@@ -522,9 +522,9 @@ def load_people_dataframe(
 
     from . import _util
 
-    today = _util.to_date(today) or _datetime.date.today()
-    print_at = _util.to_date(print_at)
-    collection_date = _util.to_date(collection_date) or today
+    today = _util.to_date_or_none(today) or _datetime.date.today()
+    print_at = _util.to_date_or_none(print_at)
+    collection_date = _util.to_date_or_none(collection_date) or today
 
     extra_out_cols = []
     if extra_cols is not None:

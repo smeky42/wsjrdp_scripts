@@ -376,11 +376,8 @@ def email_message_from_row(
             domain=msgid_domain or DEFAULT_MSGID_DOMAIN,
         )
     email_date = email_date or row.get("email_date", None)
-    if email_date is None:
-        timestamp = time.time()
-    else:
-        timestamp = _util.to_datetime(email_date).timestamp()
-    msg_date = email.utils.formatdate(timestamp, localtime=True)
+    email_date = _util.to_datetime(email_date)
+    msg_date = email.utils.format_datetime(email_date)
 
     email_subject = render_template(email_subject)
     content = render_template(content)

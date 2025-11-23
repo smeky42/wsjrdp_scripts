@@ -16,13 +16,10 @@ _LOGGER = _logging.getLogger(__name__)
 COLLECTION_DATE = _datetime.date(2025, 12, 15)
 
 
-def main():
-    start_time = None
-    # start_time = datetime.datetime(2025, 8, 15, 10, 30, 27).astimezone()
-
+def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
-        start_time=start_time,
         out_dir="data/example_sepa_direct_debit_{{ filename_suffix }}",
+        argv=argv,
     )
     out_base = ctx.make_out_path("example_sepa_direct_debit_{{ filename_suffix }}")
     ctx.configure_log_file(out_base.with_suffix(".log"))

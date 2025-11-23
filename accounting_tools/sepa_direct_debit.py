@@ -27,14 +27,14 @@ def parse_args(argv=None):
     import argparse
     import sys
 
-    from wsjrdp2027._util import to_date
+    from wsjrdp2027._util import to_date_or_none
 
     if argv is None:
         argv = sys.argv
     p = argparse.ArgumentParser()
     p.add_argument("--accounting", action="store_true", default=True)
     p.add_argument("--no-accounting", dest="accounting", action="store_false")
-    p.add_argument("--collection-date", type=to_date, default=DEFAULT_COLLECTION_DATE)
+    p.add_argument("--collection-date", type=to_date_or_none, default=DEFAULT_COLLECTION_DATE)
     p.add_argument("--payment-initiation-id", type=int)
     return p.parse_args(argv[1:])
 
