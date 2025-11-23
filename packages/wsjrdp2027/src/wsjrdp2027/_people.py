@@ -54,6 +54,9 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "age",
     "gender",
     "primary_group_id",
+    "contract_additional_emails",
+    "contract_additional_names",
+    "contract_names",
     #
     "rdp_association",
     "rdp_association_region",
@@ -166,6 +169,26 @@ class SelectPeopleConfig:
         d = d.copy() if d else {}
         return cls(**d)
 
+    def to_dict(self) -> dict:
+        def to_out(elts: _collections_abc.Sequence | None, map=None):
+            if elts is None:
+                return None
+            if map:
+                elts = [map(item) for item in elts]
+            if len(elts) == 1:
+                return elts[0]
+            else:
+                return elts
+
+        d = {
+            "exclude_deregistered": self.exclude_deregistered,
+            "role": to_out(self.role, map=str),
+            "status": to_out(self.status),
+            "id": to_out(self.id),
+            "primary_group_id": to_out(self.primary_group_id),
+        }
+        return {k: v for k, v in d.items() if v is not None}
+
     def as_where_condition(self, *, people_table: str = "people") -> str:
         from ._util import combine_where, in_expr
 
@@ -200,12 +223,50 @@ def sepa_mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:
     return f"wsjrdp2027{hitobito_id}"
 
 
+def is_minor_or_yp(row: _pandas.Series) -> bool:
+    is_minor = row["age"] < 18
+    payment_role = row["payment_role"]
+    if payment_role is None:
+        is_yp = None
+    elif isinstance(payment_role, str):
+        is_yp = payment_role.endswith("::Group::Unit::Member")
+    else:
+        is_yp = payment_role.is_yp
+    return is_yp or (row.get("primary_group_id", 0) in (3, 6)) or is_minor
+
+
+def get_contract_additional_names(row: _pandas.Series) -> list[str]:
+    if is_minor_or_yp(row):
+        if row.get("additional_contact_single", False):
+            keys = ["additional_contact_name_a"]
+        else:
+            keys = ["additional_contact_name_a", "additional_contact_name_b"]
+        return [addr for k in keys if (addr := row.get(k, None))]
+    else:
+        return []
+
+
+def get_contract_additional_emails(row: _pandas.Series) -> list[str]:
+    if is_minor_or_yp(row):
+        if row.get("additional_contact_single", False):
+            keys = ["additional_contact_email_a"]
+        else:
+            keys = ["additional_contact_email_a", "additional_contact_email_b"]
+        return [addr for k in keys if (addr := row.get(k, None))]
+    else:
+        return []
+
+
+def get_contract_names(row: _pandas.Series) -> list[str]:
+    return [
+        row["full_name"],
+        *(get_contract_additional_names(row) if is_minor_or_yp(row) else []),
+    ]
+
+
 def row_to_mailing_cc(row) -> list[str] | None:
     other = set(row["additional_emails_for_mailings"])
-    if row["primary_group_id"] == 3 or row.get("years", 18) < 18:
-        for k in ("additional_contact_email_a", "additional_contact_email_b"):
-            if row[k]:
-                other.add(row[k])
+    other.update(get_contract_additional_emails(row))
     for s in row["mailing_to"] or []:
         other.discard(s)
     other = sorted(other)
@@ -216,10 +277,7 @@ def row_to_sepa_cc(row) -> list[str] | None:
     other = set(row["additional_emails_for_mailings"])
     if email := row["email"]:
         other.add(email)
-    if row["primary_group_id"] == 3 or row.get("years", 18) < 18:
-        for k in ("additional_contact_email_a", "additional_contact_email_b"):
-            if row[k]:
-                other.add(row[k])
+    other.update(get_contract_additional_emails(row))
     for s in row["sepa_mailing_to"] or []:
         other.discard(s)
     other = sorted(filter(None, other))
@@ -229,7 +287,10 @@ def row_to_sepa_cc(row) -> list[str] | None:
 def find_short_first_name(row) -> str:
     nickname = row["nickname"]
     first_names = row["first_name"].split(" ")
-    if nickname and nickname in first_names:
+    if nickname and (
+        (nickname in first_names)
+        or any(nickname in f_name.split("-") for f_name in first_names)
+    ):
         return nickname
     else:
         return first_names[0]
@@ -264,6 +325,14 @@ def compute_installments_cents_from_row(
             for i, cents in enumerate(custom_installments_cents)
             if (cents_as_int := int(cents)) != 0
         }
+
+
+def _compute_total_fee_cents(row: _pandas.Series) -> float | None:
+    regular_full_fee_cents = row.get("regular_full_fee_cents", None)
+    if regular_full_fee_cents is not None:
+        return regular_full_fee_cents - row.get("total_fee_reduction_cents", 0)
+    else:
+        return None
 
 
 def _sepa_dd_sequence_type_from_row(row) -> str:
@@ -312,7 +381,7 @@ ORDER BY array_position(ARRAY[{fee_rules_str}], status) ASC
         r"\n+", "\n", textwrap.dedent(fee_rules_sql_stmt).strip()
     )
 
-    _LOGGER.info(
+    _LOGGER.debug(
         "Fetch wsj27_rdp_fee_rules SQL Query:\n%s",
         textwrap.indent(fee_rules_sql_stmt, "  "),
     )
@@ -335,13 +404,16 @@ def _enrich_people_dataframe(
     today: _datetime.date,
     print_at: _datetime.date | None = None,
     collection_date: _datetime.date,
+    extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
 ) -> None:
     from . import _util
     from ._payment_role import PaymentRole
 
     df["today"] = today
     df["today_de"] = df["today"].map(lambda d: d.strftime("%d.%m.%Y"))
-    df["birthday_de"] = df["birthday"].map(lambda d: d.strftime("%d.%m.%Y"))
+    df["birthday_de"] = df["birthday"].map(
+        lambda d: d.strftime("%d.%m.%Y") if d is not None else None
+    )
     if print_at is not None:
         df["print_at"] = print_at
     df["age"] = df["birthday"].map(
@@ -350,13 +422,17 @@ def _enrich_people_dataframe(
     df["mailing_from"] = "anmeldung@worldscoutjamboree.de"
     df["mailing_to"] = df["email"].map(lambda s: ([s] if s else None))
     df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)
-    df["mailing_bcc"] = None
-    df["mailing_reply_to"] = df["id"].map(lambda _: ["info@worldscoutjamboree.de"])
+    df["mailing_bcc"] = df["id"].map(
+        lambda _: _util.merge_mail_addresses(extra_mailing_bcc)
+    )
+    df["mailing_reply_to"] = None
     df["sepa_mailing_from"] = "anmeldung@worldscoutjamboree.de"
     df["sepa_mailing_to"] = df["sepa_mail"].map(lambda s: [s] if s else None)
     df["sepa_mailing_cc"] = df.apply(row_to_sepa_cc, axis=1)
-    df["sepa_mailing_bcc"] = None
-    df["sepa_mailing_reply_to"] = df["id"].map(lambda _: ["info@worldscoutjamboree.de"])
+    df["sepa_mailing_bcc"] = df["id"].map(
+        lambda _: _util.merge_mail_addresses(extra_mailing_bcc)
+    )
+    df["sepa_mailing_reply_to"] = None
 
     df["sepa_mandate_id"] = df["id"].map(sepa_mandate_id_from_hitobito_id)
     df["sepa_mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
@@ -385,7 +461,8 @@ def _enrich_people_dataframe(
     )
     col_from_fee_rules("total_fee_reduction_cents", f=lambda val: val or 0)
     col_from_fee_rules("total_fee_reduction_comment")
-    df["total_fee_cents"] = df.apply(lambda r: r["regular_full_fee_cents"] - r["total_fee_reduction_cents"], axis=1)  # fmt: skip
+
+    df["total_fee_cents"] = df.apply(_compute_total_fee_cents, axis=1)  # fmt: skip
     df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
     df["amount_paid"] = df["accounting_entries_amounts_cents"].map(sum)
     df["sepa_dd_sequence_type"] = df.apply(_sepa_dd_sequence_type_from_row, axis=1)
@@ -397,6 +474,9 @@ def _enrich_people_dataframe(
     )
     df["full_name"] = df["first_name"] + " " + df["last_name"]
     df["short_full_name"] = df["short_first_name"] + " " + df["last_name"]
+    df["contract_additional_emails"] = df.apply(get_contract_additional_emails, axis=1)
+    df["contract_additional_names"] = df.apply(get_contract_additional_names, axis=1)
+    df["contract_names"] = df.apply(get_contract_names, axis=1)
 
     assert_all_people_rows_consistent(df)
     df.drop(
@@ -406,6 +486,13 @@ def _enrich_people_dataframe(
         ],
         inplace=True,
     )
+
+
+def _extract_col_name(col: str) -> str | None:
+    if col.isidentifier():
+        return col
+    else:
+        return None
 
 
 def load_people_dataframe(
@@ -420,10 +507,12 @@ def load_people_dataframe(
     sepa_status: str | _collections_abc.Iterable[str] | None = None,
     fee_rules: str | _collections_abc.Iterable[str] = "active",
     exclude_deregistered: bool | None = None,
-    log_resulting_data_frame: bool = True,
+    log_resulting_data_frame: bool | None = None,
     today: _datetime.date | str | None = None,
     collection_date: _datetime.date | str | None = None,
     print_at: _datetime.date | str | None = None,
+    extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
+    extra_static_df_cols: dict[str, _typing.Any] | None = None,
 ) -> _pandas.DataFrame:
     import re
     import textwrap
@@ -437,12 +526,19 @@ def load_people_dataframe(
     print_at = _util.to_date(print_at)
     collection_date = _util.to_date(collection_date) or today
 
+    extra_out_cols = []
     if extra_cols is not None:
         if isinstance(extra_cols, str):
-            extra_cols = extra_cols.strip()
+            extra_cols = [extra_cols.strip()]
         else:
-            extra_cols = ",\n  ".join(extra_cols)
-    extra_cols_clause = f",\n  {extra_cols}" if extra_cols else ""
+            extra_cols = [x.strip() for x in extra_cols] or None
+    if extra_cols:
+        extra_out_cols = [
+            col_name for col in extra_cols if (col_name := _extract_col_name(col))
+        ]
+        extra_cols_clause = ",\n  " + ",\n  ".join(extra_cols)
+    else:
+        extra_cols_clause = ""
 
     join_clause = join
 
@@ -544,7 +640,14 @@ ORDER BY people.id
         """
         sql_stmt = re.sub(r"\n+", "\n", textwrap.dedent(sql_stmt).strip())
 
-        _LOGGER.info("Fetch people SQL Query:\n%s", textwrap.indent(sql_stmt, "  "))
+        if "\n" in where_clause:
+            _LOGGER.info(
+                "Fetch people SQL where clause:\n%s",
+                textwrap.indent(where_clause, "  "),
+            )
+        else:
+            _LOGGER.info("Fetch people %s", where_clause)
+        _LOGGER.debug("Fetch people SQL Query:\n%s", textwrap.indent(sql_stmt, "  "))
         cur.execute(sql_stmt)  # type: ignore
         rows = cur.fetchall()
         cur.close()
@@ -559,6 +662,7 @@ ORDER BY people.id
             today=today,
             print_at=print_at,
             collection_date=collection_date,
+            extra_mailing_bcc=extra_mailing_bcc,
         )
     if not (set(df) <= set(PEOPLE_DATAFRAME_COLUMNS)):
         warn_msg = "Some columns of the resulting dataframe are not listed in PEOPLE_DATAFRAME_COLUMNS"
@@ -568,9 +672,16 @@ ORDER BY people.id
                     f'\n  column "{col_name}" not present in PEOPLE_DATAFRAME_COLUMNS'
                 )
         _LOGGER.warning(warn_msg)
-    df = df.reindex(columns=PEOPLE_DATAFRAME_COLUMNS)
+    columns = PEOPLE_DATAFRAME_COLUMNS[:]
+    if extra_out_cols:
+        columns.extend(extra_out_cols)
+    if extra_static_df_cols:
+        columns.extend(extra_static_df_cols.keys())
+        for key, val in extra_static_df_cols.items():
+            df[key] = val
+    df = df.reindex(columns=columns)
 
-    if log_resulting_data_frame:
+    if log_resulting_data_frame or (log_resulting_data_frame is None):
         _LOGGER.info("Resulting pandas DataFrame:\n%s", textwrap.indent(str(df), "  "))
     return df
 
@@ -622,8 +733,12 @@ def assert_all_people_rows_consistent(df: _pandas.DataFrame) -> None:
 
 
 def write_people_dataframe_to_xlsx(
-    df: _pandas.DataFrame, path: str | _pathlib.Path, *, sheet_name: str = "Sheet 1"
+    df: _pandas.DataFrame,
+    path: str | _pathlib.Path,
+    *,
+    sheet_name: str = "Sheet 1",
+    log_level: int | None = None,
 ) -> None:
     from . import _util
 
-    _util.write_dataframe_to_xlsx(df, path, sheet_name=sheet_name)
+    _util.write_dataframe_to_xlsx(df, path, sheet_name=sheet_name, log_level=log_level)

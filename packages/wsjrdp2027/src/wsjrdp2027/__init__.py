@@ -4,8 +4,10 @@ from ._context import (
     WsjRdpContext as WsjRdpContext,
     WsjRdpContextConfig as WsjRdpContextConfig,
 )
+from ._mail_client import MailClient as MailClient
 from ._mailing import (
     MailingConfig as MailingConfig,
+    PreparedEmailMessage as PreparedEmailMessage,
     PreparedMailing as PreparedMailing,
     send_mailings as send_mailings,
 )
@@ -26,6 +28,7 @@ from ._payment import (
 )
 from ._payment_role import PaymentRole as PaymentRole
 from ._people import (
+    SelectPeopleConfig as SelectPeopleConfig,
     load_people_dataframe as load_people_dataframe,
     write_people_dataframe_to_xlsx as write_people_dataframe_to_xlsx,
 )
@@ -47,6 +50,8 @@ from ._util import (
     console_confirm as console_confirm,
     create_dir as create_dir,
     format_cents_as_eur_de as format_cents_as_eur_de,
+    get_default_email_policy as get_default_email_policy,
+    merge_mail_addresses as merge_mail_addresses,
     render_template as render_template,
     to_date as to_date,
     to_datetime as to_datetime,
@@ -58,15 +63,20 @@ __all__ = [
     "CREDITOR_ID",
     "DB_PEOPLE_ALL_SEPA_STATUS",
     "DB_PEOPLE_ALL_STATUS",
+    "DEFAULT_MSGID_DOMAIN",
+    "DEFAULT_MSGID_IDSTRING",
     "EMAIL_SIGNATURE_CMT",
     "EMAIL_SIGNATURE_HOC",
     "EMAIL_SIGNATURE_ORG",
     "WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG",
     "WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG",
     #
+    "MailClient",
     "MailingConfig",
     "PaymentRole",
+    "PreparedEmailMessage",
     "PreparedMailing",
+    "SelectPeopleConfig",
     "SepaDirectDebit",
     "SepaDirectDebitConfig",
     "SepaDirectDebitPayment",
@@ -76,6 +86,7 @@ __all__ = [
     "console_confirm",
     "create_dir",
     "format_cents_as_eur_de",
+    "get_default_email_policy",
     "get_typst_font_paths",
     "insert_direct_debit_payment_info",
     "insert_direct_debit_pre_notification",
@@ -86,6 +97,7 @@ __all__ = [
     "load_payment_dataframe_from_payment_initiation",
     "load_people_dataframe",
     "mandate_id_from_hitobito_id",
+    "merge_mail_addresses",
     "render_template",
     "send_mailings",
     "to_date",
@@ -143,6 +155,23 @@ info@worldscoutjamboree.de
 https://worldscoutjamboree.de
 """
 )
+
+EMAIL_SIGNATURE_DAVID_FRITZSCHE = (
+    "\n-- "
+    + """
+World Scout Jamboree 2027 Poland
+German Contingent
+Head of Finance Team
+
+Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
+Chausseestr. 128/129
+10115 Berlin
+"""
+)
+
+
+DEFAULT_MSGID_DOMAIN = "worldscoutjamboree.de"
+DEFAULT_MSGID_IDSTRING = "wsjrsp2027"
 
 
 EARLY_PAYER_AUGUST_IDS_SUPERSET = [

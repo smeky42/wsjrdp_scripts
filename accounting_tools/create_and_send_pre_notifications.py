@@ -4,7 +4,6 @@ from __future__ import annotations
 import datetime
 import email.message
 import logging
-import smtplib as _smtplib
 import sys
 import textwrap
 
@@ -18,27 +17,12 @@ _LOGGER = logging.getLogger(__name__)
 COLLECTION_DATE = datetime.date(2025, 12, 5)
 
 
-def parse_args(argv=None):
+def create_argument_parser():
     import argparse
-    import sys
 
-    if argv is None:
-        argv = sys.argv
     p = argparse.ArgumentParser()
     p.add_argument("--accounting", action="store_true", default=True)
     p.add_argument("--no-accounting", dest="accounting", action="store_false")
-    p.add_argument(
-        "--email",
-        action="store_true",
-        default=True,
-        help="Send out the created pre-notifications. Uses sepa_mailing_from, sepa_mailing_to, sepa_mailing_cc, sepa_mailing_bcc, sepa_mailing_reply_to",
-    )
-    p.add_argument(
-        "--no-email",
-        dest="email",
-        action="store_false",
-        help="Do not send out the created pre-notifications.",
-    )
     p.add_argument(
         "--today",
         metavar="TODAY",
@@ -51,17 +35,14 @@ def parse_args(argv=None):
         default=COLLECTION_DATE.strftime("%Y-%m-%d"),
         help="The collection date",
     )
-    args = p.parse_args(argv[1:])
-    args.today = wsjrdp2027.to_date(args.today)
-    if args.collection_date:
-        args.collection_date = wsjrdp2027.to_date(args.collection_date)
-    else:
-        args.collection_date = COLLECTION_DATE
-    return args
+    return p
 
 
 def send_pre_notification_mail(
-    args, *, ctx: wsjrdp2027.WsjRdpContext, smtp_client: _smtplib.SMTP, row: pd.Series
+    mail_client: wsjrdp2027.MailClient,
+    *,
+    ctx: wsjrdp2027.WsjRdpContext,
+    row: pd.Series,
 ) -> email.message.EmailMessage:
     import email.message
 
@@ -111,15 +92,15 @@ Daffi und Peter
     with open(eml_file, "wb") as f:
         f.write(msg.as_bytes())
 
-    if args.email:
-        smtp_client.send_message(msg)
-    else:
-        _LOGGER.warning("Skip actual email sending (--no-email given)")
+    mail_client.send_message(msg)
     return msg
 
 
 def send_pre_notification_mails(
-    args, *, ctx: wsjrdp2027.WsjRdpContext, smtp_client: _smtplib.SMTP, df: pd.DataFrame
+    mail_client: wsjrdp2027.MailClient,
+    *,
+    ctx: wsjrdp2027.WsjRdpContext,
+    df: pd.DataFrame,
 ) -> None:
     df_len = len(df)
     for i, (_, row) in enumerate(df.iterrows(), start=1):
@@ -129,7 +110,7 @@ def send_pre_notification_mails(
             row["full_name"],
             textwrap.indent(row.to_string(), "  | "),
         )
-        send_pre_notification_mail(args, ctx=ctx, smtp_client=smtp_client, row=row)
+        send_pre_notification_mail(mail_client, ctx=ctx, row=row)
         _LOGGER.info(
             "%s id: %s; To: %s; Cc: %s; status: %s %s; payment_role: %s; fee: %s; paid: %s; due: %s",
             f"{i}/{df_len} ({i / df_len * 100.0:.1f}%)",
@@ -183,17 +164,20 @@ def insert_pre_notifications_into_db(
 
 
 def main(argv=None):
-    args = parse_args(argv=argv)
-
-    start_time = None
-    # start_time = datetime.datetime(2025, 8, 15, 10, 30, 27).astimezone()
-
     ctx = wsjrdp2027.WsjRdpContext(
         setup_logging=True,
-        start_time=start_time,
         out_dir="data/sepa_direct_debit_pre_notifications_{{ filename_suffix }}",
         # log_level=logging.DEBUG,
+        argument_parser=create_argument_parser(),
+        argv=argv,
     )
+    args = ctx.parsed_args
+    args.today = wsjrdp2027.to_date(args.today)
+    if args.collection_date:
+        args.collection_date = wsjrdp2027.to_date(args.collection_date)
+    else:
+        args.collection_date = COLLECTION_DATE
+
     out_base = ctx.make_out_path("sepa_direct_debit_{{ filename_suffix }}")
     log_filename = out_base.with_suffix(".log")
     xml_filename = out_base.with_suffix(".xml")
@@ -286,9 +270,8 @@ def main(argv=None):
         args, ctx=ctx, df=df_ok, sepa_dd_config=sepa_dd_config
     )
 
-    ctx.require_approval_to_send_email_in_prod()
-    with ctx.smtp_login() as smtp_client:
-        send_pre_notification_mails(args, ctx=ctx, smtp_client=smtp_client, df=df_ok)
+    with ctx.mail_login() as mail_client:
+        send_pre_notification_mails(mail_client, ctx=ctx, df=df_ok)
 
     _LOGGER.info("")
     _LOGGER.info(

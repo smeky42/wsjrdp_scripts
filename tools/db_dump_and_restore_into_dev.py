@@ -3,21 +3,24 @@
 
 from __future__ import annotations
 
-import argparse
-import datetime
 import sys
 
 import wsjrdp2027
 
 
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv
+def create_argument_parser():
+    import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument("dump_path", nargs="?")
-    args = p.parse_args(argv[1:])
+    return p
 
-    ctx = wsjrdp2027.WsjRdpContext(out_dir="data")
+
+def main(argv=None):
+    ctx = wsjrdp2027.WsjRdpContext(
+        out_dir="data", argument_parser=create_argument_parser(), argv=argv
+    )
+    args = ctx.parsed_args
 
     if args.dump_path:
         dump_path = args.dump_path
@@ -29,7 +32,7 @@ def main(argv=None):
     ctx.pg_dump(dump_path=dump_path, format="custom")
 
     dev_ctx = wsjrdp2027.WsjRdpContext(
-        config="config-dev.yml", start_time=ctx.start_time
+        config="config-dev.yml", start_time=ctx.start_time, parse_arguments=False
     )
     dev_ctx.pg_restore(dump_path=dump_path, restore_into_production=False)
 

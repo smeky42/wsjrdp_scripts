@@ -105,7 +105,7 @@ def print_frame_by_association(df: pd.DataFrame, association_region: str) -> tup
     if yp_count == 0:
         print("No YPs, cannot calculate factor")
         return [ul_count, yp_count]
-    
+
     ul_units = ul_count / 4
     yp_units = yp_count / 36
     print(
@@ -134,7 +134,7 @@ def main():
 
     with ctx.psycopg_connect() as conn:
         cur = conn.cursor()
-        cur.execute(f"""SELECT first_name, email, nickname, primary_group_id, zip_code, status, rdp_association, rdp_association_region, payment_role FROM people 
+        cur.execute(f"""SELECT first_name, email, nickname, primary_group_id, zip_code, status, rdp_association, rdp_association_region, payment_role FROM people
     WHERE status = 'printed' OR status = 'upload' OR status = 'in_review' OR status = 'reviewed' OR status = 'confirmed'
     ORDER BY id""")
         rows = cur.fetchall()
@@ -168,7 +168,7 @@ PSG - Würzburg
 DPSG - Augsburg
 PSG - Augsburg
 DPSG - Eichstätt
-VCP - Bayern'''    
+VCP - Bayern'''
 
     print("\n## Bayern")
     print_frame_by_region(df, regions_bavaria)
@@ -185,7 +185,7 @@ DPSG - Speyer
 PSG - Speyer
 VCP - Baden
 VCP - Württemberg
-VCP - Rheinland-Pfalz/Saar'''   
+VCP - Rheinland-Pfalz/Saar'''
     print("\n# Baden-Württemberg + RPS")
     print_frame_by_region(df, regions_bawue_rps)
 
@@ -206,7 +206,7 @@ DPSG - Trier
 PSG - Trier
 VCP - Nordrhein
 VCP - Westfalen
-VCP - Hessen'''   
+VCP - Hessen'''
     print("\n# NRW + Hessen")
     print_frame_by_region(df, regions_nrw_hessen)
 
@@ -224,7 +224,7 @@ PSG - Paderborn
 VCP - Hamburg
 VCP - Niedersachsen
 VCP - Schleswig-Holstein
-'''   
+'''
     print("\n# Norddeutschland")
     print_frame_by_region(df, regions_nord)
 

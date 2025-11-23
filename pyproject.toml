@@ -8,6 +8,7 @@ dependencies = [
     "networkx[default]>=3.5",
     "python-docx-replace>=0.4.4",
     "requests>=2.32.5",
+    "ruamel-yaml>=0.18.16",
     "typst>=0.14.1",
 ]
 

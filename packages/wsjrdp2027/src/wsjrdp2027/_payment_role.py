@@ -118,6 +118,19 @@ class PaymentRole(_enum.Enum):
     def is_regular_payer(self) -> bool:
         return self in _REGULAR_PAYER_ROLES
 
+    @property
+    def is_yp(self) -> bool:
+        """`True` if this is a YP payment role.
+
+        >>> PaymentRole.EARLY_PAYER_YP.is_yp
+        True
+        >>> PaymentRole.REGULAR_PAYER_YP.is_yp
+        True
+        >>> PaymentRole.EARLY_PAYER_IST.is_yp
+        False
+        """
+        return self in (PaymentRole.EARLY_PAYER_YP, PaymentRole.REGULAR_PAYER_YP)
+
     def get_db_payment_role(self, *, early_payer: bool | None = None) -> str:
         """The string for the payment_role column in the database.
 

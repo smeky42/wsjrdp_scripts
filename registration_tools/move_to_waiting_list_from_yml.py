@@ -12,35 +12,12 @@ import wsjrdp2027
 _LOGGER = _logging.getLogger(__name__)
 
 
-def parse_args(argv=None):
+def create_argument_parser():
     import argparse
-    import sys
 
-    if argv is None:
-        argv = sys.argv
     p = argparse.ArgumentParser()
-    p.add_argument(
-        "--email",
-        action="store_true",
-        default=True,
-        help="Actually send out email messages",
-    )
-    p.add_argument(
-        "--no-email",
-        dest="email",
-        action="store_false",
-        help="Do not send out email messages",
-    )
-    p.add_argument(
-        "--today",
-        metavar="TODAY",
-        default="TODAY",
-        help="Run as if the current date is TODAY",
-    )
     p.add_argument("yaml_file")
-    args = p.parse_args(argv[1:])
-    args.today = wsjrdp2027.to_date(args.today)
-    return args
+    return p
 
 
 def change_primary_group_id(conn: _psycopg.Connection, *, df: pd.DataFrame) -> None:
@@ -126,12 +103,13 @@ def change_primary_group_id(conn: _psycopg.Connection, *, df: pd.DataFrame) -> N
 
 
 def main(argv=None):
-    args = parse_args(argv=argv)
     ctx = wsjrdp2027.WsjRdpContext(
         setup_logging=True,
         out_dir="data/move_to_waiting_list{{ kind | omit_unless_prod | upper | to_ext }}",
+        argument_parser=create_argument_parser(),
+        argv=argv,
     )
-    mailing_config = wsjrdp2027.MailingConfig.from_yaml(args.yaml_file)
+    mailing_config = wsjrdp2027.MailingConfig.from_yaml(ctx.parsed_args.yaml_file)
 
     ctx.out_dir = ctx.make_out_path(mailing_config.name + "__{{ filename_suffix }}")
     out_base = ctx.make_out_path(mailing_config.name)
@@ -147,19 +125,14 @@ def main(argv=None):
         mailing_config.action_arguments["new_primary_group_id"]
     )
 
-    if not mailing_config.action_arguments.get("email", True):
-        args.email = False
-
     ctx.require_approval_to_run_in_prod()
 
     with ctx.psycopg_connect() as conn:
         change_primary_group_id(conn, df=prepared_mailing.df)
 
-    wsjrdp2027.send_mailings(
-        ctx,
-        mailings=prepared_mailing,
-        send_message=args.email,
-        out_dir=ctx.out_dir,
+    ctx.send_mailing(
+        prepared_mailing,
+        dry_run=not mailing_config.action_arguments.get("email", True),
     )
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)
