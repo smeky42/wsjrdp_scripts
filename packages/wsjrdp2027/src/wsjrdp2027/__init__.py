@@ -4,6 +4,7 @@ from ._context import (
     WsjRdpContext as WsjRdpContext,
     WsjRdpContextConfig as WsjRdpContextConfig,
 )
+from ._people_where import PeopleWhere as PeopleWhere
 from ._mail_client import MailClient as MailClient
 from ._mailing import (
     MailingConfig as MailingConfig,
@@ -75,6 +76,7 @@ __all__ = [
     "MailClient",
     "MailingConfig",
     "PaymentRole",
+    "PeopleWhere",
     "PreparedEmailMessage",
     "PreparedMailing",
     "SelectPeopleConfig",

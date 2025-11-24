@@ -6,12 +6,10 @@ Uses the rules stored in the table wsj27_rdp_fee_rules.
 
 from __future__ import annotations
 
-import contextlib as _contextlib
 import logging
 import pathlib as _pathlib
 import re
 import shutil as _shutil
-import smtplib as _smtplib
 import sys
 import textwrap as _textwrap
 import typing
@@ -35,12 +33,9 @@ _MAIL_BCC = [
 ]
 
 
-def parse_args(argv=None):
+def create_argument_parser():
     import argparse
-    import sys
 
-    if argv is None:
-        argv = sys.argv
     p = argparse.ArgumentParser()
     p.add_argument("--rdp-representative", choices=["DF"], required=False)
     p.add_argument(
@@ -51,31 +46,13 @@ def parse_args(argv=None):
     )
     p.add_argument("--no-pdf", dest="pdf", action="store_false")
     p.add_argument(
-        "--email",
-        action="store_true",
-        default=False,
-        help="Send the created PDF out. Uses mailings_to, mailings_cc. Copies",
-    )
-    p.add_argument(
-        "--no-email",
-        dest="email",
-        action="store_false",
-        help="Create eml files, but do not send out the special agreement via SMTP.",
-    )
-    p.add_argument(
-        "--today",
-        metavar="TODAY",
-        default="TODAY",
-        help="Run as if the current date is TODAY",
-    )
-    p.add_argument(
         "--print-at",
         metavar="DATE",
         default=None,
         help="Run as if all people had print_at = DATE",
     )
     p.add_argument("id", nargs="+")
-    return p.parse_args(argv[1:])
+    return p
 
 
 _RDP_REPRESENTATIVE_TO_TOWN = {
@@ -116,21 +93,10 @@ def convert_docx_to_pdf(docx_path, /, pdf_name=None) -> _pathlib.Path:
     return _pathlib.Path(pdf_path)
 
 
-def _merge_mail_to(*args) -> list[str] | None:
-    from wsjrdp2027 import _util
-
-    if all(arg is None for arg in args):
-        return None
-    addrs = []
-    for arg in args:
-        addrs.extend(_util.to_str_list(arg) or [])
-    return _util.dedup(addrs)  # type: ignore
-
-
 def send_pdf_via_email(
     args,
     ctx: wsjrdp2027.WsjRdpContext,
-    smtp_client: _smtplib.SMTP | None,
+    mail_client: wsjrdp2027.MailClient,
     row: pd.Series,
     pdf_path: _pathlib.Path,
     *,
@@ -145,11 +111,11 @@ def send_pdf_via_email(
     pdf_bytes = pdf_path.read_bytes()
     msg = email.message.EmailMessage()
     subject = f"WSJ27 Sondervereinbarung {short_full_name} (id {id})"
-    cc = _merge_mail_to(row["mailing_cc"], _MAIL_CC)
+    cc = wsjrdp2027.merge_mail_addresses(row["mailing_cc"], _MAIL_CC)
     bcc = _MAIL_BCC
     if issue:
         subject = f"{subject} {issue}"
-        bcc = _merge_mail_to(bcc, "info@worldscoutjamboree.de")
+        bcc = wsjrdp2027.merge_mail_addresses(bcc, "info@worldscoutjamboree.de")
     msg["Subject"] = subject
     msg["From"] = "anmeldung@worldscoutjamboree.de"
     msg["To"] = row["mailing_to"]
@@ -200,11 +166,7 @@ Instagram: @wsjrdp
     with open(eml_file, "wb") as f:
         f.write(msg.as_bytes())
     _LOGGER.info("Wrote %s", eml_file)
-    if args.email:
-        assert smtp_client is not None
-        smtp_client.send_message(msg)
-    else:
-        _LOGGER.warning("Skip actual email sending (--no-email given)")
+    mail_client.send_message(msg)
 
 
 def installments_replacements_from_row(row: pd.Series, keys) -> dict[str, str]:
@@ -256,7 +218,7 @@ def create_special_agreement(
     *,
     ctx: wsjrdp2027.WsjRdpContext,
     row: pd.Series,
-    smtp_client: _smtplib.SMTP | None = None,
+    mail_client: wsjrdp2027.MailClient,
 ) -> None:
     import python_docx_replace
 
@@ -359,25 +321,24 @@ def create_special_agreement(
             tmp_pdf = convert_docx_to_pdf(tmp_docx)
             tmp_pdf.rename(pdf_name)
             send_pdf_via_email(
-                args, ctx, smtp_client, row, pdf_name, pdf_filename=pdf_filename
+                args, ctx, mail_client, row, pdf_name, pdf_filename=pdf_filename
             )
-        elif args.email:
+        elif not ctx.dry_run:
             _LOGGER.warning("Cannot send email without producing PDFs")
     finally:
         tmp_docx.unlink(missing_ok=True)
 
 
 def main(argv=None):
-    args = parse_args(argv)
-
-    start_time = None
-    # start_time = datetime.datetime(2025, 8, 15, 10, 30, 27).astimezone()
-
     ctx = wsjrdp2027.WsjRdpContext(
+        argument_parser=create_argument_parser(),
+        argv=argv,
         setup_logging=True,
-        start_time=start_time,
         out_dir="data/sondervereinbarungen{{ kind | omit_unless_prod | upper | to_ext }}",
     )
+    args = ctx.parsed_args
+    if not args.pdf:
+        ctx.dry_run = True
     out_base = ctx.make_out_path(
         "sondervereinbarung_beitrag_raten_{{ filename_suffix }}"
     )
@@ -388,21 +349,15 @@ def main(argv=None):
         df = wsjrdp2027.load_people_dataframe(
             conn,
             status=None,
-            where=f"""people.id IN ({", ".join(str(x) for x in args.id)})""",
             fee_rules=["planned", "active"],
-            today=args.today,
+            today=ctx.today,
             print_at=args.print_at,
+            where=wsjrdp2027.PeopleWhere(
+                id=ctx.parsed_args.id,
+            ),
         )
 
-    if args.email:
-        ctx.require_approval_to_send_email_in_prod()
-
-    with _contextlib.ExitStack() as exit_stack:
-        if args.email and args.pdf:
-            smtp_client = exit_stack.enter_context(ctx.smtp_login())
-        else:
-            smtp_client = None
-
+    with ctx.mail_login() as smtp_client:
         for _, row in df.iterrows():
             id = row["id"]
             id_and_name = f"{id} {row['short_full_name']}"
@@ -415,7 +370,7 @@ def main(argv=None):
             )
             try:
                 create_special_agreement(
-                    args, ctx=ctx, row=row, smtp_client=smtp_client
+                    args, ctx=ctx, row=row, mail_client=smtp_client
                 )
             finally:
                 logger.removeHandler(handler)

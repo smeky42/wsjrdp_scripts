@@ -24,12 +24,6 @@ def create_argument_parser():
     p.add_argument("--accounting", action="store_true", default=True)
     p.add_argument("--no-accounting", dest="accounting", action="store_false")
     p.add_argument(
-        "--today",
-        metavar="TODAY",
-        default="TODAY",
-        help="Run as if the current date is TODAY",
-    )
-    p.add_argument(
         "--collection-date",
         metavar="DATE",
         default=COLLECTION_DATE.strftime("%Y-%m-%d"),
@@ -165,14 +159,13 @@ def insert_pre_notifications_into_db(
 
 def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
+        argument_parser=create_argument_parser(),
+        argv=argv,
         setup_logging=True,
         out_dir="data/sepa_direct_debit_pre_notifications_{{ filename_suffix }}",
         # log_level=logging.DEBUG,
-        argument_parser=create_argument_parser(),
-        argv=argv,
     )
     args = ctx.parsed_args
-    args.today = wsjrdp2027.to_date_or_none(args.today)
     if args.collection_date:
         args.collection_date = wsjrdp2027.to_date_or_none(args.collection_date)
     else:
@@ -186,11 +179,14 @@ def main(argv=None):
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
-            # early_payer=True,
             pedantic=False,
-            max_print_at=args.collection_date,
             collection_date=args.collection_date,
             # where="people.payment_role NOT LIKE '%::Unit::Leader'",
+            where=wsjrdp2027.PeopleWhere(
+                # early_payer=True,
+                max_print_at=args.collection_date,
+                role=["CMT", "IST", "YP"],
+            ),
         )
 
     df_ok = df[df["payment_status"] == "ok"]

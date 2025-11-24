@@ -18,13 +18,22 @@ def main():
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
-            early_payer=True,
-            max_print_at="2025-07-31",
             collection_date=COLLECTION_DATE,
+            where=wsjrdp2027.SelectPeopleConfig(
+                role=["YP", "IST", "CMT"],
+                exclude_deregistered=True,
+                early_payer=True,
+                max_print_at="2025-07-31",
+            ),
         )
 
     ids = df["id"].tolist()
-    assert frozenset(ids) <= frozenset(wsjrdp2027.EARLY_PAYER_AUGUST_IDS_SUPERSET)
+    if unexpected_ids := frozenset(ids) - frozenset(
+        wsjrdp2027.EARLY_PAYER_AUGUST_IDS_SUPERSET
+    ):
+        print("Unexpected IDs:")
+        print(sorted(unexpected_ids))
+        sys.exit(1)
 
     collection_date_de = COLLECTION_DATE.strftime("%d.%m.%Y")
 
@@ -34,7 +43,7 @@ def main():
     out_dir = pathlib.Path(f"data/sepa_direct_debit.{now_str}")
     out_dir.mkdir(exist_ok=True)
 
-    with ctx.smtp_login() as client:
+    with ctx.mail_login() as client:
         for _, row in df.iterrows():
             msg = email.message.EmailMessage()
             msg["Subject"] = (
@@ -57,7 +66,7 @@ Betrag: {row["amount"] // 100} €
 
 Kontoinhaber*in: {row["sepa_name"]}
 IBAN: {row["sepa_iban"]}
-Mandatsreferenz: {row["mandate_id"]}
+Mandatsreferenz: {row["sepa_mandate_id"]}
 
 
 Falls du Fragen hast, schau auf unserer Homepage https://worldscoutjamboree.de/ vorbei oder wende dich an info@worldscoutjamboree.de.

@@ -11,20 +11,9 @@ import wsjrdp2027
 
 _LOGGER = _logging.getLogger(__name__)
 
-_STATUS_TO_DE = {
-    "registered": "Registriert",
-    "printed": "Anmeldung gedruckt",
-    "upload": "Upload vollständig",
-    "in_review": "Dokumente in Überprüfung durch CMT",
-    "reviewed": "Dokumente vollständig überprüft",
-    "confirmed": "Bestätigt durch CMT",
-    "deregistration_noted": "Abmeldung Vermerkt",
-    "deregistered": "Abgemeldet",
-}
 
-
-def link_by_association_region(association: str, region: str) -> str: 
-    if '''BdP - Bayern
+def link_by_association_region(association: str, region: str) -> str:
+    if """BdP - Bayern
 DPSG - München
 PSG - München
 DPSG - Passau
@@ -37,9 +26,9 @@ PSG - Würzburg
 DPSG - Augsburg
 PSG - Augsburg
 DPSG - Eichstätt
-VCP - Bayern'''.__contains__(f"{association} - {region}"):
+VCP - Bayern""".__contains__(f"{association} - {region}"):
         return f"Für {association} - {region} die Region Bayern: https://t.me/+WR-pFkSWYfY4OThi"
-    elif '''BdP - Baden-Württemberg
+    elif """BdP - Baden-Württemberg
 BdP - Rheinland-Pfalz/Saar
 DPSG - Freiburg
 PSG - Freiburg
@@ -51,9 +40,9 @@ DPSG - Speyer
 PSG - Speyer
 VCP - Baden
 VCP - Württemberg
-VCP - Rheinland-Pfalz/Saar'''.__contains__(f"{association} - {region}"):
+VCP - Rheinland-Pfalz/Saar""".__contains__(f"{association} - {region}"):
         return f"Für {association} - {region} die Region Bawü RPS: https://t.me/+1OKNSxcYdeExNzgy"
-    elif '''BdP - Hessen
+    elif """BdP - Hessen
 BdP - Nordrhein-Westfalen
 DPSG - Aachen
 PSG - Aachen
@@ -69,9 +58,9 @@ DPSG - Trier
 PSG - Trier
 VCP - Nordrhein
 VCP - Westfalen
-VCP - Hessen'''.__contains__(f"{association} - {region}"):
+VCP - Hessen""".__contains__(f"{association} - {region}"):
         return f"Für {association} - {region} die Region NRW + Hessen: https://t.me/+TuXAtzz0R6syZTEy"
-    elif '''BdP - Bremen
+    elif """BdP - Bremen
 BdP - Niedersachsen
 BdP - Schleswig-Holstein/Hamburg
 DPSG - Hamburg
@@ -85,9 +74,9 @@ PSG - Paderborn
 VCP - Hamburg
 VCP - Niedersachsen
 VCP - Schleswig-Holstein
-'''.__contains__(f"{association} - {region}"):
+""".__contains__(f"{association} - {region}"):
         return f"Für {association} - {region} die Region Norddeutschland: https://t.me/+uQMKzodcyZZkODNi"
-    elif '''BMPPD - Keine Landesebene
+    elif """BMPPD - Keine Landesebene
 BdP - Berlin/Brandenburg
 BdP - Sachsen
 BdP - Sachsen-Anhalt
@@ -101,39 +90,42 @@ VCP - Berlin-Brandenburg
 VCP - Mecklenburg-Vorpommern
 VCP - Mitteldeutschland
 VCP - Sachsen
-'''.__contains__(f"{association} - {region}"):
+""".__contains__(f"{association} - {region}"):
         return f"Für {association} - {region} die Region Ostdeutschland: https://t.me/+y1Jg8bx7abg1NTAy"
     else:
         return "Wir konnten dir keine Region zuordnen. Trete gerne der Gruppe bei die dir am Besten passt."
 
 
-def main():
+def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
+        argv=argv,
         out_dir="data/2025-09-19__Anmelde-Turbo__UL-Mailing-Telegram__{{ filename_suffix }}",
     )
-    out_base = ctx.make_out_path("Anmelde-Turbo__UL-Mailing-Telegram__{{ filename_suffix }}")
+    out_base = ctx.make_out_path(
+        "Anmelde-Turbo__UL-Mailing-Telegram__{{ filename_suffix }}"
+    )
     ctx.configure_log_file(out_base.with_suffix(".log"))
 
     with ctx.psycopg_connect() as conn:
-        df = wsjrdp2027.load_people_dataframe(conn, where="primary_group_id = 2", exclude_deregistered=True)
-
-    df["status_text"] = df["status"].map(_STATUS_TO_DE.get)
+        df = wsjrdp2027.load_people_dataframe(
+            conn,
+            where=wsjrdp2027.PeopleWhere(primary_group_id=2, exclude_deregistered=True),
+        )
 
     _LOGGER.info("Found %s UL", len(df))
     df_len = len(df)
 
-    ctx.require_approval_to_send_email_in_prod()
-
-    with ctx.smtp_login() as client:
+    with ctx.mail_login() as client:
         for i, (_, row) in enumerate(df.iterrows(), start=1):
             msg = email.message.EmailMessage()
             msg["Subject"] = (
                 f"Dein nächster Schritt als Unit Leader: Vernetzung (id {row['id']})"
             )
             msg["From"] = "anmeldung@worldscoutjamboree.de"
-            msg["To"] = email.utils.formataddr((str(row["short_full_name"]), row["email"]))
+            msg["To"] = email.utils.formataddr(
+                (str(row["short_full_name"]), row["email"])
+            )
             msg["Reply-To"] = "info@worldscoutjamboree.de"
-            msg["Date"] = email.utils.formatdate(localtime=True)
             msg.set_content(
                 f"""Hallo {row["greeting_name"]},
 

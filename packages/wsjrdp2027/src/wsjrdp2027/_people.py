@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import collections.abc as _collections_abc
-import dataclasses as _dataclasses
 import datetime as _datetime
 import logging as _logging
 import typing as _typing
+
+from ._people_where import PeopleWhere as SelectPeopleConfig
 
 
 if _typing.TYPE_CHECKING:
@@ -12,8 +13,6 @@ if _typing.TYPE_CHECKING:
 
     import pandas as _pandas
     import psycopg as _psycopg
-
-    from . import _role
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -123,100 +122,6 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "payment_status_reason",
     "payment_status",
 ]
-
-
-@_dataclasses.dataclass(kw_only=True)
-class SelectPeopleConfig:
-    exclude_deregistered: bool = True
-    role: tuple[_role.WsjRole, ...] | None = None
-    status: _collections_abc.Sequence[str] | None = None
-    id: _collections_abc.Sequence[int] | None = None
-    primary_group_id: _collections_abc.Sequence[int] | None = None
-
-    def __init__(
-        self,
-        *,
-        exclude_deregistered: bool = True,
-        role: str
-        | _role.WsjRole
-        | _collections_abc.Iterable[str | _role.WsjRole]
-        | None = None,
-        status: str | _collections_abc.Iterable[str] | None = None,
-        id: str | int | _collections_abc.Iterable[str | int] | None = None,
-        primary_group_id: str
-        | int
-        | _collections_abc.Sequence[str | int]
-        | None = None,
-    ) -> None:
-        from . import _role, _util
-
-        if exclude_deregistered is not None:
-            self.exclude_deregistered = exclude_deregistered
-        if role is not None:
-            if isinstance(role, (str, _role.WsjRole)):
-                self.role = (_role.WsjRole.from_any(role),)
-            else:
-                self.role = tuple(_role.WsjRole.from_any(r) for r in role)
-        if status is not None:
-            self.status = _util.to_str_list(status)
-        if id is not None:
-            self.id = _util.to_int_list(id)
-        if primary_group_id is not None:
-            self.primary_group_id = _util.to_int_list(primary_group_id)
-
-    @classmethod
-    def from_dict(cls, d: dict | None, /) -> _typing.Self:
-        d = d.copy() if d else {}
-        return cls(**d)
-
-    def to_dict(self) -> dict:
-        def to_out(elts: _collections_abc.Sequence | None, map=None):
-            if elts is None:
-                return None
-            if map:
-                elts = [map(item) for item in elts]
-            if len(elts) == 1:
-                return elts[0]
-            else:
-                return elts
-
-        d = {
-            "exclude_deregistered": self.exclude_deregistered,
-            "role": to_out(self.role, map=str),
-            "status": to_out(self.status),
-            "id": to_out(self.id),
-            "primary_group_id": to_out(self.primary_group_id),
-        }
-        return {k: v for k, v in d.items() if v is not None}
-
-    def as_where_condition(self, *, people_table: str = "people") -> str:
-        from ._util import combine_where, in_expr
-
-        where = ""
-        if self.exclude_deregistered:
-            where = combine_where(
-                where,
-                f"{people_table}.status NOT IN ('deregistration_noted', 'deregistered')",
-            )
-        if self.role is not None:
-            payment_roles = []
-            for role in self.role:
-                payment_roles.extend(
-                    [role.regular_payer_payment_role, role.early_payer_payment_role]
-                )
-            where = combine_where(
-                where, in_expr(f"{people_table}.payment_role", payment_roles)
-            )
-        if self.id is not None:
-            where = combine_where(where, in_expr(f"{people_table}.id", self.id))
-        if self.primary_group_id is not None:
-            where = combine_where(
-                where,
-                in_expr(f"{people_table}.primary_group_id", self.primary_group_id),
-            )
-        if self.status is not None:
-            where = combine_where(where, in_expr(f"{people_table}.status", self.status))
-        return where
 
 
 def sepa_mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:

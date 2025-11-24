@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import email.message
-import email.utils
 import logging as _logging
 import sys
 
@@ -12,8 +11,9 @@ import wsjrdp2027
 _LOGGER = _logging.getLogger(__name__)
 
 
-def main():
+def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
+        argv=argv,
         out_dir="data/2025-09-29__Anmelde-Turbo__YP-Mailing__{{ filename_suffix }}",
     )
     out_base = ctx.make_out_path("Anmelde-Turbo__YP-Mailing__{{ filename_suffix }}")
@@ -21,15 +21,17 @@ def main():
 
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_people_dataframe(
-            conn, where="primary_group_id = 3", exclude_deregistered=True
+            conn,
+            where=wsjrdp2027.PeopleWhere(
+                primary_group_id=3,
+                exclude_deregistered=True,
+            ),
         )
 
     _LOGGER.info("Found %s YP", len(df))
     df_len = len(df)
 
-    ctx.require_approval_to_send_email_in_prod()
-
-    with ctx.smtp_login() as client:
+    with ctx.mail_login() as client:
         for i, (_, row) in enumerate(df.iterrows(), start=1):
             msg = email.message.EmailMessage()
             msg["Subject"] = (
@@ -40,7 +42,6 @@ def main():
             if row["mailing_cc"]:
                 msg["Cc"] = row["mailing_cc"]
             msg["Reply-To"] = "info@worldscoutjamboree.de"
-            msg["Date"] = email.utils.formatdate(localtime=True)
             msg.set_content(
                 f"""Hallo {row["greeting_name"]},
 

@@ -5,23 +5,24 @@ import email.message
 import sys
 
 import wsjrdp2027
+from wsjrdp2027._people_where import PeopleWhere
 
 
-def main():
-    ctx = wsjrdp2027.WsjRdpContext()
+def main(argv=None):
+    ctx = wsjrdp2027.WsjRdpContext(argv=argv)
 
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
-            early_payer=True,
-            status=["reviewed"],
-            max_print_at="2025-07-31",
+            where=PeopleWhere(
+                early_payer=True,
+                status=["reviewed"],
+                max_print_at="2025-07-31",
+            ),
         )
 
-    ctx.require_approval_to_send_email_in_prod()
-
     # Verschicke die Mail an alle Mailadressen
-    with ctx.smtp_login() as client:
+    with ctx.mail_login() as client:
         for _, row in df.iterrows():
             msg = email.message.EmailMessage()
             msg.set_content(
