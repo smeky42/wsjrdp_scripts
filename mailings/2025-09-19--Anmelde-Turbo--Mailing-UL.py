@@ -11,36 +11,28 @@ import wsjrdp2027
 
 _LOGGER = _logging.getLogger(__name__)
 
-_STATUS_TO_DE = {
-    "registered": "Registriert",
-    "printed": "Anmeldung gedruckt",
-    "upload": "Upload vollständig",
-    "in_review": "Dokumente in Überprüfung durch CMT",
-    "reviewed": "Dokumente vollständig überprüft",
-    "confirmed": "Bestätigt durch CMT",
-    "deregistration_noted": "Abmeldung Vermerkt",
-    "deregistered": "Abgemeldet",
-}
 
-
-def main():
+def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
+        argv=argv,
         out_dir="data/2025-09-19__Anmelde-Turbo__UL-Mailing__{{ filename_suffix }}",
     )
     out_base = ctx.make_out_path("Anmelde-Turbo__UL-Mailing__{{ filename_suffix }}")
     ctx.configure_log_file(out_base.with_suffix(".log"))
 
     with ctx.psycopg_connect() as conn:
-        df = wsjrdp2027.load_people_dataframe(conn, where="primary_group_id = 2", exclude_deregistered=True)
-
-    df["status_text"] = df["status"].map(_STATUS_TO_DE.get)
+        df = wsjrdp2027.load_people_dataframe(
+            conn,
+            where=wsjrdp2027.PeopleWhere(
+                primary_group_id=2,
+                exclude_deregistered=True,
+            ),
+        )
 
     _LOGGER.info("Found %s UL", len(df))
     df_len = len(df)
 
-    ctx.require_approval_to_send_email_in_prod()
-
-    with ctx.smtp_login() as client:
+    with ctx.mail_login() as client:
         for i, (_, row) in enumerate(df.iterrows(), start=1):
             msg = email.message.EmailMessage()
             msg["Subject"] = (
@@ -49,7 +41,6 @@ def main():
             msg["From"] = "anmeldung@worldscoutjamboree.de"
             msg["To"] = email.utils.formataddr((row["short_full_name"], row["email"]))
             msg["Reply-To"] = "info@worldscoutjamboree.de"
-            msg["Date"] = email.utils.formatdate(localtime=True)
             msg.set_content(
                 f"""Hallo {row["greeting_name"]},
 
@@ -57,7 +48,7 @@ wir freuen uns riesig, dass du dich für das World Scout Jamboree 2027 in Polen 
 
 Bis es soweit ist kannst du uns noch aktiv unterstützen. Zum Einen, indem du überprüfst, dass deine Anmeldung vollständig abgegeben ist. Denn erst dann kannst du am Jamboree teilnehmen. Auf deiner Startseite in unserem Anmeldetool kannst du jederzeit ganz einfach den Status deiner Anmeldung überprüfen.
 
-Der aktuelle Status deiner Anmeldung ist „{row["status_text"]}“.
+Der aktuelle Status deiner Anmeldung ist „{row["status_de"]}“.
 
 Sollte der Status noch auf „Registriert“ oder „Anmeldung gedruckt“ stehen, hast du noch nicht alle Dokumente vollständig hochgeladen, oder bei der Überprüfung deiner Anmeldung sind uns Unstimmigkeiten aufgefallen und du wurdest gebeten eines oder mehrere Dokumente erneut hochzuladen. Ist der Status „Upload vollständig“, musst du nichts weiter tun. Wir werden deine Anmeldung prüfen und bei einer erfolgreichen Prüfung den Status ändern zu „Dokumente vollständig überprüft“.  Dies ist dein Zeichen, dass bei deiner Anmeldung alles stimmig ist und wir dich nach dem Anmeldeschluss in der Unit-Einteilung berücksichtigen. Achtung! Dies ist noch kein offizieller Vertragsschluss. Dieser geschieht erst sobald wir aus Polen die offizielle Bestätigung unserer Anmeldung als Kontingent erhalten haben.
 

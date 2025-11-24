@@ -3,17 +3,17 @@
 
 from __future__ import annotations
 
+import email.message
 import sys
-from email.message import EmailMessage
 
 import wsjrdp2027
 
 
-def main():
-    ctx = wsjrdp2027.WsjRdpContext(log_level="DEBUG")
+def main(argv=None):
+    ctx = wsjrdp2027.WsjRdpContext(argv=argv, log_level="DEBUG")
 
-    with ctx.smtp_login() as client:
-        msg = EmailMessage()
+    with ctx.mail_login() as client:
+        msg = email.message.EmailMessage()
         msg.set_content("Test-Nachricht\nSecond Line.\n\n-- \nSignature")
         msg["Subject"] = "Test-Nachricht Subject"
         msg["From"] = "anmeldung@worldscoutjamboree.de"
@@ -26,12 +26,7 @@ def main():
         print("=" * 80)
         print()
 
-        prompt = f"Do you want to send the message via SMTP server {ctx.config.smtp_server}:{ctx.config.smtp_port}"
-        if wsjrdp2027.console_confirm(prompt, default=False):
-            print("Sending message...")
-            client.send_message(msg)
-        else:
-            print("Not sending message")
+        client.send_message(msg)
 
 
 if __name__ == "__main__":

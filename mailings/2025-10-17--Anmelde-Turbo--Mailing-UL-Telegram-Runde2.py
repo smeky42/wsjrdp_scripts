@@ -287,8 +287,9 @@ VCP - Sachsen
         return "Wir konnten dir keine Region zuordnen. Trete gerne der Gruppe bei die dir am Besten passt."
 
 
-def main():
+def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
+        argv=argv,
         out_dir="data/2025-10-17__Anmelde-Turbo__UL-Mailing-Telegram2__{{ filename_suffix }}",
     )
     out_base = ctx.make_out_path(
@@ -298,7 +299,11 @@ def main():
 
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_people_dataframe(
-            conn, where="primary_group_id = 2", exclude_deregistered=True
+            conn,
+            where=wsjrdp2027.PeopleWhere(
+                primary_group_id=2,
+                exclude_deregistered=True,
+            ),
         )
 
     _LOGGER.info("Found total %s UL", len(df))
@@ -309,9 +314,7 @@ def main():
     _LOGGER.info("Found %s UL who did not got a mailing before", df_len)
     _LOGGER.info("remaining df:\n%s", str(df))
 
-    ctx.require_approval_to_send_email_in_prod()
-
-    with ctx.smtp_login() as client:
+    with ctx.mail_login() as client:
         for i, (_, row) in enumerate(df.iterrows(), start=1):
             msg = email.message.EmailMessage()
             msg["Subject"] = (
@@ -322,7 +325,6 @@ def main():
                 (str(row["short_full_name"]), row["email"])
             )
             msg["Reply-To"] = "info@worldscoutjamboree.de"
-            msg["Date"] = email.utils.formatdate(localtime=True)
             msg.set_content(
                 f"""Hallo {row["greeting_name"]},
 

@@ -1,4 +1,4 @@
-select:
+where:
   role: UL
 email_subject: Letzte Tage der UL Anmeldung zum Jamboree 2027 in Polen (id {{ row.id }})
 email_reply_to: info@worldscoutjamboree.de

@@ -1,4 +1,4 @@
-select:
+where:
   role: IST
 email_subject: Letzte Tage der IST Anmeldung zum Jamboree 2027 in Polen (id {{ row.id }})
 email_reply_to: ist@worldscoutjamboree.de

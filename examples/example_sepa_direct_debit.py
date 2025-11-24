@@ -26,12 +26,14 @@ def main(argv=None):
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
-            status=wsjrdp2027.DB_PEOPLE_ALL_STATUS,
             sepa_status=wsjrdp2027.DB_PEOPLE_ALL_SEPA_STATUS,
             collection_date=COLLECTION_DATE,
             booking_at=ctx.start_time,
             pedantic=True,
             today=ctx.start_time.date(),
+            where=wsjrdp2027.PeopleWhere(
+                status=wsjrdp2027.DB_PEOPLE_ALL_STATUS,
+            ),
         )
 
     _LOGGER.info("Registered: %s", len(df))
