@@ -16,7 +16,7 @@ if _typing.TYPE_CHECKING:
     import psycopg as _psycopg
     import psycopg.sql as _psycopg_sql
 
-    from . import _people, _sepa_direct_debit
+    from . import _people, _people_where, _sepa_direct_debit
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -936,7 +936,7 @@ def load_payment_dataframe(
     collection_date: _datetime.date | str = "2025-01-01",
     booking_at: _datetime.datetime | None = None,
     pedantic: bool = True,
-    where: str | _people.SelectPeopleConfig | None = "",
+    where: str | _people_where.PeopleWhere | None = "",
     early_payer: bool | None = None,
     max_print_at: str | _datetime.date | None = None,
     status: str | _collections_abc.Iterable[str] | None = ("reviewed", "confirmed"),
@@ -947,11 +947,11 @@ def load_payment_dataframe(
 ) -> _pandas.DataFrame:
     import textwrap
 
-    from . import _people, _util
+    from . import _people, _people_where, _util
 
     if where is None:
         where = ""
-    elif isinstance(where, _people.SelectPeopleConfig):
+    elif isinstance(where, _people_where.PeopleWhere):
         where = where.as_where_condition(people_table="people")
 
     if max_print_at is not None:

@@ -104,10 +104,10 @@ def change_primary_group_id(conn: _psycopg.Connection, *, df: pd.DataFrame) -> N
 
 def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
-        setup_logging=True,
-        out_dir="data/move_to_waiting_list{{ kind | omit_unless_prod | upper | to_ext }}",
         argument_parser=create_argument_parser(),
         argv=argv,
+        setup_logging=True,
+        out_dir="data/move_to_waiting_list{{ kind | omit_unless_prod | upper | to_ext }}",
     )
     mailing_config = wsjrdp2027.MailingConfig.from_yaml(ctx.parsed_args.yaml_file)
 
@@ -119,20 +119,26 @@ def main(argv=None):
     prepared_mailing = mailing_config.query_people_and_prepare_mailing(ctx=ctx)
     prepared_mailing.out_dir = ctx.out_dir
 
-    df = prepared_mailing.df
-
-    df["new_primary_group_id"] = int(
+    prepared_mailing.df["new_primary_group_id"] = int(
         mailing_config.action_arguments["new_primary_group_id"]
     )
 
+    # Check for approval before updating the database
     ctx.require_approval_to_run_in_prod()
 
     with ctx.psycopg_connect() as conn:
         change_primary_group_id(conn, df=prepared_mailing.df)
 
+    # if "action_arguments: email" is explicitly false, then we
+    # enforce dry run mode (i.e., no email will be sent). Otherwise
+    # the global ctx.dry_run setting will be used.
+    if mailing_config.action_arguments.get("email", None) is False:
+        mail_dry_run = True
+    else:
+        mail_dry_run = None
     ctx.send_mailing(
         prepared_mailing,
-        dry_run=not mailing_config.action_arguments.get("email", True),
+        dry_run=mail_dry_run,
     )
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)

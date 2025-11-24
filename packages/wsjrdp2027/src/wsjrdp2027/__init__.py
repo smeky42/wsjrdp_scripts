@@ -4,7 +4,6 @@ from ._context import (
     WsjRdpContext as WsjRdpContext,
     WsjRdpContextConfig as WsjRdpContextConfig,
 )
-from ._people_where import PeopleWhere as PeopleWhere
 from ._mail_client import MailClient as MailClient
 from ._mailing import (
     MailingConfig as MailingConfig,
@@ -29,10 +28,10 @@ from ._payment import (
 )
 from ._payment_role import PaymentRole as PaymentRole
 from ._people import (
-    SelectPeopleConfig as SelectPeopleConfig,
     load_people_dataframe as load_people_dataframe,
     write_people_dataframe_to_xlsx as write_people_dataframe_to_xlsx,
 )
+from ._people_where import PeopleWhere as PeopleWhere
 from ._sepa_direct_debit import (
     CREDITOR_ID as CREDITOR_ID,
     WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG as WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG,
@@ -79,7 +78,6 @@ __all__ = [
     "PeopleWhere",
     "PreparedEmailMessage",
     "PreparedMailing",
-    "SelectPeopleConfig",
     "SepaDirectDebit",
     "SepaDirectDebitConfig",
     "SepaDirectDebitPayment",

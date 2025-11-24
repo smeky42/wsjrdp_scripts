@@ -5,14 +5,14 @@ import datetime as _datetime
 import logging as _logging
 import typing as _typing
 
-from ._people_where import PeopleWhere as SelectPeopleConfig
-
 
 if _typing.TYPE_CHECKING:
     import pathlib as _pathlib
 
     import pandas as _pandas
     import psycopg as _psycopg
+
+    from . import _people_where
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -405,7 +405,7 @@ def load_people_dataframe(
     *,
     extra_cols: str | list[str] | None = None,
     join: str = "",
-    where: str | SelectPeopleConfig | None = "",
+    where: str | _people_where.PeopleWhere | None = "",
     group_by: str = "",
     status: str | _collections_abc.Iterable[str] | None = None,
     early_payer: bool | None = None,
@@ -425,7 +425,7 @@ def load_people_dataframe(
     import pandas as pd
     import psycopg.rows
 
-    from . import _util
+    from . import _people_where, _util
 
     today = _util.to_date_or_none(today) or _datetime.date.today()
     print_at = _util.to_date_or_none(print_at)
@@ -449,7 +449,7 @@ def load_people_dataframe(
 
     if where is None:
         where = ""
-    elif isinstance(where, SelectPeopleConfig):
+    elif isinstance(where, _people_where.PeopleWhere):
         if exclude_deregistered is None:
             exclude_deregistered = where.exclude_deregistered
         where = where.as_where_condition(people_table="people")

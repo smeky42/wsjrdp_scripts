@@ -1,6 +1,6 @@
 action_arguments:
   new_primary_group_id: 7
-select:
+where:
   # role: IST  # Hinweis: `role: IST` matcht nicht Personen, die noch keine payment_role haben
   status: ['registered', 'printed']
   primary_group_id: 4

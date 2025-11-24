@@ -840,52 +840,6 @@ class WsjRdpContext:
             raise RuntimeError(err_msg)
         return df
 
-    @_contextlib.contextmanager
-    def smtp_login(
-        self,
-        *,
-        mail_config: WsjRdpMailConfig | None = None,
-        email_from: str | None = None,
-    ) -> _typing.Iterator[_smtplib.SMTP]:
-        import smtplib
-
-        mail_config = self.__get_mail_config(
-            mail_config=mail_config, from_addr=email_from
-        )
-
-        _LOGGER.info(
-            "[SMTP] Connect to server %s:%s",
-            mail_config.smtp_server,
-            mail_config.smtp_port,
-        )
-
-        client = smtplib.SMTP(mail_config.smtp_server, mail_config.smtp_port)
-
-        client.ehlo()
-
-        has_starttls = client.has_extn("STARTTLS")
-        _LOGGER.info("[SMTP] has STARTTLS? %s", has_starttls)
-
-        if has_starttls:
-            _LOGGER.debug("[SMTP] try STARTTLS")
-            try:
-                client.starttls()
-            except Exception as exc:
-                _LOGGER.error("[SMTP] STARTTLS failed: %s", str(exc))
-                raise
-
-        if mail_config.smtp_username and mail_config.smtp_password:
-            _LOGGER.info("[SMTP] login as %s", mail_config.smtp_username)
-            client.login(mail_config.smtp_username, mail_config.smtp_password)
-        else:
-            _LOGGER.info("[SMTP] Skip login (credentials empty)")
-
-        try:
-            yield client
-        finally:
-            _LOGGER.info("[SMTP] QUIT")
-            client.quit()
-
     def render_template(
         self,
         template: str,

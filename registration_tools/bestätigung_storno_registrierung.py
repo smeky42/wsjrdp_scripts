@@ -70,7 +70,7 @@ def main(argv=None):
 
     mailing_config = wsjrdp2027.MailingConfig.from_yaml(
         SELFDIR / "bestätigung_storno_registrierung.yml",
-        where=wsjrdp2027.SelectPeopleConfig(
+        where=wsjrdp2027.PeopleWhere(
             id=ctx.parsed_args.person_id,
             exclude_deregistered=False,
         ),
