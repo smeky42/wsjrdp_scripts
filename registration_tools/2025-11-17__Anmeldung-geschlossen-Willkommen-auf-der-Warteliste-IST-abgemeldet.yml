@@ -1,7 +1,7 @@
 action_arguments:
   new_primary_group_id: 7
   email: false
-select:
+where:
   # role: IST  # Hinweis: `role: IST` matcht nicht Personen, die noch keine payment_role haben
   status: ['deregistration_noted', 'deregistered']
   exclude_deregistered: false

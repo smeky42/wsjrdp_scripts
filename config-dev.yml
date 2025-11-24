@@ -1,4 +1,5 @@
 is_production: false
+is_staging: false
 
 use_ssh_tunnel: false
 

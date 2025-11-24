@@ -19,7 +19,7 @@ def main():
         df = wsjrdp2027.load_payment_dataframe(
             conn,
             collection_date=COLLECTION_DATE,
-            where=wsjrdp2027.SelectPeopleConfig(
+            where=wsjrdp2027.PeopleWhere(
                 role=["YP", "IST", "CMT"],
                 exclude_deregistered=True,
                 early_payer=True,

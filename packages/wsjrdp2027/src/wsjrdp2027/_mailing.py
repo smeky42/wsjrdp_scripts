@@ -22,7 +22,7 @@ if _typing.TYPE_CHECKING:
 
     import wsjrdp2027 as _wsjrdp2027
 
-    from . import _context, _people
+    from . import _context, _people, _people_where
 
 
 __all__ = [
@@ -86,7 +86,7 @@ class PreparedMailing:
 
 @_dataclasses.dataclass(kw_only=True)
 class MailingConfig:
-    where: _people.SelectPeopleConfig | None = None
+    where: _people_where.PeopleWhere | None = None
     email_subject: str = ""
     email_from: str = ""
     email_reply_to: str = ""
@@ -118,7 +118,7 @@ class MailingConfig:
         /,
         *,
         name: str | None = None,
-        where: _people.SelectPeopleConfig | None = None,
+        where: _people_where.PeopleWhere | None = None,
     ) -> _typing.Self:
         import yaml as _yaml
 
@@ -132,10 +132,8 @@ class MailingConfig:
             config["raw_yaml"] = f.read()
 
         _LOGGER.info("Read mailing config %s", path)
-        if "where" not in config and "select" in config:
-            config["where"] = config.pop("select")
         if "where" in config:
-            config["where"] = _people.SelectPeopleConfig.from_dict(config["where"])
+            config["where"] = _people_where.PeopleWhere.from_dict(config["where"])
         if "name" not in config and path.stem:
             config["name"] = path.stem
         self = cls(**config)
@@ -151,7 +149,7 @@ class MailingConfig:
         self,
         *,
         name: str | None = None,
-        where: _people.SelectPeopleConfig | None = None,
+        where: _people_where.PeopleWhere | None = None,
     ) -> _typing.Self:
         import copy
 
