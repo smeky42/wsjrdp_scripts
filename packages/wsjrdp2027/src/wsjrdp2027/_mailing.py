@@ -8,6 +8,7 @@ import pathlib as _pathlib
 import typing as _typing
 
 from ._mail_config import WsjRdpMailConfig
+from . import _people_where
 
 
 if _typing.TYPE_CHECKING:

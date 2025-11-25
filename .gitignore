@@ -21,3 +21,4 @@ __pycache__
 config-prod.yml
 config.yml
 qr_code/*/*.png
+/data
