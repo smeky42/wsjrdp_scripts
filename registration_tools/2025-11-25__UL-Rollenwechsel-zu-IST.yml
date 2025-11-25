@@ -1,10 +1,11 @@
 action_arguments:
   new_status: "registered"
+  new_role_type: "Group::Ist::Member"
   new_primary_group_id: 4
 where:
   # role: UL 
   # status: ['registered', 'printed']
-  id: [1289, 1322, 1533, 6, 7, 5, 1422, 1643, 2278, 2192, 2110, 1040, 1858, 1850, 42, 1370, 1371, 1839, 98, 2104, 96, 41, 1089, 2401, 2402, 75, 1264, 120, 768, 1533 ] 
+  id: [ 29 ] 
   # primary_group_id: 2
 summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
 email_subject: "Deine Rolle beim World Scout Jamboree wechselt von UL zu IST: {{ row.short_full_name }} (id {{ row.id }})"

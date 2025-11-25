@@ -32,7 +32,7 @@ def change_primary_group_id(conn: _psycopg.Connection, *, df: pd.DataFrame) -> N
         "RETURNING id"
     )
     update_roles_query = (
-        "UPDATE roles SET group_id = %(new_primary_group_id)s "
+        "UPDATE roles SET group_id = %(new_primary_group_id)s, type = %(new_role_type)s "
         "WHERE person_id = %(id)s AND group_id = %(primary_group_id)s "
         "RETURNING id"
     )
@@ -63,6 +63,7 @@ def change_primary_group_id(conn: _psycopg.Connection, *, df: pd.DataFrame) -> N
                     "primary_group_id": row["primary_group_id"],
                     "new_primary_group_id": row["new_primary_group_id"],
                     "new_status": row["new_status"],
+                    "new_role_type": row["new_role_type"],
                 }
                 _LOGGER.debug("  update_people_query: %s", update_people_query)
                 cur.execute(update_people_query, params)
@@ -130,6 +131,7 @@ def main(argv=None):
     )
 
     prepared_mailing.df["new_status"] = mailing_config.action_arguments["new_status"]
+    prepared_mailing.df["new_role_type"] = mailing_config.action_arguments["new_role_type"]
 
     # Check for approval before updating the database
     ctx.require_approval_to_run_in_prod()
