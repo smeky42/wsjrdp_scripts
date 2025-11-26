@@ -7,8 +7,8 @@ import logging as _logging
 import pathlib as _pathlib
 import typing as _typing
 
-from ._mail_config import WsjRdpMailConfig
 from . import _people_where
+from ._mail_config import WsjRdpMailConfig
 
 
 if _typing.TYPE_CHECKING:
@@ -200,6 +200,7 @@ class MailingConfig:
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         log_resulting_data_frame: bool | None = None,
+        limit: int | None = None,
     ) -> _pandas.DataFrame:
         from . import load_people_dataframe
 
@@ -214,6 +215,7 @@ class MailingConfig:
                 extra_static_df_cols=extra_static_df_cols,
                 extra_mailing_bcc=extra_mailing_bcc,
                 log_resulting_data_frame=log_resulting_data_frame,
+                limit=limit,
             )
 
         return df
@@ -230,6 +232,7 @@ class MailingConfig:
         msgid_idstring: str | None = None,
         msgid_domain: str | None = None,
         log_resulting_data_frame: bool | None = None,
+        limit: int | None = None,
     ) -> PreparedMailing:
         df = self.load_people_dataframe(
             ctx=ctx,
@@ -237,6 +240,7 @@ class MailingConfig:
             extra_static_df_cols=extra_static_df_cols,
             extra_mailing_bcc=extra_mailing_bcc,
             log_resulting_data_frame=log_resulting_data_frame,
+            limit=limit,
         )
         if out_dir is None:
             out_dir = ctx.out_dir

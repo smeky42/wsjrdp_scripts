@@ -407,6 +407,7 @@ def load_people_dataframe(
     join: str = "",
     where: str | _people_where.PeopleWhere | None = "",
     group_by: str = "",
+    limit: int | None = None,
     status: str | _collections_abc.Iterable[str] | None = None,
     early_payer: bool | None = None,
     sepa_status: str | _collections_abc.Iterable[str] | None = None,
@@ -479,6 +480,11 @@ def load_people_dataframe(
     where_clause = f"WHERE {where}" if where else ""
     group_by_clause = f"GROUP BY {group_by}" if group_by else ""
 
+    if limit is not None:
+        limit_clause = f"\nLIMIT {limit}"
+    else:
+        limit_clause = ""
+
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
         sql_stmt = f"""
 SELECT
@@ -541,7 +547,7 @@ FROM people
 {join_clause}
 {where_clause}
 {group_by_clause}
-ORDER BY people.id
+ORDER BY people.id{limit_clause}
         """
         sql_stmt = re.sub(r"\n+", "\n", textwrap.dedent(sql_stmt).strip())
 
