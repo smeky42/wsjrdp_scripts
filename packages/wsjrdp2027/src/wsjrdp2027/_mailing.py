@@ -8,22 +8,19 @@ import pathlib as _pathlib
 import typing as _typing
 
 from . import _people_where
-from ._mail_config import WsjRdpMailConfig
 
 
 if _typing.TYPE_CHECKING:
     import datetime as _datetime
     import email.message as _email_message
     import email.policy as _email_policy
-    import imaplib as _imaplib
-    import smtplib as _smtplib
 
     import pandas as _pandas
     import psycopg as _psycopg
 
     import wsjrdp2027 as _wsjrdp2027
 
-    from . import _context, _people, _people_where
+    from . import _people_where
 
 
 __all__ = [
@@ -91,6 +88,9 @@ class MailingConfig:
     email_subject: str = ""
     email_from: str = ""
     email_reply_to: str = ""
+    extra_email_to: list[str] | None = None
+    extra_email_cc: list[str] | None = None
+    extra_email_bcc: list[str] | None = None
     from_addr: str | None = None
     signature: str = ""
     content: str = ""
@@ -123,7 +123,7 @@ class MailingConfig:
     ) -> _typing.Self:
         import yaml as _yaml
 
-        from . import _people
+        from . import _util
 
         path = _pathlib.Path(path)
 
@@ -137,6 +137,9 @@ class MailingConfig:
             config["where"] = _people_where.PeopleWhere.from_dict(config["where"])
         if "name" not in config and path.stem:
             config["name"] = path.stem
+        for k in ["extra_email_to", "extra_email_cc", "extra_email_bcc"]:
+            if (extra := config.pop(k, None)) is not None:
+                config[k] = _util.to_str_list(extra)
         self = cls(**config)
         self = self.replace(name=name, where=where)
         return self
@@ -182,6 +185,9 @@ class MailingConfig:
             "email_subject": self.email_subject,
             "email_from": self.email_from,
             "email_reply_to": self.email_reply_to,
+            "extra_email_to": self.extra_email_to,
+            "extra_email_cc": self.extra_email_cc,
+            "extra_email_bcc": self.extra_email_bcc,
             "content": maybe_to_lss(self.content),
             "signature": maybe_to_lss(self.signature),
         }
@@ -191,6 +197,13 @@ class MailingConfig:
         with io.StringIO() as str_io:
             yaml.dump(d, stream=str_io)
             return str_io.getvalue()
+
+    def update_raw_yaml(self, raw_yaml: bytes | str | None = None) -> None:
+        if raw_yaml is None:
+            raw_yaml = self.__to_yaml__().encode("utf-8")
+        elif isinstance(raw_yaml, str):
+            raw_yaml = raw_yaml.encode("utf-8")
+        self.raw_yaml = raw_yaml
 
     def load_people_dataframe(
         self,
@@ -305,9 +318,11 @@ class MailingConfig:
             signature=self.signature,
             email_subject=self.email_subject,
             email_from=self.email_from or row["mailing_from"],
-            email_to=row["mailing_to"],
-            email_cc=row["mailing_cc"],
-            email_bcc=row["mailing_bcc"],
+            email_to=_util.merge_mail_addresses(row["mailing_to"], self.extra_email_to),
+            email_cc=_util.merge_mail_addresses(row["mailing_cc"], self.extra_email_cc),
+            email_bcc=_util.merge_mail_addresses(
+                row["mailing_bcc"], self.extra_email_bcc
+            ),
             email_reply_to=self.email_reply_to or row["mailing_reply_to"],
             policy=policy,
             msgid_idstring=msgid_idstring,

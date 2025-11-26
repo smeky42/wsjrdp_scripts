@@ -11,7 +11,6 @@ import pathlib as _pathlib
 import re
 import shutil as _shutil
 import sys
-import textwrap as _textwrap
 import typing
 
 import pandas as pd
@@ -22,15 +21,10 @@ if typing.TYPE_CHECKING:
     import docx as _docx
 
 
-_LOGGER = logging.getLogger()
+SELFDIR = _pathlib.Path(__file__).parent.resolve()
 
-_MAIL_CC = [
-    "kl@worldscoutjamboree.de",
-    "sebastian.becker@rdp-bund.de",
-]
-_MAIL_BCC = [
-    "finance-team@worldscoutjamboree.de",
-]
+
+_LOGGER = logging.getLogger()
 
 
 def create_argument_parser():
@@ -45,13 +39,7 @@ def create_argument_parser():
         help="Create a PDF of the created docx. Required to send the PDF via email",
     )
     p.add_argument("--no-pdf", dest="pdf", action="store_false")
-    p.add_argument(
-        "--print-at",
-        metavar="DATE",
-        default=None,
-        help="Run as if all people had print_at = DATE",
-    )
-    p.add_argument("id", nargs="+")
+    p.add_argument("person_id")
     return p
 
 
@@ -91,82 +79,6 @@ def convert_docx_to_pdf(docx_path, /, pdf_name=None) -> _pathlib.Path:
         pdf_path = os.path.splitext(docx_path)[0] + ".pdf"
     docx2pdf.convert(docx_path, output_path=pdf_path)
     return _pathlib.Path(pdf_path)
-
-
-def send_pdf_via_email(
-    args,
-    ctx: wsjrdp2027.WsjRdpContext,
-    mail_client: wsjrdp2027.MailClient,
-    row: pd.Series,
-    pdf_path: _pathlib.Path,
-    *,
-    pdf_filename: str | None = None,
-) -> None:
-    import email.message
-
-    id = row["id"]
-    issue = row["custom_installments_issue"]
-    short_full_name = row["short_full_name"]
-
-    pdf_bytes = pdf_path.read_bytes()
-    msg = email.message.EmailMessage()
-    subject = f"WSJ27 Sondervereinbarung {short_full_name} (id {id})"
-    cc = wsjrdp2027.merge_mail_addresses(row["mailing_cc"], _MAIL_CC)
-    bcc = _MAIL_BCC
-    if issue:
-        subject = f"{subject} {issue}"
-        bcc = wsjrdp2027.merge_mail_addresses(bcc, "info@worldscoutjamboree.de")
-    msg["Subject"] = subject
-    msg["From"] = "anmeldung@worldscoutjamboree.de"
-    msg["To"] = row["mailing_to"]
-    if cc:
-        msg["Cc"] = cc
-    if bcc:
-        msg["Bcc"] = bcc
-    msg["Reply-To"] = ["info@worldscoutjamboree.de"]
-    msg.set_content(
-        f"""Hallo {row["greeting_name"]},
-
-in der angehängten PDF-Datei findest du die Sondervereinbarung zum Vertrag für deinen Ratenplan und ein entsprechend angepasstes SEPA-Mandat.
-
-Du musst jetzt beide Seiten des angehängten Dokuments unterschreiben und als eine Datei anstelle des regulären SEPA-Mandats im Anmeldesystem hochladen. Wenn du dann auch die restlichen Dokumente (Anmeldung, Medizinbogen, Fotoeinwilligung, usw.) hochgeladen hast, werden wir deine Anmeldung überprüfen - genau wie bei allen anderen Anmeldungen.
-
-Wir bestätigen deine Anmeldung nachdem der Gastgeber in Polen uns die Anmeldung des gesamten Kontingents bestätigt hat.
-
-
-Liebe Grüße und Gut Pfad
-Daffi
-
--- """
-        + """
-
-World Scout Jamboree 2027 Poland
-German Contingent
-Head of Finance Team
-
-Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
-Chausseestr. 128/129
-10115 Berlin
-
-Email: david.fritzsche@worldscoutjamboree.de
-Web: www.worldscoutjamboree.de
-Instagram: @wsjrdp
-"""
-    )
-    if not pdf_filename:
-        pdf_filename = pdf_path.name
-    msg.add_attachment(
-        pdf_bytes, maintype="application", subtype="pdf", filename=pdf_filename
-    )
-
-    person_out_dir = f"{id} {short_full_name}"
-    eml_file = ctx.make_out_path(
-        f"{person_out_dir}/sondervereinbarung_beitrag_raten_{{{{ filename_suffix }}}}.{id}.eml"
-    )
-    with open(eml_file, "wb") as f:
-        f.write(msg.as_bytes())
-    _LOGGER.info("Wrote %s", eml_file)
-    mail_client.send_message(msg)
 
 
 def installments_replacements_from_row(row: pd.Series, keys) -> dict[str, str]:
@@ -213,27 +125,30 @@ def log_replacements(row, replacements):
     )
 
 
-def create_special_agreement(
-    args,
-    *,
-    ctx: wsjrdp2027.WsjRdpContext,
-    row: pd.Series,
-    mail_client: wsjrdp2027.MailClient,
+def attach_sondervereinbarung_raten(
+    ctx, prepared: wsjrdp2027.PreparedEmailMessage
 ) -> None:
-    import python_docx_replace
+    import textwrap
 
-    rdp_representative_town = _RDP_REPRESENTATIVE_TO_TOWN.get(args.rdp_representative)
-    rdp_representative_name = _RDP_REPRESENTATIVE_TO_NAME.get(args.rdp_representative, "")  # fmt: skip
+    row = prepared.row
+    assert row is not None
 
-    id = row["id"]
-    short_full_name = row["short_full_name"]
-    full_name = row["full_name"]
     _LOGGER.info(
         "id: %s, full_name: %s, row:\n%s",
-        id,
-        full_name,
-        _textwrap.indent(row.to_string(), "  | "),
+        row["id"],
+        row.get("full_name", None),
+        textwrap.indent(row.to_string(), "  | "),
     )
+
+    import python_docx_replace
+
+    rdp_representative_town = _RDP_REPRESENTATIVE_TO_TOWN.get(
+        ctx.parsed_args.rdp_representative
+    )
+    rdp_representative_name = _RDP_REPRESENTATIVE_TO_NAME.get(ctx.parsed_args.rdp_representative, "")  # fmt: skip
+
+    id = row["id"]
+    full_name = row["full_name"]
     issue = row["custom_installments_issue"]
     total_fee_cents = row["total_fee_cents"]
     installments_cents = row["installments_cents_dict"]
@@ -263,10 +178,8 @@ def create_special_agreement(
     total_fee_reduction_cents = int(row["total_fee_reduction_cents"])
     rdp_representative_town_date = f"{rdp_representative_town}, {row['today_de']}" if rdp_representative_town else ""  # fmt: skip
 
-    if args.rdp_representative:
-        template_filename = (
-            f"WSJ27-Sondervereinbarung-Beitrag-Raten-{args.rdp_representative}.docx"
-        )
+    if ctx.parsed_args.rdp_representative:
+        template_filename = f"WSJ27-Sondervereinbarung-Beitrag-Raten-{ctx.parsed_args.rdp_representative}.docx"
     else:
         template_filename = f"WSJ27-Sondervereinbarung-Beitrag-Raten.docx"
     doc = load_docx(template_filename)
@@ -303,26 +216,25 @@ def create_special_agreement(
         "vereinbarung_beitrag": (total_fee_reduction_cents > 0),
     }
     python_docx_replace.docx_blocks(doc, **blocks_kwargs)
-    id_name = f"{id} {short_full_name}"
-    out_name_base = "WSJ27-Sondervereinbarung-"
-    out_name_base += "JSF" if is_jsf else "Ratenplan"
-    out_name_base += f" {id_name}"
-    pdf_filename = f"{out_name_base}.pdf"
-    out_name_base = f"{id_name}/{out_name_base}"
-    out_name = ctx.make_out_path(out_name_base + " {{ filename_suffix }}.docx")
-    pdf_name = ctx.make_out_path(out_name_base + " {{ filename_suffix }}.pdf")
-    tmp_docx = ctx.make_out_path("WSJ27-Sondervereinbarung.temp.docx")
+
+    pdf_filename = f"{prepared.mailing_name}.pdf"
+    pdf_name = ctx.make_out_path(pdf_filename)
+    tmp_docx = ctx.out_dir.parent / "WSJ27-Sondervereinbarung.temp.docx"
+    out_name = ctx.make_out_path(f"{prepared.mailing_name}.docx")
+
     doc.save(tmp_docx)
     try:
         _LOGGER.info(f"Wrote temporary docx to {tmp_docx}")
         _shutil.copy(tmp_docx, out_name)
         _LOGGER.info(f"Wrote {out_name}")
-        if args.pdf:
+        if ctx.parsed_args.pdf:
             tmp_pdf = convert_docx_to_pdf(tmp_docx)
             tmp_pdf.rename(pdf_name)
-            send_pdf_via_email(
-                args, ctx, mail_client, row, pdf_name, pdf_filename=pdf_filename
+            pdf_bytes = pdf_name.read_bytes()
+            prepared.message.add_attachment(
+                pdf_bytes, maintype="application", subtype="pdf", filename=pdf_filename
             )
+            prepared.eml_name = f"{prepared.mailing_name}.eml"
         elif not ctx.dry_run:
             _LOGGER.warning("Cannot send email without producing PDFs")
     finally:
@@ -336,46 +248,38 @@ def main(argv=None):
         setup_logging=True,
         out_dir="data/sondervereinbarungen{{ kind | omit_unless_prod | upper | to_ext }}",
     )
-    args = ctx.parsed_args
-    if not args.pdf:
+    if not ctx.parsed_args.pdf:
         ctx.dry_run = True
-    out_base = ctx.make_out_path(
-        "sondervereinbarung_beitrag_raten_{{ filename_suffix }}"
-    )
-    log_filename = out_base.with_suffix(".log")
-    ctx.configure_log_file(log_filename)
 
-    with ctx.psycopg_connect() as conn:
-        df = wsjrdp2027.load_people_dataframe(
-            conn,
-            status=None,
+    mailing_config = wsjrdp2027.MailingConfig.from_yaml(
+        SELFDIR / "sondervereinbarungen_beitrag_raten.yml",
+        where=wsjrdp2027.PeopleWhere(
+            id=ctx.parsed_args.person_id,
+            exclude_deregistered=False,
             fee_rules=["planned", "active"],
-            today=ctx.today,
-            print_at=args.print_at,
-            where=wsjrdp2027.PeopleWhere(
-                id=ctx.parsed_args.id,
-            ),
+        ),
+    )
+    df = ctx.load_person_dataframe_for_mailing(mailing_config)
+    row = df.iloc[0]
+    id_and_name = f"{row['id']} {row['short_full_name']}"
+    ctx.out_dir = ctx.out_dir / id_and_name
+    mailing_config.name = f"WSJ27 Sondervereinbarung Ratenplan {id_and_name}"
+    if row["custom_installments_issue"]:
+        mailing_config.extra_email_bcc = wsjrdp2027.merge_mail_addresses(
+            mailing_config.extra_email_bcc, "unit-management@worldscoutjamboree.de"
         )
+    mailing_config.update_raw_yaml()
 
-    with ctx.mail_login() as smtp_client:
-        for _, row in df.iterrows():
-            id = row["id"]
-            id_and_name = f"{id} {row['short_full_name']}"
-            person_log = ctx.make_out_path(
-                f"{id_and_name}/sondervereinbarung_beitrag_raten_{{{{ filename_suffix }}}}.{id}.log"
-            )
-            logger = logging.getLogger()
-            handler = wsjrdp2027.configure_file_logging(
-                person_log, level=logging.DEBUG, logger=logger
-            )
-            try:
-                create_special_agreement(
-                    args, ctx=ctx, row=row, mail_client=smtp_client
-                )
-            finally:
-                logger.removeHandler(handler)
-                handler.flush()
-                handler.close()
+    out_base = ctx.make_out_path(mailing_config.name)
+    ctx.configure_log_file(out_base.with_suffix(".log"))
+
+    mailing = mailing_config.prepare_mailing_for_dataframe(
+        df,
+        msg_cb=lambda p: attach_sondervereinbarung_raten(ctx, p),
+        out_dir=ctx.out_dir,
+    )
+
+    ctx.send_mailing(mailing, zip_eml=False)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ class PeopleWhere:
     primary_group_id: _collections_abc.Sequence[int] | None = None
     early_payer: bool | None = None
     max_print_at: _datetime.date | None = None
+    fee_rules: tuple[str, ...] = ("active",)
 
     def __init__(
         self,
@@ -40,6 +41,7 @@ class PeopleWhere:
         | None = None,
         early_payer: bool | None = None,
         max_print_at: _datetime.date | str | None = None,
+        fee_rules: str | _collections_abc.Iterable[str] = "active",
     ) -> None:
         from . import _role, _util
 
@@ -60,6 +62,10 @@ class PeopleWhere:
             self.early_payer = early_payer
         if max_print_at is not None:
             self.max_print_at = _util.to_date(max_print_at)
+        if isinstance(fee_rules, str):
+            self.fee_rules = (fee_rules,)
+        else:
+            self.fee_rules = tuple(fee_rules)
 
     @classmethod
     def from_dict(cls, d: dict | None, /) -> _typing.Self:
@@ -91,6 +97,7 @@ class PeopleWhere:
             "primary_group_id": to_out(self.primary_group_id),
             "early_payer": self.early_payer,
             "max_print_at": iso_or_none(self.max_print_at),
+            "fee_rules": self.fee_rules or None,
         }
         return {k: v for k, v in d.items() if v is not None}
 
