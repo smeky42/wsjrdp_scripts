@@ -411,7 +411,7 @@ def load_people_dataframe(
     status: str | _collections_abc.Iterable[str] | None = None,
     early_payer: bool | None = None,
     sepa_status: str | _collections_abc.Iterable[str] | None = None,
-    fee_rules: str | _collections_abc.Iterable[str] = "active",
+    fee_rules: str | _collections_abc.Iterable[str] | None = None,
     exclude_deregistered: bool | None = None,
     log_resulting_data_frame: bool | None = None,
     today: _datetime.date | str | None = None,
@@ -453,6 +453,8 @@ def load_people_dataframe(
     elif isinstance(where, _people_where.PeopleWhere):
         if exclude_deregistered is None:
             exclude_deregistered = where.exclude_deregistered
+        if fee_rules is None:
+            fee_rules = where.fee_rules
         where = where.as_where_condition(people_table="people")
 
     if exclude_deregistered is None:
@@ -566,6 +568,8 @@ ORDER BY people.id{limit_clause}
     df = pd.DataFrame(rows)
 
     if len(df) != 0:
+        if fee_rules is None:
+            fee_rules = "active"
         id2fee_rules = fetch_id2fee_rules(conn, fee_rules=fee_rules)
         _enrich_people_dataframe(
             df,

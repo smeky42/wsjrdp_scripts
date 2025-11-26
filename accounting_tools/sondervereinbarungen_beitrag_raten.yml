@@ -1,0 +1,21 @@
+from_addr: unit-management@worldscoutjamboree.de
+email_from: Unit Management <unit-management@worldscoutjamboree.de>
+email_reply_to: Unit Management <unit-management@worldscoutjamboree.de>
+extra_email_cc: ["kl@worldscoutjamboree.de", "sebastian.becker@rdp-bund.de"]
+extra_email_bcc: "finance-team@worldscoutjamboree.de"
+email_subject: "WSJ27 Sondervereinbarung {{ row.short_full_name }} (id {{ row.id }}){% if row.custom_installments_issue %} {{ row.custom_installments_issue }}{% endif %}"
+signature: "{{ EMAIL_SIGNATURE_DAVID_FRITZSCHE }}"
+content: |
+  {% for name in row.contract_names %}Hallo {{ name }}{% if not loop.last %}, {% endif %}{% endfor %},
+
+  {% set num_names = row.contract_names | length %}in der angehängten PDF-Datei {% if num_names > 1 %}findet ihr{% else %}findest du{% endif %} die Sondervereinbarung zum Vertrag für einen individuellen Ratenplan und ein entsprechend angepasstes SEPA-Mandat.
+
+  {% if num_names > 1 %}Ihr müsst{% else %}Du musst{% endif %} jetzt beide Seiten des angehängten Dokuments unterschreiben und als eine Datei anstelle des regulären SEPA-Mandats im Anmeldesystem hochladen.{# Wenn du dann auch die restlichen Dokumente (Anmeldung, Medizinbogen, Fotoeinwilligung, usw.) hochgeladen hast, werden wir deine Anmeldung überprüfen - genau wie bei allen anderen Anmeldungen.
+
+  Die beiden Seiten müssen unterschrieben und als eine Datei anstelle des regulären SEPA-Mandats im Anmeldesystem hochgeladen werden. Wenn du dann auch die restlichen Dokumente (Anmeldung, Medizinbogen, Fotoeinwilligung, usw.) hochgeladen hast, werden wir deine Anmeldung überprüfen - genau wie bei allen anderen Anmeldungen.
+
+  Wir bestätigen deine Anmeldung nachdem der Gastgeber in Polen uns die Anmeldung des gesamten Kontingents bestätigt hat.#}
+
+
+  Liebe Grüße und Gut Pfad
+  Daffi
