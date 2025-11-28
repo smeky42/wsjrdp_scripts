@@ -1,0 +1,52 @@
+action_arguments:
+  add_tags: ['IST-Welcome-Mail']
+where:
+  # IST im Status reviewed, die nicht auf der Warteliste stehen
+  role: IST
+  status: ['reviewed']
+  primary_group_id: 4
+from_addr: anmeldung@worldscoutjamboree.de
+email_subject: "Willkommen als IST zum WSJ2027 in Polen (id {{ row.id }})"
+email_reply_to: ist@worldscoutjamboree.de
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  herzlich willkommen im International Service Team (IST) des German Contingent für das World Scout Jamboree 2027 in Polen!
+
+  Wir freuen uns sehr, dass du Teil dieses besonderen Abenteuers wirst und gemeinsam mit uns das Jamboree mitgestalten möchtest.
+
+  Dies ist noch nicht die finale Anmeldebestätigung, da wir hierzu noch auf Rückmeldungen aus Polen angewiesen sind, möchten aber schon gerne mit dir die Kommunikation aufbauen und das IST Team vernetzen.
+
+  Für alle Fragen, Anliegen oder Ideen sind wir – deine IST-Betreuer*innen Eva und Patty – jederzeit für dich da.
+
+  Du erreichst uns ganz unkompliziert per E-Mail an IST@worldscoutjamboree.de.
+
+  Damit du immer auf dem Laufenden bleibst und dich mit anderen IST-Mitgliedern vernetzen kannst, laden wir dich herzlich in unsere Telegram-Gruppen ein:
+
+  IST-Infokanal: https://t.me/+WlnM89iA9b4wZWJi
+  (Hier erhältst du wichtige Informationen und Updates direkt von uns.)
+
+  IST-Austauschgruppe: https://t.me/+Nb1UEfJCof1jOTBi
+  (Hier kannst du dich mit anderen IST-Mitgliedern austauschen und vernetzen.)
+
+  Außerdem gibt es einen allgemeinen Infokanal für das gesamte deutsche Kontingent, dem du gerne beitreten kannst:
+
+  rdp WSJ Infokanal: https://t.me/wsjrdp
+
+
+  1. IST-Treffen
+
+  Unser erstes IST Treffen wird an dem Wochenende vom 20.März bis 22.März.2026 in Mainz stattfindet.
+
+  Markiert euch das Wochenende schonmal dick im Kalender!
+
+  Weitere Details folgen.
+
+  Wir freuen uns schon jetzt darauf, dich dort persönlich kennenzulernen!
+
+
+  Gut Pfad
+  Eva, Kiwi & Patty
+  (Deine IST-Betreuer*innen)

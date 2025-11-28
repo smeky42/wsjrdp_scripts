@@ -180,6 +180,7 @@ class MailingConfig:
             return lss(s) if "\n" in s else s
 
         d = {
+            "action_arguments": (self.action_arguments or None),
             "where": (self.where.to_dict() if self.where is not None else None),
             "summary": self.summary,
             "email_subject": self.email_subject,
