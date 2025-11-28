@@ -26,6 +26,7 @@ from ._payment import (
     write_payment_dataframe_to_html as write_payment_dataframe_to_html,
     write_payment_dataframe_to_xlsx as write_payment_dataframe_to_xlsx,
 )
+from ._pg import pg_add_person_tag as pg_add_person_tag
 from ._payment_role import PaymentRole as PaymentRole
 from ._people import (
     load_people_dataframe as load_people_dataframe,
@@ -99,6 +100,7 @@ __all__ = [
     "load_people_dataframe",
     "mandate_id_from_hitobito_id",
     "merge_mail_addresses",
+    "pg_add_person_tag",
     "render_template",
     "send_mailings",
     "to_date_or_none",

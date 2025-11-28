@@ -395,7 +395,7 @@ def insert_accounting_entry(
 ) -> int:
     import datetime
 
-    from . import _util
+    from . import _pg, _util
 
     if created_at is None:
         created_at = datetime.datetime.now().date()
@@ -423,7 +423,7 @@ def insert_accounting_entry(
         ("debit_sequence_type", debit_sequence_type),
         ("value_date", _util.to_date_or_none(value_date)),
     ]
-    query = col_val_pairs_to_insert_sql_query("accounting_entries", cols_vals, "id")
+    query = _pg.col_val_pairs_to_insert_sql_query("accounting_entries", cols_vals, "id")
     _LOGGER.debug("[ACC] execute %s", query.as_string(context=cursor))
     cursor.execute(query)
     return cursor.fetchone()[0]
@@ -471,7 +471,7 @@ def insert_payment_initiation(
     initiating_party_bic: str | None = None,
     sepa_dd_config: _sepa_direct_debit.SepaDirectDebitConfig | None = None,
 ) -> int:
-    from . import _util
+    from . import _pg, _util
 
     if sepa_dd_config:
         if not initiating_party_name:
@@ -493,7 +493,7 @@ def insert_payment_initiation(
         ("initiating_party_iban", initiating_party_iban),
         ("initiating_party_bic", initiating_party_bic),
     ]
-    query = col_val_pairs_to_insert_sql_query(
+    query = _pg.col_val_pairs_to_insert_sql_query(
         "wsjrdp_payment_initiations", cols_vals, "id"
     )
     _LOGGER.debug("execute %s", query.as_string(context=cursor))
@@ -522,7 +522,7 @@ def insert_direct_debit_payment_info(
 ) -> int:
     import wsjrdp2027
 
-    from . import _util
+    from . import _pg, _util
 
     creditor_id = creditor_id or wsjrdp2027.CREDITOR_ID
 
@@ -550,7 +550,7 @@ def insert_direct_debit_payment_info(
         ("cdtr_bic", cdtr_bic),
         ("creditor_id", creditor_id),
     ]
-    query = col_val_pairs_to_insert_sql_query(
+    query = _pg.col_val_pairs_to_insert_sql_query(
         "wsjrdp_direct_debit_payment_infos", cols_vals, "id"
     )
     _LOGGER.debug("execute %s", query.as_string(context=cursor))
@@ -594,7 +594,7 @@ def insert_direct_debit_pre_notification(
 ) -> int:
     import wsjrdp2027
 
-    from . import _util
+    from . import _pg, _util
 
     creditor_id = creditor_id or wsjrdp2027.CREDITOR_ID
 
@@ -632,7 +632,7 @@ def insert_direct_debit_pre_notification(
         ("payment_role", payment_role),
         ("creditor_id", creditor_id),
     ]
-    query = col_val_pairs_to_insert_sql_query(
+    query = _pg.col_val_pairs_to_insert_sql_query(
         "wsjrdp_direct_debit_pre_notifications", cols_vals, "id"
     )
     _LOGGER.debug("execute %s", query.as_string(context=cursor))
@@ -683,28 +683,6 @@ def insert_direct_debit_pre_notification_from_row(
         early_payer=row["early_payer"],
         creditor_id=(creditor_id or None),
     )
-
-
-def col_val_pairs_to_insert_sql_query(
-    table_name: str | _psycopg_sql.Identifier,
-    cols_vals,
-    returning: str | _psycopg_sql.Identifier = "id",
-) -> _psycopg_sql.Composed:
-    from psycopg.sql import SQL, Identifier, Literal
-
-    if isinstance(table_name, str):
-        table_name = Identifier(table_name)
-    if isinstance(returning, str):
-        returning = Identifier(returning)
-
-    cols = [*(Identifier(col_val[0]) for col_val in cols_vals)]
-    vals = [*(Literal(col_val[1]) for col_val in cols_vals)]
-    sql_cols = SQL(", ").join(cols)
-    sql_vals = SQL(", ").join(vals)
-    query = SQL("INSERT INTO {} ({}) VALUES ({}) RETURNING {}").format(
-        table_name, sql_cols, sql_vals, returning
-    )
-    return query
 
 
 def write_payment_dataframe_to_db(

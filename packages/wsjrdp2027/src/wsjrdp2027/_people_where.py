@@ -89,6 +89,11 @@ class PeopleWhere:
             else:
                 return None
 
+        if self.fee_rules and list(self.fee_rules) != ["active"]:
+            fee_rules = list(self.fee_rules)
+        else:
+            fee_rules = None
+
         d = {
             "exclude_deregistered": self.exclude_deregistered,
             "role": to_out(self.role, map=str),
@@ -97,7 +102,7 @@ class PeopleWhere:
             "primary_group_id": to_out(self.primary_group_id),
             "early_payer": self.early_payer,
             "max_print_at": iso_or_none(self.max_print_at),
-            "fee_rules": self.fee_rules or None,
+            "fee_rules": fee_rules,
         }
         return {k: v for k, v in d.items() if v is not None}
 
