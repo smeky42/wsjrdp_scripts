@@ -17,7 +17,6 @@ if _typing.TYPE_CHECKING:
     import collections.abc as _collections_abc
     import datetime as _datetime
     import email.message as _email_message
-    import smtplib as _smtplib
 
     import pandas as _pandas
     import psycopg as _psycopg
@@ -289,7 +288,7 @@ class WsjRdpContext:
         if env is None:
             env = _os.environ
         env_name = "WSJRDP_SCRIPTS_START_TIME"
-        env_val = env.get(f"{env_name}")
+        env_val = env.get(env_name)
         self._logger.debug(
             "found %s%s",
             env_name,
@@ -626,7 +625,11 @@ class WsjRdpContext:
         )
 
     def pg_restore(
-        self, *, dump_path: str | _pathlib.Path, restore_into_production: bool = False
+        self,
+        *,
+        dump_path: str | _pathlib.Path,
+        restore_into_production: bool = False,
+        terminate_other_clients: bool = False,
     ) -> None:
         import contextlib
         import os as _os
@@ -696,6 +699,10 @@ class WsjRdpContext:
                 subprocess.run(cmd, env=env, check=True)
 
             quoted_db_name = f'"{db_name}"'
+            if terminate_other_clients:
+                run_psql(
+                    f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db_name}';"
+                )
             run_psql(f"DROP DATABASE IF EXISTS {quoted_db_name};")
             run_psql(f"CREATE DATABASE {quoted_db_name};")
             run_pg_restore(
@@ -772,6 +779,23 @@ class WsjRdpContext:
         with client:
             yield client
 
+    def __compute_mailing_out_dir(
+        self,
+        mailing: _mailing.PreparedMailing,
+        out_dir: _pathlib.Path | str | None = None,
+        *,
+        relative: bool = True,
+        mkdir: bool = True,
+    ) -> _pathlib.Path:
+        if mailing.out_dir:
+            return mailing.out_dir
+        else:
+            out_dir = _pathlib.Path(out_dir) if out_dir else self.out_dir
+            out_dir_tpl = str(
+                out_dir / (mailing.name + "__{{ filename_suffix }}")
+            ).replace("\\", "/")
+            return self.make_out_path(out_dir_tpl, relative=relative, mkdir=mkdir)
+
     def send_mailing(
         self,
         mailing: _mailing.PreparedMailing,
@@ -783,29 +807,9 @@ class WsjRdpContext:
 
         if dry_run is None:
             dry_run = self._dry_run
-        _mailing.send_mailing(
+        _mailing.write_data_and_send_mailing(
             self,
             mailing,
-            dry_run=dry_run,
-            out_dir=self.out_dir,
-            zip_eml=zip_eml,
-        )
-
-    def send_mailings(
-        self,
-        mailings: _mailing.PreparedMailing
-        | _collections_abc.Iterable[_mailing.PreparedMailing],
-        *,
-        zip_eml: bool = True,
-        dry_run: bool | None = None,
-    ) -> None:
-        from . import _mailing
-
-        if dry_run is None:
-            dry_run = self._dry_run
-        _mailing.send_mailings(
-            self,
-            mailings=mailings,
             dry_run=dry_run,
             out_dir=self.out_dir,
             zip_eml=zip_eml,
@@ -818,14 +822,18 @@ class WsjRdpContext:
         *,
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
+        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
     ) -> _pandas.DataFrame:
         import textwrap
 
+        if now is None:
+            now = self.start_time
         df = mailing_config.load_people_dataframe(
             ctx=self,
             extra_static_df_cols=extra_static_df_cols,
             extra_mailing_bcc=extra_mailing_bcc,
             log_resulting_data_frame=False,
+            now=now,
         )
         if len(df) == 0:
             err_msg = "Query returned empty dataframe"
@@ -839,6 +847,81 @@ class WsjRdpContext:
             )
             raise RuntimeError(err_msg)
         return df
+
+    def load_people_and_prepare_mailing(
+        self,
+        mailing_config: _mailing.MailingConfig,
+        /,
+        *,
+        collection_date: _datetime.date | str | None = None,
+        limit: int | None = None,
+        out_dir: _pathlib.Path | str | None = None,
+        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    ) -> _mailing.PreparedMailing:
+        if now is None:
+            now = self.start_time
+        mailing = mailing_config.query_people_and_prepare_mailing(
+            ctx=self,
+            limit=limit,
+            collection_date=collection_date,
+            out_dir=(_pathlib.Path(out_dir) if out_dir else self.out_dir),
+            now=now,
+        )
+        if not out_dir:
+            mailing.out_dir = self.__compute_mailing_out_dir(mailing)
+        return mailing
+
+    def update_db_for_dataframe(
+        self,
+        df: _pandas.DataFrame,
+        /,
+        *,
+        write_versions: bool | None = None,
+        dry_run: bool | None = None,
+        skip_db_updates: bool | None = None,
+        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    ) -> None:
+        from . import _people
+
+        if dry_run is None:
+            dry_run = self.dry_run
+
+        with self.psycopg_connect() as conn:
+            with conn.cursor() as cursor:
+                _people.update_postgres_db_for_dataframe(
+                    cursor,
+                    df,
+                    write_versions=write_versions,
+                    dry_run=dry_run,
+                    skip_db_updates=skip_db_updates,
+                    logger=self._logger,
+                    ctx=self,
+                    now=now,
+                )
+
+    def update_db_and_send_mailing(
+        self,
+        mailing: _mailing.PreparedMailing,
+        *,
+        zip_eml: bool | None = None,
+        dry_run: bool | None = None,
+    ) -> None:
+        if not mailing.out_dir:
+            mailing.out_dir = self.__compute_mailing_out_dir(mailing)
+        if dry_run is None:
+            dry_run = self.dry_run
+        mailing.write_data(zip_eml=zip_eml)
+        self.update_db_for_dataframe(
+            mailing.df,
+            now=mailing.now,
+            dry_run=dry_run,
+            skip_db_updates=mailing.skip_db_updates,
+        )
+
+        with self.mail_login(
+            from_addr=mailing.from_addr, dry_run=dry_run
+        ) as mail_client:
+            mailing.send(mail_client)
 
     def render_template(
         self,

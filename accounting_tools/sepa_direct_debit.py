@@ -27,14 +27,16 @@ def parse_args(argv=None):
     import argparse
     import sys
 
-    from wsjrdp2027._util import to_date_or_none
+    from wsjrdp2027 import to_date_or_none
 
     if argv is None:
         argv = sys.argv
     p = argparse.ArgumentParser()
     p.add_argument("--accounting", action="store_true", default=True)
     p.add_argument("--no-accounting", dest="accounting", action="store_false")
-    p.add_argument("--collection-date", type=to_date_or_none, default=DEFAULT_COLLECTION_DATE)
+    p.add_argument(
+        "--collection-date", type=to_date_or_none, default=DEFAULT_COLLECTION_DATE
+    )
     p.add_argument("--payment-initiation-id", type=int)
     return p.parse_args(argv[1:])
 
@@ -83,8 +85,11 @@ def main(argv=None):
 
         for _, row in df.iterrows():
             if not isinstance(row["amount"], (int, float)):
-                print(row.to_string())
-                raise RuntimeError("Invalid row: 'amount' value is not int or float")
+                err_msg = "Invalid row: 'amount' value is not int or float"
+                _LOGGER.error(
+                    "%s:\n%s", err_msg, textwrap.indent(row.to_string(), "  | ")
+                )
+                raise RuntimeError(err_msg)
 
         _LOGGER.info("SUM(amount): %s", wsjrdp2027.format_cents_as_eur_de(sum_amount))
 

@@ -1,4 +1,4 @@
-action_arguments:
+updates:
   new_primary_group_id: 6
 where:
   # role: YP  # Hinweis: `role: YP` matcht nicht Personen, die noch keine payment_role haben

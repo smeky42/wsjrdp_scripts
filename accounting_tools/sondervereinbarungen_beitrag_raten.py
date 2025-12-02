@@ -279,7 +279,7 @@ def main(argv=None):
         out_dir=ctx.out_dir,
     )
 
-    ctx.send_mailing(mailing, zip_eml=False)
+    ctx.update_db_and_send_mailing(mailing, zip_eml=False)
 
 
 if __name__ == "__main__":

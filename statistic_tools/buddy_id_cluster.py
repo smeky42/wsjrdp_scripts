@@ -1,9 +1,7 @@
 #!/usr/bin/env -S uv run
 from __future__ import annotations
 
-import argparse
 import logging as _logging
-import re
 import sys
 
 import networkx as nx
@@ -175,8 +173,11 @@ def main(argv=None):
                 "unit_code",
                 "cluster_code",
             ],
-            where="primary_group_id in (2, 3)",
-            exclude_deregistered=False,
+            query=wsjrdp2027.PeopleQuery(
+                where=wsjrdp2027.PeopleWhere(
+                    primary_group_id=[2, 3], exclude_deregistered=False
+                )
+            ),
         )
         df["old_cluster_code"] = df["cluster_code"]
         df["new_cluster_code"] = None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections.abc as _collections_abc
+import contextlib as _contextlib
 import logging as _logging
 import typing as _typing
 
@@ -26,6 +27,7 @@ __all__ = [
     "dataframe_copy_for_xlsx",
     "date_to_datetime",
     "dedup",
+    "dedup_iter",
     "format_cents_as_eur_de",
     "get_default_email_policy",
     "in_expr",
@@ -34,10 +36,12 @@ __all__ = [
     "to_date_or_none",
     "to_datetime",
     "to_datetime_or_none",
-    "to_int_list",
+    "to_int_list_or_none",
     "to_int_or_none",
     "to_log_level",
-    "to_str_list",
+    "to_str_list_or_none",
+    "to_yaml_str",
+    "log_exception_decorator",
 ]
 
 _T = _typing.TypeVar("_T")
@@ -139,6 +143,19 @@ def configure_file_logging(
     return handler
 
 
+def log_exception_decorator[F: _collections_abc.Callable[..., _typing.Any]](
+    func: F,
+) -> F:
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            _LOGGER.exception("%s failed: %s", func.__name__, str(exc))
+            raise
+
+    return _typing.cast(F, wrapper)
+
+
 def date_to_datetime(
     date: _datetime.date, *, tz: _datetime.tzinfo | None = None
 ) -> _datetime.datetime:
@@ -224,7 +241,10 @@ def to_datetime_or_none(
 
 
 def to_datetime(
-    dt: _datetime.datetime | _datetime.date | str | float | int | None, /
+    dt: _datetime.datetime | _datetime.date | str | float | int | None,
+    /,
+    *,
+    now: _datetime.datetime | None = None,
 ) -> _datetime.datetime:
     """Return a datetime.
 
@@ -318,7 +338,7 @@ def to_datetime(
         return date_to_datetime(naive)
 
     if dt is None:
-        return datetime.datetime.now().astimezone()
+        return datetime.datetime.now().astimezone() if now is None else now
     elif isinstance(dt, datetime.datetime):
         return normalize_tz(dt)
     elif isinstance(dt, datetime.date):
@@ -389,7 +409,9 @@ def to_date_or_none(date: _datetime.date | str | None, /) -> _datetime.date | No
         return date
 
 
-def to_date(date: _datetime.date | str | None, /) -> _datetime.date:
+def to_date(
+    date: _datetime.date | str | None, /, *, today: _datetime.date | None = None
+) -> _datetime.date:
     """Return a datetime date object for *date*.
 
     ..
@@ -409,7 +431,10 @@ def to_date(date: _datetime.date | str | None, /) -> _datetime.date:
     """
     import datetime
 
-    return datetime.date.today() if date is None else to_date_or_none(date)
+    if date is None:
+        return datetime.date.today() if today is None else today
+    else:
+        return to_date_or_none(date)
 
 
 def compute_age(birthday: _datetime.date, today: _datetime.date) -> int:
@@ -488,9 +513,20 @@ def render_template(
         trim_blocks=trim_blocks,
         lstrip_blocks=lstrip_blocks,
     )
-    jinja_env.filters["strftime"] = _strftime
-    jinja_env.filters["isoformat"] = _isoformat
-    jinja_env.filters["to_ext"] = lambda s: f".{s}" if s else ""
+    jinja_env.filters.update(
+        {
+            "strftime": _strftime,
+            "isoformat": _isoformat,
+            "to_ext": (lambda s: f".{s}" if s else ""),
+            "format_cents_as_eur_de": format_cents_as_eur_de,
+            "date_de": (lambda s: to_date(s).strftime("%d.%m.%Y")),
+            "month_de": to_month_de,
+            "month_year_de": to_month_year_de,
+            "raise_runtime_error": _raise_runtime_error,
+            "log_info": (lambda s: _LOGGER.info("%s", s)),
+            "tee_log_info": (lambda s: _tee_log(_logging.INFO, s)),
+        }
+    )
     jinja_env.filters.update(extra_filters or {})
     jinja_template = jinja_env.from_string(template)
     context = (context or {}).copy()
@@ -499,7 +535,56 @@ def render_template(
     return out
 
 
-def dedup(iterable):
+def _tee_log(level, obj):
+    _LOGGER.log(level, "%s", str(obj))
+    return obj
+
+
+_MONTH_NAME_DE = {
+    1: "Januar",
+    2: "Februar",
+    3: "März",
+    4: "April",
+    5: "Mai",
+    6: "Juni",
+    7: "Juli",
+    8: "August",
+    9: "September",
+    10: "Oktober",
+    11: "November",
+    12: "Dezember",
+}
+
+
+def to_month_de(month: _datetime.datetime | _datetime.date | str | int):
+    if not isinstance(month, int):
+        month = to_date(month).month
+    return _MONTH_NAME_DE[month]
+
+
+def to_year_month(
+    ym: _datetime.datetime | _datetime.date | str | tuple | list, /
+) -> tuple[int, int]:
+    if not isinstance(ym, (tuple, list)):
+        date = to_date(ym)
+        return (date.year, date.month)
+    else:
+        year, month = ym
+        return (year, month)
+
+
+def to_month_year_de(
+    year_month: _datetime.datetime | _datetime.date | str | tuple | list,
+):
+    year, month = to_year_month(year_month)
+    return f"{_MONTH_NAME_DE[month]} {year}"
+
+
+def _raise_runtime_error(s):
+    raise RuntimeError(s)
+
+
+def dedup_iter(iterable):
     """Deduplicate *iterable*."""
     memo = set()
     for item in iterable:
@@ -508,17 +593,22 @@ def dedup(iterable):
         memo.add(item)
 
 
-@_typing.overload
-def to_int_list(int_or_list: None) -> None: ...
+def dedup(iterable):
+    """Deduplicate *iterable*."""
+    return list(dedup_iter(iterable))
 
 
 @_typing.overload
-def to_int_list(
-    int_or_list: int | str | _collections_abc.Iterable[int | str],
+def to_int_list_or_none(int_or_list: None, /) -> None: ...
+
+
+@_typing.overload
+def to_int_list_or_none(
+    int_or_list: int | str | _collections_abc.Iterable[int | str], /
 ) -> list[int]: ...
 
 
-def to_int_list(int_or_list) -> list[int] | None:
+def to_int_list_or_none(int_or_list, /) -> list[int] | None:
     if int_or_list is None:
         return None
     if isinstance(int_or_list, (int, str)):
@@ -527,19 +617,29 @@ def to_int_list(int_or_list) -> list[int] | None:
 
 
 @_typing.overload
-def to_str_list(str_or_list: None) -> None: ...
+def to_str_list_or_none(str_or_list: None, /) -> None: ...
 
 
 @_typing.overload
-def to_str_list(str_or_list: str | _collections_abc.Iterable[str]) -> list[str]: ...
+def to_str_list_or_none(
+    str_or_list: str | _collections_abc.Iterable[str], /
+) -> list[str]: ...
 
 
-def to_str_list(str_or_list) -> list[str] | None:
+def to_str_list_or_none(str_or_list, /) -> list[str] | None:
     if str_or_list is None:
         return None
     if isinstance(str_or_list, str):
         str_or_list = [str_or_list]
     return [str(x) for x in str_or_list if x]
+
+
+def to_str_list(*args: str | _collections_abc.Iterable[str] | None) -> list[str]:
+    result = []
+    for arg in args:
+        if arg is not None:
+            result.extend(to_str_list_or_none(arg))
+    return result
 
 
 @_typing.overload
@@ -557,12 +657,34 @@ def to_int_or_none(obj):
         return None
 
 
+def to_yaml_str(
+    obj: dict | list, *, width: int = 200, explicit_start: bool = False
+) -> str:
+    import io
+
+    import ruamel.yaml as _ruamel_yaml
+    from ruamel.yaml.scalarstring import LiteralScalarString as lss
+
+    def maybe_to_lss(s: str) -> str | lss:
+        return lss(s) if "\n" in s else s
+
+    if isinstance(obj, dict):
+        obj = {k: maybe_to_lss(v) if isinstance(v, str) else v for k, v in obj.items()}
+
+    yaml = _ruamel_yaml.YAML(typ="rt")
+    yaml.width = width
+    yaml.explicit_start = explicit_start
+    with io.StringIO() as str_io:
+        yaml.dump(obj, stream=str_io)
+        return str_io.getvalue()
+
+
 def merge_mail_addresses(*args) -> list[str] | None:
     if all(arg is None for arg in args):
         return None
     addrs = []
     for arg in args:
-        addrs.extend(to_str_list(arg) or [])
+        addrs.extend(to_str_list_or_none(arg) or [])
     addrs = list(dedup(addrs))
     return addrs or None
 
@@ -577,12 +699,23 @@ def get_default_email_policy() -> _email_policy.EmailPolicy:
 
 
 # ==============================================================================
+# WSJRDP
+# ==============================================================================
+
+
+def sepa_mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:
+    return f"wsjrdp2027{hitobito_id}"
+
+
+# ==============================================================================
 # SQL
 # ==============================================================================
 
 
-def combine_where(where: str, expr: str) -> str:
-    return f"{where}\n    AND {expr}" if where else expr
+def combine_where(where: str, *exprs: str, op="AND") -> str:
+    for expr in exprs:
+        where = f"{where}\n    {op} {expr}" if where else expr
+    return where
 
 
 def in_expr(expr, elts) -> str:
@@ -626,6 +759,47 @@ def in_expr(expr, elts) -> str:
             return f"{expr} IN ({elts_list_str})"
 
 
+def not_in_expr(expr, elts) -> str:
+    """
+
+    >>> not_in_expr("x", [1, 2])
+    'x NOT IN (1, 2)'
+    >>> not_in_expr("x", [1])
+    'x <> 1'
+    >>> not_in_expr("x", [])
+    'TRUE'
+    >>> not_in_expr("x", [1, 2, None])
+    '(x NOT IN (1, 2) AND x IS NOT NULL)'
+    >>> not_in_expr("x", None)
+    'TRUE'
+    """
+
+    def sql_repr(x):
+        if isinstance(x, (int, float)):
+            return repr(x)
+        else:
+            return f"'{x}'"
+
+    if elts is None:
+        return "TRUE"
+    elif isinstance(elts, (int, float, str)):
+        elts = [elts]
+    if not elts:
+        return "TRUE"
+    elif any(x is None for x in elts):
+        elts_wo_none = [x for x in elts if x is not None]
+        if not elts_wo_none:
+            return f"{expr} IS NULL"
+        else:
+            return f"({not_in_expr(expr, elts_wo_none)} AND {expr} IS NOT NULL)"
+    else:
+        if len(elts) == 1:
+            return f"{expr} <> {sql_repr(elts[0])}"
+        else:
+            elts_list_str = ", ".join(sql_repr(x) for x in elts)
+            return f"{expr} NOT IN ({elts_list_str})"
+
+
 def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
     df = df.copy()
 
@@ -658,6 +832,11 @@ def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
     return df
 
 
+# ==============================================================================
+# Dataframes
+# ==============================================================================
+
+
 def write_dataframe_to_xlsx(
     df: _pandas.DataFrame,
     path: str | _pathlib.Path,
@@ -671,12 +850,15 @@ def write_dataframe_to_xlsx(
     na_rep: str = "",
     sheet_name: str = "Sheet 1",
     log_level: int | None = None,
+    drop_columns: _collections_abc.Iterable[str] | None = None,
 ) -> None:
     import pandas as pd
 
     from . import _util
 
     df = _util.dataframe_copy_for_xlsx(df)
+    if drop_columns is not None:
+        df.drop(columns=list(drop_columns), inplace=True)
 
     if log_level is None:
         log_level = _logging.INFO

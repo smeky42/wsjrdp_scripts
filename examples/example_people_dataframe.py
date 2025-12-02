@@ -22,7 +22,12 @@ def main():
     ctx.configure_log_file(out_base.with_suffix(".log"))
 
     with ctx.psycopg_connect() as conn:
-        df = wsjrdp2027.load_people_dataframe(conn, exclude_deregistered=False)
+        df = wsjrdp2027.load_people_dataframe(
+            conn,
+            query=wsjrdp2027.PeopleQuery(
+                where=wsjrdp2027.PeopleWhere(exclude_deregistered=False)
+            ),
+        )
 
     _LOGGER.info("Found %s people", len(df))
     wsjrdp2027.write_people_dataframe_to_xlsx(df, out_base.with_suffix(".xlsx"))
