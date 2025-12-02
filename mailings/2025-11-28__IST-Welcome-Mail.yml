@@ -1,4 +1,4 @@
-action_arguments:
+updates:
   add_tags: ['IST-Welcome-Mail']
 where:
   # IST im Status reviewed, die nicht auf der Warteliste stehen

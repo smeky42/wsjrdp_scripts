@@ -1,11 +1,13 @@
-action_arguments:
-  new_status: "registered"
-  new_role_type: "Group::Ist::Member"
+updates:
+  new_status: registered
   new_primary_group_id: 4
+  new_primary_group_role_types: Group::Ist::Member
+  new_upload_contract_pdf:
+  new_upload_sepa_pdf:
 where:
-  # role: UL 
+  # role: UL
   # status: ['registered', 'printed']
-  id: [ 29 ] 
+  id: [ 29 ]
   # primary_group_id: 2
 summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
 email_subject: "Deine Rolle beim World Scout Jamboree wechselt von UL zu IST: {{ row.short_full_name }} (id {{ row.id }})"

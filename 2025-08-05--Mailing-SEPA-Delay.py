@@ -5,7 +5,7 @@ import email.message
 import sys
 
 import wsjrdp2027
-from wsjrdp2027._people_where import PeopleWhere
+from wsjrdp2027._people_query import PeopleWhere
 
 
 def main(argv=None):

@@ -50,7 +50,7 @@ ORDER BY last_name ASC, first_name ASC
     # reset indexing
     df.reset_index(drop=True, inplace=True)
 
-    df["Mandatsreferenz"] = df["id"].map(wsjrdp2027.mandate_id_from_hitobito_id)
+    df["Mandatsreferenz"] = df["id"].map(wsjrdp2027.sepa_mandate_id_from_hitobito_id)
     df["IBAN"] = df["IBAN"].map(lambda s: s.upper().replace(" ", ""))
 
     def to_initial(name: str):

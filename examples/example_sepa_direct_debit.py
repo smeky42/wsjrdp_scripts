@@ -30,7 +30,7 @@ def main(argv=None):
             collection_date=COLLECTION_DATE,
             booking_at=ctx.start_time,
             pedantic=True,
-            today=ctx.start_time.date(),
+            now=ctx.start_time,
             where=wsjrdp2027.PeopleWhere(
                 status=wsjrdp2027.DB_PEOPLE_ALL_STATUS,
             ),

@@ -275,9 +275,14 @@ class PaymentRole(_enum.Enum):
         """
         from . import _util
 
-        single_payment_at = (
-            _util.to_date_or_none(print_at) if print_at is not None else _util.to_date_or_none(today)
-        )
+        today = _util.to_date(today)
+        if print_at is None:
+            single_payment_at = today
+        else:
+            print_at = _util.to_date(print_at)
+            print_at_plus_notification_days = print_at + _datetime.timedelta(days=4)
+            single_payment_at = max(today, print_at_plus_notification_days)
+
         if early_payer is None:
             early_payer = self.is_early_payer
         if early_payer:

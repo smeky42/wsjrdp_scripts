@@ -150,6 +150,7 @@ class MailClient:
         msg: _email_message.EmailMessage | _mailing.PreparedEmailMessage,
         *,
         from_addr: str | None = None,
+        dry_run: bool|None=None,
     ) -> tuple:
         """Send *msg* over SMTP and stores it in the Sent mailbox.
 
@@ -164,7 +165,9 @@ class MailClient:
 
         from . import _mailing
 
-        if self._smtp is None and not self._dry_run:
+        if dry_run is None:
+            dry_run = self._dry_run
+        if self._smtp is None and not dry_run:
             err_msg = "Cannot send message: Not connected"
             self._logger.error(err_msg)
             raise RuntimeError(err_msg)
@@ -186,7 +189,7 @@ class MailClient:
             self._logger.debug("Use from_addr=%s (from config)", self._config.from_addr)
             from_addr = self._config.from_addr
 
-        if self._dry_run:
+        if dry_run:
             self._logger.info("dry run: Skip email sending")
             return None, None
         elif not self._smtp:
@@ -199,9 +202,65 @@ class MailClient:
                 self._logger.info("Skip email sending - not confirmed")
             else:
                 self._confirm_count += 1
-        self._logger.debug("SMTP send_message(..., from_addr=%r)", from_addr)
-        smtp_result = self._smtp.send_message(email_msg, from_addr=from_addr)
-        self._logger.debug("  -> %s", str(smtp_result))
+
+        to_addrs = get_to_addrs(email_msg)
+        if not to_addrs:
+            self._logger.info("No recipients: Skipped")
+            return None, None
+        smtp_result = self.__smtp_send_message(
+            email_msg, from_addr=from_addr, to_addrs=to_addrs
+        )
+        imap_result = self.__imap_store_as_sent(email_msg_bytes, email_date=email_date)
+        return smtp_result, imap_result
+
+    def __smtp_send_message(self, msg, /, *, from_addr, to_addrs):
+        assert self._smtp
+
+        try:
+            smtp_result = self._smtp.send_message(
+                msg, from_addr=from_addr, to_addrs=to_addrs
+            )
+        except Exception as exc:
+            self.__report_smtp_send(
+                msg=msg,
+                log_level=_logging.ERROR,
+                from_addr=from_addr,
+                to_addrs=to_addrs,
+                exc=exc,
+            )
+            raise
+        self.__report_smtp_send(
+            msg=msg,
+            log_level=_logging.DEBUG,
+            from_addr=from_addr,
+            to_addrs=to_addrs,
+            smtp_result=smtp_result,
+        )
+        return smtp_result
+
+    def __report_smtp_send(
+        self, msg, *, log_level, from_addr, to_addrs, smtp_result=None, exc=None
+    ):
+        smtp_result = smtp_result or {}
+        self._logger.log(
+            log_level,
+            "SMTP send_message(..., from_addr=%r, to_addrs=%r)",
+            from_addr,
+            to_addrs,
+        )
+        if exc is None:
+            self._logger.log(log_level, "  -> %s", str(smtp_result))
+        else:
+            self._logger.log(log_level, "  -> raised exception %s", str(exc))
+        for addr, addr_err in smtp_result.items():
+            self._logger.log(
+                log_level, "  to %s: Error: %s (from result)", addr, addr_err
+            )
+        for addr in to_addrs:
+            if addr not in smtp_result:
+                self._logger.log(log_level, "  to %s: OK (not in result)", addr)
+
+    def __imap_store_as_sent(self, email_msg_bytes, *, email_date):
         if self._imap:
             if sent_mailbox := self.get_imap_sent_mailbox():
                 self._logger.debug(
@@ -223,7 +282,7 @@ class MailClient:
         else:
             self._logger.debug("No IMAP client => message is not stored")
             imap_result = None
-        return smtp_result, imap_result
+        return imap_result
 
     def get_imap_sent_mailbox(self) -> NameDelim | None:
         """Return name and delimiter for the Sent mailbox."""
@@ -264,6 +323,28 @@ class MailClient:
         else:
             self._logger.debug("  -> None (no mailbox with flag %r found)", flag)
             return None
+
+
+# ==============================================================================
+# EMAIL
+# ==============================================================================
+
+_TO_ADDR_FIELDS = ["To", "Cc", "Bcc", "Resent-To", "Resent-Cc", "Resent-Bcc"]
+
+
+def get_to_addrs(msg: _email_message.EmailMessage) -> list[str]:
+    import email.utils
+
+    from . import _util
+
+    fieldvalues = _util.to_str_list(v for k in _TO_ADDR_FIELDS if (v := msg[k]))
+    to_addrs = [a[1] for a in email.utils.getaddresses(fieldvalues)]
+    return to_addrs
+
+
+# ==============================================================================
+# IMAP4
+# ==============================================================================
 
 
 _NEWLINE_RE = _re.compile(rb"\r\n|\r|\n")
@@ -307,10 +388,6 @@ def _imap_append(
     logger.debug("  -> %s", str(ret))
     return ret  # type: ignore
 
-
-# ==============================================================================
-# IMAP4
-# ==============================================================================
 
 _AMPERSAND_ORD = ord("&")
 _HYPHEN_ORD = ord("-")

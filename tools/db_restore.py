@@ -15,17 +15,23 @@ def create_argument_parser():
     import argparse
 
     p = argparse.ArgumentParser()
+    p.add_argument("--terminate-other-clients", action="store_true", default=False)
     p.add_argument("dump_path", nargs="?")
     return p
 
 
 def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(argument_parser=create_argument_parser(), argv=argv)
+    terminate_other_clients = ctx.parsed_args.terminate_other_clients
     dump_path = ctx.parsed_args.dump_path
 
     if ctx.is_production or ctx.config.db_name in ["hitobito_production"]:
         ctx.require_approval_to_run_in_prod()
-    ctx.pg_restore(dump_path=dump_path, restore_into_production=False)
+    ctx.pg_restore(
+        dump_path=dump_path,
+        restore_into_production=False,
+        terminate_other_clients=terminate_other_clients,
+    )
 
 
 if __name__ == "__main__":

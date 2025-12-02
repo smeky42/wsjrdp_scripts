@@ -34,7 +34,7 @@ def main(argv=None):
     dev_ctx = wsjrdp2027.WsjRdpContext(
         config="config-dev.yml", start_time=ctx.start_time, parse_arguments=False
     )
-    dev_ctx.pg_restore(dump_path=dump_path, restore_into_production=False)
+    dev_ctx.pg_restore(dump_path=dump_path, restore_into_production=False, terminate_other_clients=True)
 
 
 if __name__ == "__main__":

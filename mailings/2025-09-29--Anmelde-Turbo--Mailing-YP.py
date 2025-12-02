@@ -22,9 +22,11 @@ def main(argv=None):
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_people_dataframe(
             conn,
-            where=wsjrdp2027.PeopleWhere(
-                primary_group_id=3,
-                exclude_deregistered=True,
+            query=wsjrdp2027.PeopleQuery(
+                where=wsjrdp2027.PeopleWhere(
+                    primary_group_id=3,
+                    exclude_deregistered=True,
+                )
             ),
         )
 

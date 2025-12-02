@@ -9,7 +9,6 @@ from ._mailing import (
     MailingConfig as MailingConfig,
     PreparedEmailMessage as PreparedEmailMessage,
     PreparedMailing as PreparedMailing,
-    send_mailings as send_mailings,
 )
 from ._payment import (
     DB_PEOPLE_ALL_SEPA_STATUS as DB_PEOPLE_ALL_SEPA_STATUS,
@@ -21,18 +20,17 @@ from ._payment import (
     load_accounting_balance_in_cent as load_accounting_balance_in_cent,
     load_payment_dataframe as load_payment_dataframe,
     load_payment_dataframe_from_payment_initiation as load_payment_dataframe_from_payment_initiation,
-    mandate_id_from_hitobito_id as mandate_id_from_hitobito_id,
     write_payment_dataframe_to_db as write_payment_dataframe_to_db,
     write_payment_dataframe_to_html as write_payment_dataframe_to_html,
     write_payment_dataframe_to_xlsx as write_payment_dataframe_to_xlsx,
 )
-from ._pg import pg_add_person_tag as pg_add_person_tag
 from ._payment_role import PaymentRole as PaymentRole
 from ._people import (
     load_people_dataframe as load_people_dataframe,
     write_people_dataframe_to_xlsx as write_people_dataframe_to_xlsx,
 )
-from ._people_where import PeopleWhere as PeopleWhere
+from ._people_query import PeopleWhere as PeopleWhere, PeopleQuery as PeopleQuery
+from ._pg import pg_add_person_tag as pg_add_person_tag
 from ._sepa_direct_debit import (
     CREDITOR_ID as CREDITOR_ID,
     WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG as WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG,
@@ -54,9 +52,13 @@ from ._util import (
     get_default_email_policy as get_default_email_policy,
     merge_mail_addresses as merge_mail_addresses,
     render_template as render_template,
+    sepa_mandate_id_from_hitobito_id as sepa_mandate_id_from_hitobito_id,
+    to_date as to_date,
     to_date_or_none as to_date_or_none,
     to_datetime as to_datetime,
     to_datetime_or_none as to_datetime_or_none,
+    to_str_list as to_str_list,
+    to_yaml_str as to_yaml_str,
     write_dataframe_to_xlsx as write_dataframe_to_xlsx,
 )
 
@@ -76,6 +78,7 @@ __all__ = [
     "MailClient",
     "MailingConfig",
     "PaymentRole",
+    "PeopleQuery",
     "PeopleWhere",
     "PreparedEmailMessage",
     "PreparedMailing",
@@ -98,14 +101,16 @@ __all__ = [
     "load_payment_dataframe",
     "load_payment_dataframe_from_payment_initiation",
     "load_people_dataframe",
-    "mandate_id_from_hitobito_id",
     "merge_mail_addresses",
     "pg_add_person_tag",
     "render_template",
-    "send_mailings",
+    "sepa_mandate_id_from_hitobito_id",
+    "to_date",
     "to_date_or_none",
     "to_datetime",
     "to_datetime_or_none",
+    "to_str_list",
+    "to_yaml_str",
     "typst_compile",
     "write_accounting_dataframe_to_sepa_dd",
     "write_dataframe_to_xlsx",

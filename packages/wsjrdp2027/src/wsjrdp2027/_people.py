@@ -5,14 +5,14 @@ import datetime as _datetime
 import logging as _logging
 import typing as _typing
 
+from . import _people_query
+
 
 if _typing.TYPE_CHECKING:
     import pathlib as _pathlib
 
     import pandas as _pandas
     import psycopg as _psycopg
-
-    from . import _people_where
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -40,6 +40,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "greeting_name",
     "full_name",
     "short_full_name",
+    "id_and_name",
     "street",
     "housenumber",
     "town",
@@ -53,6 +54,9 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "age",
     "gender",
     "primary_group_id",
+    "roles",
+    "primary_group_roles",
+    "primary_group_role_types",
     "contract_additional_emails",
     "contract_additional_names",
     "contract_names",
@@ -70,7 +74,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "additional_contact_email_b",
     "additional_contact_phone_b",
     "additional_contact_single",
-    "tags",
+    "tag_list",
     "mailing_from",
     "mailing_to",
     "mailing_cc",
@@ -116,16 +120,14 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "custom_installments_comment",
     "custom_installments_issue",
     "pre_notified_amount",
-    "amount_paid",
-    "amount_due",
-    "amount",
+    "amount_paid",  # bereits bezahlt
+    "amount_unpaid",  # insgesamt offen
+    "amount_due",  # fällig gesamt zum aktuellen Zeitpunkt
+    "amount",  #  fällig in Zahlung
     "payment_status_reason",
     "payment_status",
+    "person_dict",
 ]
-
-
-def sepa_mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:
-    return f"wsjrdp2027{hitobito_id}"
 
 
 def is_minor_or_yp(row: _pandas.Series) -> bool:
@@ -251,7 +253,7 @@ def _sepa_dd_sequence_type_from_row(row) -> str:
         return "RCUR"
 
 
-def fetch_id2fee_rules(
+def _fetch_id2fee_rules(
     conn: _psycopg.Connection,
     fee_rules: str | _collections_abc.Iterable[str] = "active",
 ) -> dict:
@@ -302,10 +304,62 @@ ORDER BY array_position(ARRAY[{fee_rules_str}], status) ASC
     return id2fee_rules
 
 
+def _fetch_id2roles(
+    conn: _psycopg.Connection,
+    /,
+    *,
+    df: _pandas.DataFrame,
+    today: _datetime.date | str | None = None,
+) -> dict[int, list[dict[str, _typing.Any]]]:
+    from . import _pg
+
+    ids = list(df["id"])
+
+    return _pg.pg_fetch_role_dicts_for_person_ids(conn, ids=ids, today=today)
+
+
+def _fetch_id2person_dicts(
+    conn: _psycopg.Connection, /, *, df: _pandas.DataFrame
+) -> dict[int, dict[str, _typing.Any]]:
+    from . import _pg
+
+    ids = list(df["id"])
+    id2p = _pg.pg_fetch_person_dicts_for_ids(conn, ids=ids)
+    return id2p
+
+
+def _select_primary_group_roles(row: _pandas.Series) -> list[dict[str, _typing.Any]]:
+    id: int = row["id"]
+    primary_group_id: int = row["primary_group_id"]
+    roles: list[dict[str, _typing.Any]] = row.get("roles", [])
+    assert all(role["person_id"] == id for role in roles)
+    return [r for r in roles if r["group_id"] == primary_group_id]
+
+
+def _roles_to_primary_group_role_types(row: _pandas.Series) -> list[str]:
+    roles: list[dict[str, _typing.Any]] = row.get("primary_group_roles", [])
+    return [r["type"] for r in roles]
+
+
+def _filtered_join(*args, sep=" "):
+    import math
+
+    return sep.join(
+        str(a)
+        for a in args
+        if not (
+            a is None  # filter out None
+            or (isinstance(a, float) and math.isnan(a))  # filter out NaN
+        )
+    )
+
+
 def _enrich_people_dataframe(
     df: _pandas.DataFrame,
     *,
     id2fee_rules: dict,
+    id2roles: dict[int, list[dict[str, _typing.Any]]],
+    id2person_dicts: dict[int, dict],
     today: _datetime.date,
     print_at: _datetime.date | None = None,
     collection_date: _datetime.date,
@@ -314,16 +368,36 @@ def _enrich_people_dataframe(
     from . import _util
     from ._payment_role import PaymentRole
 
+    df["short_first_name"] = df.apply(find_short_first_name, axis=1)
+    df["greeting_name"] = df.apply(
+        lambda row: row["nickname"] or row["short_first_name"], axis=1
+    )
+    df["full_name"] = df.apply(
+        lambda r: _filtered_join(r["first_name"], r["last_name"]), axis=1
+    )
+    df["short_full_name"] = df.apply(
+        lambda r: _filtered_join(r["short_first_name"], r["last_name"]), axis=1
+    )
+    df["id_and_name"] = df.apply(
+        lambda r: _filtered_join(r["id"], r["short_full_name"]), axis=1
+    )
     df["today"] = today
+    df["age"] = df["birthday"].map(
+        lambda bday: _util.compute_age(bday, today) if bday is not None else None
+    )
+
+    df["roles"] = df.apply(lambda r: id2roles.get(r["id"], []), axis=1)
+    df["person_dict"] = df.apply(lambda r: id2person_dicts.get(r["id"], {}), axis=1)
+    df["primary_group_roles"] = df.apply(_select_primary_group_roles, axis=1)
+    df["primary_group_role_types"] = df.apply(
+        _roles_to_primary_group_role_types, axis=1
+    )
     df["today_de"] = df["today"].map(lambda d: d.strftime("%d.%m.%Y"))
     df["birthday_de"] = df["birthday"].map(
         lambda d: d.strftime("%d.%m.%Y") if d is not None else None
     )
     if print_at is not None:
         df["print_at"] = print_at
-    df["age"] = df["birthday"].map(
-        lambda bday: _util.compute_age(bday, today) if bday is not None else None
-    )
     df["mailing_from"] = "anmeldung@worldscoutjamboree.de"
     df["mailing_to"] = df["email"].map(lambda s: ([s] if s else None))
     df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)
@@ -339,7 +413,7 @@ def _enrich_people_dataframe(
     )
     df["sepa_mailing_reply_to"] = None
 
-    df["sepa_mandate_id"] = df["id"].map(sepa_mandate_id_from_hitobito_id)
+    df["sepa_mandate_id"] = df["id"].map(_util.sepa_mandate_id_from_hitobito_id)
     df["sepa_mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
 
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
@@ -370,15 +444,12 @@ def _enrich_people_dataframe(
     df["total_fee_cents"] = df.apply(_compute_total_fee_cents, axis=1)  # fmt: skip
     df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
     df["amount_paid"] = df["accounting_entries_amounts_cents"].map(sum)
+    df["amount_unpaid"] = df.apply(
+        lambda r: max(r["total_fee_cents"] - r["amount_paid"], 0), axis=1
+    )
     df["sepa_dd_sequence_type"] = df.apply(_sepa_dd_sequence_type_from_row, axis=1)
 
     df["status_de"] = df["status"].map(_STATUS_TO_DE.get)
-    df["short_first_name"] = df.apply(find_short_first_name, axis=1)
-    df["greeting_name"] = df.apply(
-        lambda row: row["nickname"] or row["short_first_name"], axis=1
-    )
-    df["full_name"] = df["first_name"] + " " + df["last_name"]
-    df["short_full_name"] = df["short_first_name"] + " " + df["last_name"]
     df["contract_additional_emails"] = df.apply(get_contract_additional_emails, axis=1)
     df["contract_additional_names"] = df.apply(get_contract_additional_names, axis=1)
     df["contract_names"] = df.apply(get_contract_names, axis=1)
@@ -393,19 +464,13 @@ def _enrich_people_dataframe(
     )
 
 
-def _extract_col_name(col: str) -> str | None:
-    if col.isidentifier():
-        return col
-    else:
-        return None
-
-
 def load_people_dataframe(
     conn: _psycopg.Connection,
     *,
     extra_cols: str | list[str] | None = None,
     join: str = "",
-    where: str | _people_where.PeopleWhere | None = "",
+    query: _people_query.PeopleQuery | None = None,
+    where: str | _people_query.PeopleWhere | None = "",
     group_by: str = "",
     limit: int | None = None,
     status: str | _collections_abc.Iterable[str] | None = None,
@@ -414,7 +479,7 @@ def load_people_dataframe(
     fee_rules: str | _collections_abc.Iterable[str] | None = None,
     exclude_deregistered: bool | None = None,
     log_resulting_data_frame: bool | None = None,
-    today: _datetime.date | str | None = None,
+    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
     collection_date: _datetime.date | str | None = None,
     print_at: _datetime.date | str | None = None,
     extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
@@ -426,22 +491,29 @@ def load_people_dataframe(
     import pandas as pd
     import psycopg.rows
 
-    from . import _people_where, _util
+    from . import _people_query, _util
 
-    today = _util.to_date_or_none(today) or _datetime.date.today()
+    if query:
+        if not where:
+            where = query.where
+        if limit is None:
+            limit = query.limit
+        if now is None:
+            now = query.now
+        if collection_date is None:
+            collection_date = query.collection_date
+
+    now = _util.to_datetime(now)
+    today = now.date()
     print_at = _util.to_date_or_none(print_at)
-    collection_date = _util.to_date_or_none(collection_date) or today
+    collection_date = _util.to_date_or_none(collection_date)
 
-    extra_out_cols = []
     if extra_cols is not None:
         if isinstance(extra_cols, str):
             extra_cols = [extra_cols.strip()]
         else:
             extra_cols = [x.strip() for x in extra_cols] or None
     if extra_cols:
-        extra_out_cols = [
-            col_name for col in extra_cols if (col_name := _extract_col_name(col))
-        ]
         extra_cols_clause = ",\n  " + ",\n  ".join(extra_cols)
     else:
         extra_cols_clause = ""
@@ -450,7 +522,7 @@ def load_people_dataframe(
 
     if where is None:
         where = ""
-    elif isinstance(where, _people_where.PeopleWhere):
+    elif isinstance(where, _people_query.PeopleWhere):
         if exclude_deregistered is None:
             exclude_deregistered = where.exclude_deregistered
         if fee_rules is None:
@@ -458,9 +530,9 @@ def load_people_dataframe(
         where = where.as_where_condition(people_table="people")
 
     if exclude_deregistered is None:
-        exclude_deregistered = True
+        exclude_deregistered = False
 
-    status = _util.to_str_list(status)
+    status = _util.to_str_list_or_none(status)
     if status is not None:
         where = _util.combine_where(where, _util.in_expr("people.status", status))
     elif exclude_deregistered:
@@ -531,7 +603,7 @@ SELECT
     LEFT JOIN tags ON taggings.tag_id = tags.id
       AND taggings.taggable_type = 'Person'
     WHERE taggings.taggable_id = people.id
-  ) AS tags,
+  ) AS tag_list,
   ARRAY(
     SELECT COALESCE(e.amount_cents, 0)
     FROM accounting_entries AS e
@@ -570,15 +642,23 @@ ORDER BY people.id{limit_clause}
     if len(df) != 0:
         if fee_rules is None:
             fee_rules = "active"
-        id2fee_rules = fetch_id2fee_rules(conn, fee_rules=fee_rules)
+        id2fee_rules = _fetch_id2fee_rules(conn, fee_rules=fee_rules)
+        id2roles = _fetch_id2roles(conn, df=df, today=today)
+        id2person_dicts = _fetch_id2person_dicts(conn, df=df)
         _enrich_people_dataframe(
             df,
             id2fee_rules=id2fee_rules,
+            id2roles=id2roles,
+            id2person_dicts=id2person_dicts,
             today=today,
             print_at=print_at,
             collection_date=collection_date,
             extra_mailing_bcc=extra_mailing_bcc,
         )
+        df_columns = set(df.columns)
+        for key, val in (extra_static_df_cols or {}).items():
+            assert key not in df_columns, f"Cannot overwrite existing column {key}"
+            df[key] = df.apply(lambda r: val, axis=1)
     if not (set(df) <= set(PEOPLE_DATAFRAME_COLUMNS)):
         warn_msg = "Some columns of the resulting dataframe are not listed in PEOPLE_DATAFRAME_COLUMNS"
         for col_name in list(df):
@@ -587,14 +667,26 @@ ORDER BY people.id{limit_clause}
                     f'\n  column "{col_name}" not present in PEOPLE_DATAFRAME_COLUMNS'
                 )
         _LOGGER.warning(warn_msg)
-    columns = PEOPLE_DATAFRAME_COLUMNS[:]
-    if extra_out_cols:
-        columns.extend(extra_out_cols)
-    if extra_static_df_cols:
-        columns.extend(extra_static_df_cols.keys())
-        for key, val in extra_static_df_cols.items():
-            df[key] = val
+    extra_columns = [
+        col for col in df.columns if col not in frozenset(PEOPLE_DATAFRAME_COLUMNS)
+    ]
+    _LOGGER.debug("detected extra columns: %s", extra_columns)
+    columns = PEOPLE_DATAFRAME_COLUMNS[:] + extra_columns
     df = df.reindex(columns=columns)
+
+    if collection_date is not None:
+        _LOGGER.info(
+            "collection_date = %s given => enrich with payment information",
+            collection_date,
+        )
+        from . import _payment
+
+        df = _payment.enrich_people_dataframe_for_payments(
+            df,
+            collection_date=collection_date,
+            pedantic=False,
+            reindex=False,
+        )
 
     if log_resulting_data_frame or (log_resulting_data_frame is None):
         _LOGGER.info("Resulting pandas DataFrame:\n%s", textwrap.indent(str(df), "  "))
@@ -653,7 +745,303 @@ def write_people_dataframe_to_xlsx(
     *,
     sheet_name: str = "Sheet 1",
     log_level: int | None = None,
+    drop_columns: _collections_abc.Iterable[str] = (
+        "id_and_name",
+        "person_dict",
+        "status_de",
+        "birthday_de",
+        "today_de",
+    ),
 ) -> None:
     from . import _util
 
-    _util.write_dataframe_to_xlsx(df, path, sheet_name=sheet_name, log_level=log_level)
+    _util.write_dataframe_to_xlsx(
+        df, path, sheet_name=sheet_name, log_level=log_level, drop_columns=drop_columns
+    )
+
+
+def update_dataframe_for_updates(
+    df: _pandas.DataFrame,
+    *,
+    conn: _psycopg.Connection,
+    updates: dict | None = None,
+    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+):
+    import collections
+
+    from . import _person_pg, _pg, _util
+
+    now = _util.to_datetime(now)
+    updates = updates or {}
+
+    used_changes = []
+
+    for key in updates:
+        if key not in _person_pg.VALID_PERSON_UPDATE_KWARG_KEYS:
+            raise TypeError(f"Invalid keyword argument {key!r}")
+
+    for chg in _person_pg.PERSON_CHANGES:
+        if chg.col_name in updates:
+            new_val = updates.get(chg.col_name)
+            used_changes.append(chg)
+            df[chg.col_name] = df.apply(
+                lambda row: chg.compute_df_val(row, new_val), axis=1
+            )
+
+    if used_changes:
+        df["db_changes"] = False
+        df["person_changes"] = df.apply(lambda _: {}, axis=1)
+
+        for idx, row in df.iterrows():
+            id = row["id"]
+            person_dict = collections.ChainMap(row["person_dict"], row.to_dict())
+            changed = False
+            object_changes = {}
+            for chg in used_changes:
+                if not chg.old_col:
+                    changed = True
+                    continue
+                old_val = chg.get_old_val(person_dict)
+                new_val = chg.get_new_val(row)
+                _LOGGER.debug("{%s} compare %s", id, chg.old_col)
+                _LOGGER.debug("{%s} - %s", id, old_val)
+                _LOGGER.debug("{%s} + %s", id, new_val)
+                if new_val != old_val:
+                    changed = True
+                    object_changes[chg.old_col] = [old_val, new_val]
+            df.at[idx, "db_changes"] = changed
+            df.at[idx, "person_changes"] = object_changes
+
+    return df
+
+
+def update_postgres_db_for_dataframe(
+    cursor: _psycopg.Cursor,
+    df: _pandas.DataFrame,
+    /,
+    write_versions: bool | None = None,
+    dry_run: bool | None = None,
+    skip_db_updates: bool | None = None,
+    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    logger: _logging.Logger | _logging.LoggerAdapter = _LOGGER,
+    ctx=None,
+) -> None:
+    import psycopg as _psycopg
+
+    from . import _util
+
+    if dry_run is None:
+        dry_run = False
+    if write_versions is None:
+        write_versions = True
+    now = _util.to_datetime(now)
+
+    db_changes = any(df.get("db_changes", [False]))
+    skip_reasons = []
+    if not db_changes:
+        skip_reasons.append("No DB updates")
+    if dry_run:
+        skip_reasons.append("dry_run is True")
+    if skip_db_updates:
+        skip_reasons.append("skip_db_updates is true")
+    if skip_reasons:
+        logger.info("Skip DB updates (%s)", ", ".join(skip_reasons))
+        return
+    logger.info("Update DB")
+    if ctx:
+        ctx.require_approval_to_run_in_prod()
+
+    skipped_ids = set()
+    failed_ids = set()
+    df_len = len(df)
+    with cursor.connection.transaction() as db_tx:
+        for i, (_, row) in enumerate(df.iterrows(), start=1):
+            pcnt = (i / df_len) * 100.0
+            id = row["id"]
+            id_and_name = row.get("id_and_name", str(id))
+            db_changes = row["db_changes"]
+            person_changes = row["person_changes"]
+            summary = f"{i}/{df_len} ({pcnt:.1f}) {id_and_name}: db_changes={db_changes} person_changes={person_changes}"
+            logger.info(summary)
+            if not db_changes:
+                skipped_ids.add(id)
+                logger.debug("  Skip %s (no changes)", id_and_name)
+                continue
+            elif row.get("skip_db_updates"):
+                skipped_ids.add(id)
+                logger.info("  Skip %s (due to row['skip_db_updates'])", id_and_name)
+                continue
+            try:
+                _update_person_from_row(
+                    cursor,
+                    row=row,
+                    write_versions=write_versions,
+                    now=now,
+                    logger=logger,
+                    transaction=db_tx,
+                )
+            except Exception as exc:
+                logger.exception("Failed to update %s: %s", id_and_name, str(exc))
+                failed_ids.add(id)
+        if failed_ids:
+            logger.error("")
+            logger.error("ROLLBACK: Failed to update people")
+            logger.error("  failed_ids: %s", sorted(failed_ids))
+            logger.error("")
+            raise _psycopg.Rollback(db_tx)
+    if failed_ids:
+        raise RuntimeError(
+            f"DB Transaction ROLLBACK: Failed to update people: failed_ids={sorted(failed_ids)}"
+        )
+
+
+def _update_person_from_row(
+    cursor: _psycopg.Cursor,
+    /,
+    *,
+    row: _pandas.Series,
+    write_versions: bool,
+    logger: _logging.Logger | _logging.LoggerAdapter,
+    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    transaction: _psycopg.Transaction,
+) -> None:
+    from . import _person_pg, _pg, _util
+
+    now = _util.to_datetime(now)
+
+    _update_roles(
+        cursor, row=row, now=now, write_versions=write_versions, logger=logger
+    )
+
+    if write_versions:
+        if person_changes_for_version := row["person_changes"]:
+            person_changes_for_version = person_changes_for_version.copy()
+            person_changes_for_version.pop("primary_group_role_types", None)
+            _pg.pg_insert_version(
+                cursor,
+                main_id=row["id"],
+                changes=person_changes_for_version,
+                created_at=now,
+            )
+    # Note: Writing a versions row for a person requires reading the
+    # respective row from the people table, so we update the people
+    # table only after writing the versions entries.
+    person_updates = []
+    person_changes = row["person_changes"]
+    if "tag_list" in person_changes:
+        for tag in _util.to_str_list(row.get("add_tags")):
+            _pg.pg_add_person_tag(cursor, person_id=row["id"], tag=tag)
+    for chg in _person_pg.PERSON_CHANGES:
+        if chg.old_col in ["tag_list", "primary_group_role_types"]:
+            continue
+        if chg.col_name in row.index and chg.old_col in person_changes:
+            person_updates.append((chg.old_col, row.get(chg.col_name)))
+    _pg.pg_update_person(cursor, id=row["id"], updates=person_updates)
+
+
+def _update_roles(
+    cursor: _psycopg.Cursor,
+    /,
+    *,
+    row: _pandas.Series,
+    now: _datetime.datetime,
+    write_versions: bool = True,
+    logger: _logging.Logger | _logging.LoggerAdapter = _LOGGER,
+) -> None:
+    from . import _pg
+
+    today = now.date()
+    yesterday = today - _datetime.timedelta(days=1)
+    person_changes = row["person_changes"]
+
+    primary_group_id = row["primary_group_id"]
+    roles = row["primary_group_roles"]
+    id2role = {role["id"]: role for role in roles}
+    role_types = row["primary_group_role_types"]
+
+    if "new_primary_group_id" in row.index and "primary_group_id" in person_changes:
+        new_primary_group_id = row["new_primary_group_id"]
+        new_role_types = row.get("new_primary_group_role_types") or role_types
+    elif (
+        "new_primary_group_role_types" in row.index
+        and "primary_group_role_types" in person_changes
+    ):
+        new_primary_group_id = primary_group_id
+        new_role_types = row["new_primary_group_role_types"]
+    else:
+        logger.debug("No role change")
+        return
+    logger.debug("  primary_group_id: %s -> %s", primary_group_id, new_primary_group_id)
+    logger.debug("  primary_group_role_types: %s -> %s", role_types, new_role_types)
+
+    if new_primary_group_id != primary_group_id:
+        if len(new_role_types) != len(role_types):
+            err_msg = "Cannot move person to different primary group while changing number of role types"
+            logger.error("  %s", err_msg)
+            raise RuntimeError(err_msg)
+
+    roles_ids = [role["id"] for role in roles]
+    updated_ids = _pg.pg_update_role_set_end_on_for_ids(
+        cursor, ids=roles_ids, end_on=yesterday
+    )
+    if write_versions:
+        for role_id in updated_ids:
+            role = id2role[role_id]
+            update_role_changes = {
+                "end_on": [role["end_on"], yesterday],
+            }
+            _pg.pg_insert_version(
+                cursor,
+                item_type="Role",
+                item_id=role_id,
+                main_id=row["id"],
+                object_dict=role,
+                changes=update_role_changes,
+                event="update",
+                created_at=now,
+            )
+        for role_id in set(roles_ids) - set(updated_ids):
+            role = id2role[role_id]
+            destroy_role_changes = {k: [v, None] for k, v in role.items()}
+            _pg.pg_insert_version(
+                cursor,
+                item_type="Role",
+                item_id=role_id,
+                main_id=row["id"],
+                object_dict=role,
+                changes=destroy_role_changes,
+                event="destroy",
+                created_at=now,
+            )
+
+    for new_role_type in new_role_types:
+        role_id = _pg.pg_insert_role(
+            cursor,
+            person_id=row["id"],
+            group_id=new_primary_group_id,
+            type=new_role_type,
+            label=None,
+            created_at=now,
+            start_on=today,
+            now=now,
+        )
+        if write_versions:
+            role_changes = {
+                "id": [None, role_id],
+                "person_id": [None, row["id"]],
+                "group_id": [None, new_primary_group_id],
+                "type": [None, new_role_type],
+                "label": [None, None],
+                "created_at": [None, now.isoformat(sep=" ")],
+                "start_on": [None, today],
+            }
+            _pg.pg_insert_version(
+                cursor,
+                item_type="Role",
+                item_id=role_id,
+                main_id=row["id"],
+                object_dict=row["person_dict"],
+                changes=role_changes,
+                event="create",
+                created_at=now,
+            )
