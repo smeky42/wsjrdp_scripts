@@ -14,19 +14,29 @@ if _typing.TYPE_CHECKING:
 _LOGGER = _logging.getLogger(__name__)
 
 
+_StrOrIterable = str | _collections_abc.Iterable[str]
+_StrIntOrIterable = str | int | _collections_abc.Iterable[str | int]
+
+
 @_dataclasses.dataclass(kw_only=True)
 class PeopleWhere:
     exclude_deregistered: bool | None = None
     role: tuple[_role.WsjRole, ...] | None = None
     status: _collections_abc.Sequence[str] | None = None
+    exclude_status: _collections_abc.Sequence[str] | None = None
     sepa_status: _collections_abc.Sequence[str] | None = None
+    exclude_sepa_status: _collections_abc.Sequence[str] | None = None
     id: _collections_abc.Sequence[int] | None = None
     exclude_id: _collections_abc.Sequence[int] | None = None
     primary_group_id: _collections_abc.Sequence[int] | None = None
+    exclude_primary_group_id: _collections_abc.Sequence[int] | None = None
     early_payer: bool | None = None
     max_print_at: _datetime.date | None = None
     fee_rules: tuple[str, ...] = ("active",)
     unit_code: _collections_abc.Sequence[str] | None = None
+    exclude_unit_code: _collections_abc.Sequence[str] | None = None
+    tag: _collections_abc.Sequence[str] | None = None
+    exclude_tag: _collections_abc.Sequence[str] | None = None
     not_: _typing.Self | None = None
     or_: _collections_abc.Sequence[_typing.Self] = ()
     and_: _collections_abc.Sequence[_typing.Self] = ()
@@ -39,45 +49,27 @@ class PeopleWhere:
         | _role.WsjRole
         | _collections_abc.Iterable[str | _role.WsjRole]
         | None = None,
-        status: str | _collections_abc.Iterable[str] | None = None,
-        sepa_status: str | _collections_abc.Iterable[str] | None = None,
-        id: str | int | _collections_abc.Iterable[str | int] | None = None,
+        status: _StrOrIterable | None = None,
+        exclude_status: _StrOrIterable | None = None,
+        sepa_status: _StrOrIterable | None = None,
+        exclude_sepa_status: _StrOrIterable | None = None,
+        id: _StrIntOrIterable | None = None,
         exclude_id: str | int | _collections_abc.Iterable[str | int] | None = None,
-        primary_group_id: str
-        | int
-        | _collections_abc.Sequence[str | int]
-        | None = None,
+        primary_group_id: _StrIntOrIterable | None = None,
+        exclude_primary_group_id: _StrIntOrIterable | None = None,
         early_payer: bool | None = None,
         max_print_at: _datetime.date | str | None = None,
-        fee_rules: str | _collections_abc.Iterable[str] = "active",
-        unit_code: str | _collections_abc.Iterable[str] | None = None,
+        fee_rules: _StrOrIterable = "active",
+        unit_code: _StrOrIterable | None = None,
+        exclude_unit_code: _StrOrIterable | None = None,
+        tag: _StrOrIterable | None = None,
+        exclude_tag: _StrOrIterable | None = None,
         not_: _typing.Self | None = None,
         or_: _collections_abc.Iterable[_typing.Self] | _typing.Self | None = None,
         and_: _collections_abc.Iterable[_typing.Self] | _typing.Self | None = None,
     ) -> None:
         from . import _role, _util
 
-        if exclude_deregistered is not None:
-            self.exclude_deregistered = exclude_deregistered
-        if role is not None:
-            if isinstance(role, (str, _role.WsjRole)):
-                self.role = (_role.WsjRole.from_any(role),)
-            else:
-                self.role = tuple(_role.WsjRole.from_any(r) for r in role)
-        self.status = _util.to_str_list_or_none(status)
-        self.sepa_status = _util.to_str_list_or_none(sepa_status)
-        self.id = _util.to_int_list_or_none(id)
-        self.exclude_id = _util.to_int_list_or_none(exclude_id)
-        self.primary_group_id = _util.to_int_list_or_none(primary_group_id)
-        if early_payer is not None:
-            self.early_payer = early_payer
-        if max_print_at is not None:
-            self.max_print_at = _util.to_date(max_print_at)
-        if isinstance(fee_rules, str):
-            self.fee_rules = (fee_rules,)
-        else:
-            self.fee_rules = tuple(fee_rules)
-        self.unit_code = _util.to_str_list_or_none(unit_code)
         if not_ is not None:
             self.not_ = not_
         if or_ is not None:
@@ -88,6 +80,36 @@ class PeopleWhere:
             if isinstance(and_, PeopleWhere):
                 and_ = [and_]
             self.and_ = tuple(and_)
+
+        if exclude_deregistered is not None:
+            self.exclude_deregistered = exclude_deregistered
+        if role is not None:
+            if isinstance(role, (str, _role.WsjRole)):
+                self.role = (_role.WsjRole.from_any(role),)
+            else:
+                self.role = tuple(_role.WsjRole.from_any(r) for r in role)
+        self.status = _util.to_str_list_or_none(status)
+        self.exclude_status = _util.to_str_list_or_none(exclude_status)
+        self.sepa_status = _util.to_str_list_or_none(sepa_status)
+        self.exclude_sepa_status = _util.to_str_list_or_none(exclude_sepa_status)
+        self.id = _util.to_int_list_or_none(id)
+        self.exclude_id = _util.to_int_list_or_none(exclude_id)
+        self.primary_group_id = _util.to_int_list_or_none(primary_group_id)
+        self.exclude_primary_group_id = _util.to_int_list_or_none(
+            exclude_primary_group_id
+        )
+        if early_payer is not None:
+            self.early_payer = early_payer
+        if max_print_at is not None:
+            self.max_print_at = _util.to_date(max_print_at)
+        if isinstance(fee_rules, str):
+            self.fee_rules = (fee_rules,)
+        else:
+            self.fee_rules = tuple(fee_rules)
+        self.unit_code = _util.to_str_list_or_none(unit_code)
+        self.exclude_unit_code = _util.to_str_list_or_none(exclude_unit_code)
+        self.tag = _util.to_str_list_or_none(tag)
+        self.exclude_tag = _util.to_str_list_or_none(exclude_tag)
 
     @classmethod
     def from_dict(cls, d: dict | None, /) -> _typing.Self:
@@ -141,21 +163,27 @@ class PeopleWhere:
         else:
             fee_rules = None
 
+        regular_to_out_keys = [
+            "status",
+            "sepa_status",
+            "id",
+            "primary_group_id",
+            "unit_code",
+            "tag",
+        ]
+        exclude_to_out_keys = [f"exclude_{k}" for k in regular_to_out_keys]
+        to_out_keys = regular_to_out_keys + exclude_to_out_keys
+
         d = {
             "exclude_deregistered": self.exclude_deregistered,
             "role": to_out(self.role, map=str),
-            "status": to_out(self.status),
-            "sepa_status": to_out(self.sepa_status),
-            "id": to_out(self.id),
-            "exclude_id": to_out(self.exclude_id),
-            "primary_group_id": to_out(self.primary_group_id),
             "early_payer": self.early_payer,
             "max_print_at": iso_or_none(self.max_print_at),
             "fee_rules": fee_rules,
-            "unit_code": to_out(self.unit_code),
             "not": recursive_to_dict(self.not_),
             "or": recursive_to_dict(self.or_),
             "and": recursive_to_dict(self.and_),
+            **{k: to_out(getattr(self, k, None)) for k in to_out_keys},
         }
         return {k: v for k, v in d.items() if v is not None}
 
@@ -185,9 +213,11 @@ class PeopleWhere:
     __str__ = __repr__
 
     def as_where_condition(self, *, people_table: str = "people") -> str:
+        from . import _util
         from ._util import combine_where, in_expr, not_in_expr
 
         where = ""
+
         if self.exclude_deregistered:
             where = combine_where(
                 where,
@@ -202,23 +232,6 @@ class PeopleWhere:
             where = combine_where(
                 where, in_expr(f"{people_table}.payment_role", payment_roles)
             )
-        if self.id is not None:
-            where = combine_where(where, in_expr(f"{people_table}.id", self.id))
-        if self.exclude_id is not None:
-            where = combine_where(
-                where, not_in_expr(f"{people_table}.id", self.exclude_id)
-            )
-        if self.primary_group_id is not None:
-            where = combine_where(
-                where,
-                in_expr(f"{people_table}.primary_group_id", self.primary_group_id),
-            )
-        if self.status is not None:
-            where = combine_where(where, in_expr(f"{people_table}.status", self.status))
-        if self.sepa_status is not None:
-            where = combine_where(
-                where, in_expr(f"{people_table}.sepa_status", self.sepa_status)
-            )
         if self.early_payer is not None:
             early_payer_cond = (
                 f"{people_table}.early_payer = TRUE"
@@ -230,10 +243,36 @@ class PeopleWhere:
             where = combine_where(
                 where, f"{people_table}.print_at <= '{self.max_print_at.isoformat()}'"
             )
-        if self.unit_code is not None:
-            where = combine_where(
-                where, in_expr(f"{people_table}.unit_code", self.unit_code)
-            )
+
+        for key in ["id", "primary_group_id", "sepa_status", "status", "unit_code"]:
+            val = getattr(self, key, None)
+            if val is not None:
+                where = combine_where(where, in_expr(f"{people_table}.{key}", val))
+            exclude_key = f"exclude_{key}"
+            exclude_val = getattr(self, exclude_key, None)
+            if exclude_val is not None:
+                where = combine_where(
+                    where, not_in_expr(f"{people_table}.{key}", exclude_val)
+                )
+        for key, col_name in [("tag", "tag_list")]:
+            val = getattr(self, key, None)
+            if val is not None:
+                where = combine_where(
+                    where, _util.all_in_array_expr(f"{people_table}.{col_name}", *val)
+                )
+            exclude_key = f"exclude_{key}"
+            exclude_val = getattr(self, exclude_key, None)
+            if exclude_val is not None:
+                where = combine_where(
+                    where,
+                    _util.all_in_array_expr(
+                        f"{people_table}.{col_name}",
+                        *exclude_val,
+                        op="<>",
+                        array_comp_func="ALL",
+                    ),
+                )
+
         if self.not_ is not None:
             not_where = self.not_.as_where_condition(people_table=people_table)
             if not_where:
@@ -257,6 +296,7 @@ class PeopleWhere:
             )
             if or_where:
                 where = combine_where(where, f"({or_where})")
+
         return where
 
 

@@ -1,10 +1,12 @@
 updates:
   add_tags: ['IST-Welcome-Mail']
-where:
-  # IST im Status reviewed, die nicht auf der Warteliste stehen
-  role: IST
-  status: ['reviewed']
-  primary_group_id: 4
+query:
+  where:
+    # IST im Status reviewed, die nicht auf der Warteliste stehen
+    role: IST
+    status: ['reviewed']
+    primary_group_id: 4
+    exclude_tag: 'IST-Welcome-Mail'
 from_addr: anmeldung@worldscoutjamboree.de
 email_subject: "Willkommen als IST zum WSJ2027 in Polen (id {{ row.id }})"
 email_reply_to: ist@worldscoutjamboree.de
