@@ -876,6 +876,7 @@ class WsjRdpContext:
         df: _pandas.DataFrame,
         /,
         *,
+        conn: _psycopg.Connection | None = None,
         write_versions: bool | None = None,
         dry_run: bool | None = None,
         skip_db_updates: bool | None = None,
@@ -886,7 +887,9 @@ class WsjRdpContext:
         if dry_run is None:
             dry_run = self.dry_run
 
-        with self.psycopg_connect() as conn:
+        with _contextlib.ExitStack() as exit_stack:
+            if conn is None:
+                conn = exit_stack.enter_context(self.psycopg_connect())
             with conn.cursor() as cursor:
                 _people.update_postgres_db_for_dataframe(
                     cursor,
@@ -903,6 +906,7 @@ class WsjRdpContext:
         self,
         mailing: _mailing.PreparedMailing,
         *,
+        conn: _psycopg.Connection | None = None,
         zip_eml: bool | None = None,
         dry_run: bool | None = None,
     ) -> None:
@@ -913,6 +917,7 @@ class WsjRdpContext:
         mailing.write_data(zip_eml=zip_eml)
         self.update_db_for_dataframe(
             mailing.df,
+            conn=conn,
             now=mailing.now,
             dry_run=dry_run,
             skip_db_updates=mailing.skip_db_updates,
