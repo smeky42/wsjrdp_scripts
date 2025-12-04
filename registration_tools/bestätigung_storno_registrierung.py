@@ -90,13 +90,14 @@ def main(argv=None):
     out_base = ctx.make_out_path(mailing_config.name)
     ctx.configure_log_file(out_base.with_suffix(".log"))
 
-    mailing = mailing_config.prepare_mailing_for_dataframe(
-        df,
-        msg_cb=lambda p: attach_cancellation_confirmation(ctx, p),
-        out_dir=ctx.out_dir,
-    )
-
-    ctx.update_db_and_send_mailing(mailing, zip_eml=False)
+    with ctx.psycopg_connect() as conn:
+        mailing = mailing_config.prepare_mailing_for_dataframe(
+            df,
+            conn=conn,
+            msg_cb=lambda p: attach_cancellation_confirmation(ctx, p),
+            out_dir=ctx.out_dir,
+        )
+        ctx.update_db_and_send_mailing(mailing, conn=conn, zip_eml=False)
 
 
 if __name__ == "__main__":
