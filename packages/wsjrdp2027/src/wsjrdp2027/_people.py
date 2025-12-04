@@ -561,61 +561,42 @@ def load_people_dataframe(
 
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
         sql_stmt = f"""
+WITH "people" AS (
+  SELECT
+    *,
+    ARRAY(SELECT "tags".name FROM taggings
+          LEFT JOIN "tags" ON taggings.tag_id = "tags".id AND taggings.taggable_type = 'Person'
+          WHERE taggings.taggable_id = people.id
+    ) AS tag_list,
+    ARRAY(SELECT "a".email FROM additional_emails "a"
+          WHERE "a".contactable_type='Person' AND "a".contactable_id = people.id AND "a".mailings = TRUE
+    ) AS additional_emails_for_mailings,
+    ARRAY(SELECT COALESCE("e".amount_cents, 0) FROM accounting_entries AS "e"
+          WHERE "e".subject_type = 'Person' AND "e".subject_id = people."id" AND COALESCE("e".amount_currency, 'EUR') = 'EUR'
+    ) AS accounting_entries_amounts_cents
+  FROM "people")
 SELECT
-  people.id,
-  people.primary_group_id,
-  people.created_at,
-  people.updated_at,
-  people.print_at,
-  people.contract_upload_at,
-  people.complete_document_upload_at,
+  people.id, people.primary_group_id,
+  people.created_at, people.updated_at,
+  people.print_at, people.contract_upload_at, people.complete_document_upload_at,
   people.status,
-  people.first_name, people.last_name, people.nickname,
-  people.birthday,
+  people.first_name, people.last_name, people.nickname, people.birthday,
   people.email,
   people.street, people.housenumber, people.town, people.zip_code, people.country,
-  people.longitude,
-  people.latitude,
+  people.longitude, people.latitude,
   people.gender,
-  people.rdp_association,
-  people.rdp_association_region,
-  people.rdp_association_sub_region,
-  people.rdp_association_group,
-  people.additional_contact_name_a,
-  people.additional_contact_adress_a,
-  people.additional_contact_email_a,
-  people.additional_contact_phone_a,
-  people.additional_contact_name_b,
-  people.additional_contact_adress_b,
-  people.additional_contact_email_b,
-  people.additional_contact_phone_b,
+  people.rdp_association, people.rdp_association_region, people.rdp_association_sub_region, people.rdp_association_group,
+  people.additional_contact_name_a, people.additional_contact_adress_a,
+  people.additional_contact_email_a, people.additional_contact_phone_a,
+  people.additional_contact_name_b, people.additional_contact_adress_b,
+  people.additional_contact_email_b, people.additional_contact_phone_b,
   COALESCE(people.additional_contact_single, FALSE) AS additional_contact_single,
-  ARRAY(
-    SELECT a.email
-    FROM additional_emails a
-    WHERE a.contactable_type='Person'
-      AND a.contactable_id=people.id
-      AND a.mailings = TRUE
-  ) AS additional_emails_for_mailings,
-  ARRAY(
-    SELECT tags.name
-    FROM taggings
-    LEFT JOIN tags ON taggings.tag_id = tags.id
-      AND taggings.taggable_type = 'Person'
-    WHERE taggings.taggable_id = people.id
-  ) AS tag_list,
-  ARRAY(
-    SELECT COALESCE(e.amount_cents, 0)
-    FROM accounting_entries AS e
-    WHERE e.subject_type = 'Person' AND e.subject_id = people."id" AND COALESCE(e.amount_currency, 'EUR') = 'EUR'
-  ) AS accounting_entries_amounts_cents,
+  people.additional_emails_for_mailings,
+  people.tag_list,
   people.payment_role,
+  people.accounting_entries_amounts_cents,
   COALESCE(people.sepa_status, 'ok') AS sepa_status,
-  people.sepa_name,
-  people.sepa_address,
-  people.sepa_mail,
-  people.sepa_iban,
-  people.sepa_bic,
+  people.sepa_name, people.sepa_address, people.sepa_mail, people.sepa_iban, people.sepa_bic,
   COALESCE(people.early_payer, FALSE) AS early_payer{extra_cols_clause}
 FROM people
 {join_clause}

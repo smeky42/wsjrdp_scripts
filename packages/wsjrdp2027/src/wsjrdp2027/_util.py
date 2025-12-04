@@ -718,6 +718,28 @@ def combine_where(where: str, *exprs: str, op="AND") -> str:
     return where
 
 
+def sql_literal(x):
+    if isinstance(x, (int, float)):
+        return repr(x)
+    else:
+        x_escaped = x.replace("'", "''")
+        return f"'{x_escaped}'"
+
+
+def all_in_array_expr(
+    array, *vals, op="==", join_op="AND", array_comp_func="ANY"
+) -> str:
+    if not vals:
+        return ""
+    return (
+        "("
+        + f" {join_op} ".join(
+            f"{sql_literal(val)} {op} {array_comp_func}({array})" for val in vals
+        )
+        + ")"
+    )
+
+
 def in_expr(expr, elts) -> str:
     """
 
@@ -733,12 +755,6 @@ def in_expr(expr, elts) -> str:
     'FALSE'
     """
 
-    def sql_repr(x):
-        if isinstance(x, (int, float)):
-            return repr(x)
-        else:
-            return f"'{x}'"
-
     if elts is None:
         return "FALSE"
     elif isinstance(elts, (int, float, str)):
@@ -753,9 +769,9 @@ def in_expr(expr, elts) -> str:
             return f"({in_expr(expr, elts_wo_none)} OR {expr} IS NULL)"
     else:
         if len(elts) == 1:
-            return f"{expr} = {sql_repr(elts[0])}"
+            return f"{expr} = {sql_literal(elts[0])}"
         else:
-            elts_list_str = ", ".join(sql_repr(x) for x in elts)
+            elts_list_str = ", ".join(sql_literal(x) for x in elts)
             return f"{expr} IN ({elts_list_str})"
 
 
