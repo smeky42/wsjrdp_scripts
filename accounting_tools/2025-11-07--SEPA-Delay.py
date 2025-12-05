@@ -99,7 +99,7 @@ def send_delay_mails(
             row["sepa_status"],
             row["payment_role"],
             wsjrdp2027.format_cents_as_eur_de(row["total_fee_cents"]),
-            wsjrdp2027.format_cents_as_eur_de(row["amount_paid"]),
+            wsjrdp2027.format_cents_as_eur_de(row["amount_paid_cents"]),
             wsjrdp2027.format_cents_as_eur_de(row["amount"]),
         )
 

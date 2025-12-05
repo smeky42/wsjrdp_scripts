@@ -564,7 +564,7 @@ class MailingConfig:
         return prepared
 
 
-_KEEP_NAN_KEYS = {"amount", "amount_paid", "amount_unpaid"}
+_KEEP_NAN_KEYS = {"amount_paid_cents", "amount_unpaid_cents", "open_amount_cents"}
 
 
 def _row_to_row_dict(row: _pandas.Series) -> dict[str, _typing.Any]:

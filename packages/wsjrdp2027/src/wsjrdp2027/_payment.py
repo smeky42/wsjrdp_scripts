@@ -133,7 +133,7 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "accounting_author_id",
     "accounting_value_date",
     "accounting_booking_at",
-    "accounting_comment",
+    "accounting_description",
     "regular_full_fee_cents",
     "total_fee_cents",
     "total_fee_reduction_comment",
@@ -143,10 +143,10 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "custom_installments_comment",
     "custom_installments_issue",
     "pre_notified_amount",
-    "amount_paid",
-    "amount_unpaid",
-    "amount_due",
-    "amount",
+    "amount_paid_cents",
+    "amount_unpaid_cents",
+    "amount_due_cents",
+    "open_amount_cents",
     "payment_status_reason",
     "payment_status",
     "person_dict",
@@ -171,18 +171,19 @@ def _dd_description_from_row(row) -> str:
     from . import _util
 
     prefix = "WSJ 2027"
-    if payment_role := row["payment_role"]:
-        prefix = f"{prefix} {payment_role.short_role_name}"
+    payment_role = row.get("payment_role")
+    installments_dict = row.get("installments_cents_dict") or {}
+    collection_date: _datetime.date | None = row.get("collection_date")
+    if not payment_role or not installments_dict or not collection_date:
+        return ""
+    prefix = f"{prefix} {payment_role.short_role_name}"
     name_and_id = f"{row['short_full_name']} (id {row['id']})"
-    installments_dict = row["installments_cents_dict"] or {}
     if row["early_payer"] or len(installments_dict) < 2:
         return f"{prefix} Beitrag {name_and_id}"
     else:
-        collection_ym = _util.to_year_month(row["collection_date"])
+        collection_ym = _util.to_year_month(collection_date)
         installment_num = len([ym for ym in installments_dict if ym <= collection_ym])
         # TODO: Check if amount is larger than usual
-        # TODO: improve format of year_month
-        # TODO: determine Ratenzahlungsmonat from collection_date
         return f"{prefix} {name_and_id} / {installment_num}. Rate {_util.to_month_year_de(collection_ym)}"
 
 
@@ -195,13 +196,15 @@ def _dd_endtoend_id_from_row(row, *, endtoend_ids: dict[int, str] | None = None)
         return endtoend_id
 
     mandate_id = _util.sepa_mandate_id_from_hitobito_id(row["id"])
-    count_accounting_entries = row.get("accounting_entries_count", "0")
+    count_accounting_entries = (
+        _util.nan_to_none(row.get("accounting_entries_count")) or 0
+    )
     random_hex = uuid.uuid4().hex[:10]
     endtoend_id = f"{mandate_id}-{count_accounting_entries}-{random_hex}"
     return endtoend_id[:35]
 
 
-def _accounting_comment_from_row(row: _pandas.Series) -> str:
+def _accounting_description_from_row(row: _pandas.Series) -> str:
     endtoend_id = row["sepa_dd_endtoend_id"]
     collection_date = row["collection_date"]
     collection_date_de = collection_date.strftime("%d.%m.%Y")
@@ -236,17 +239,11 @@ def enrich_people_dataframe_for_payments(
         df["sepa_bic_status"] = None
         df["sepa_bic_status_reason"] = ""
 
-        df["collection_date"] = collection_date
-
-        df["amount_due"] = df.apply(compute_total_fee_due, axis=1)
-        df["amount"] = df.apply(
-            lambda row: max(row["amount_due"] - row["amount_paid"], 0), axis=1
-        )
         df["sepa_dd_description"] = df.apply(_dd_description_from_row, axis=1)
         df["sepa_dd_endtoend_id"] = df.apply(
             lambda row: _dd_endtoend_id_from_row(row, endtoend_ids=endtoend_ids), axis=1
         )
-        df["payment_status_reason"] = df["amount"].map(
+        df["payment_status_reason"] = df["open_amount_cents"].map(
             lambda amt: "" if amt > 0 else "amount = 0"
         )
         df["payment_status"] = df["payment_status_reason"].map(
@@ -256,7 +253,9 @@ def enrich_people_dataframe_for_payments(
         df["accounting_author_id"] = 65  # TODO: maybe (2 - Peter or 65 - Daffi)
         df["accounting_value_date"] = df["collection_date"]  # best guess we can do
         df["accounting_booking_at"] = booking_at
-        df["accounting_comment"] = df.apply(_accounting_comment_from_row, axis=1)
+        df["accounting_description"] = df.apply(
+            _accounting_description_from_row, axis=1
+        )
 
         _check_iban_bic_in_payment_dataframe(df, pedantic=pedantic)
 
@@ -270,67 +269,6 @@ def to_int_or_none(obj: object) -> int | None:
         return int(obj)
     except Exception:
         return None
-
-
-def mk_installments_plan(row) -> list[tuple[_datetime.date, int]] | None:
-    year = to_int_or_none(row["custom_installments_starting_year"])
-    custom_installments_cents = row["custom_installments_cents"]
-    if year is None or custom_installments_cents is None:
-        return None
-    plan = []
-    for i, cents in enumerate(custom_installments_cents):
-        print(i, cents)
-        #  0   ->  year + 0,   1,  5
-        #  11  ->  year + 0,  12,  5
-        #  12  ->  year + 1,   1,  5
-        print((year + i // 12, (i % 12) + 1, 5))
-        d = _datetime.date(year + i // 12, (i % 12) + 1, 5)
-        plan.append((d, cents))
-    return plan
-
-
-def fee_due_by_date_in_cent_from_plan(
-    date: _datetime.date, installments_cents: dict[tuple[int, int], int], *, row=None
-) -> int:
-    import bisect
-    import textwrap
-
-    plan = [
-        (_datetime.date(year, month, 5), cents)
-        for (year, month), cents in sorted(
-            installments_cents.items(), key=lambda item: item[0]
-        )
-    ]
-    dates = [_datetime.date.min, *(x[0] for x in plan), _datetime.date.max]
-    installments = [0, *(x[1] for x in plan), 0]
-    accumulated = list(_itertools.accumulate(installments))
-    pos = max(bisect.bisect_right(dates, date) - 1, 0)
-    cents_due = accumulated[pos]
-    if row is not None:
-        installments_str = "\n".join(
-            f"{d}: {i / 100:9.2f} EUR / {a / 100:9.2f} EUR"
-            for d, i, a in zip(dates, installments, accumulated)
-        )
-        _LOGGER.debug(
-            "%s fee due by %s: %s EUR\n%s\n  | -> pos=%s",
-            row["id_and_name"],
-            date,
-            cents_due / 100,
-            textwrap.indent(installments_str, "  | "),
-            pos,
-        )
-    return cents_due
-
-
-def compute_total_fee_due(row) -> int:
-    installments_cents = row["installments_cents_dict"]
-    collection_date: _datetime.date = row["collection_date"]
-    if installments_cents is None:
-        return 0
-    else:
-        return fee_due_by_date_in_cent_from_plan(
-            collection_date, installments_cents, row=row
-        )
 
 
 def _check_iban_bic_in_payment_dataframe(df, pedantic: bool = True):
@@ -490,7 +428,7 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
         subject_id=row["id"],
         author_id=row["accounting_author_id"],
         amount=int(row.get("amount", 0)),
-        description=row["accounting_comment"],
+        description=row["accounting_description"],
         created_at=booking_at,
         payment_initiation_id=row.get("sepa_dd_payment_initiation_id"),
         direct_debit_payment_info_id=row.get("sepa_dd_direct_debit_payment_info_id"),
@@ -719,7 +657,7 @@ def insert_direct_debit_pre_notification_from_row(
         dbtr_bic=row["sepa_bic"],
         dbtr_address=row["sepa_address"],
         amount_currency="EUR",
-        amount_cents=row["amount"],
+        amount_cents=row["open_amount_cents"],
         sequence_type=row["sepa_dd_sequence_type"],
         collection_date=row["collection_date"],
         mandate_id=row["sepa_mandate_id"],
@@ -747,13 +685,13 @@ def write_payment_dataframe_to_db(
                 continue
             accounting_entry_id = insert_accounting_entry_from_row(cursor, row)
             _LOGGER.info(
-                "[ACC] subject_id=%s sepa_name=%r %r %s print_at=%s amount=%s -> id=%s",
+                "[ACC] subject_id=%s sepa_name=%r %r %s print_at=%s open_amount_cents=%s -> id=%s",
                 row.get("id"),
                 row.get("sepa_name"),
                 row.get("short_full_name"),
                 row.get("payment_role"),
                 row.get("print_at"),
-                int(row.get("amount", 0)),
+                int(row.get("open_amount_cents", 0)),
                 accounting_entry_id,
             )
             df.at[idx, "accounting_entry_id"] = accounting_entry_id
@@ -937,7 +875,7 @@ WHERE
         lambda person_id: id_to_pn_row[person_id]["amount_cents"]
     )
 
-    amount_changed_df = df[df["amount"] != df["pre_notified_amount"]]
+    amount_changed_df = df[df["open_amount_cents"] != df["pre_notified_amount"]]
     if report_amount_differences:
         if len(amount_changed_df):
             for _, row in amount_changed_df.iterrows():

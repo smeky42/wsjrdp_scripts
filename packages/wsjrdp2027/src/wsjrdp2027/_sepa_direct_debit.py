@@ -105,7 +105,7 @@ class SepaDirectDebit:
             "name": row["sepa_name"],
             "IBAN": row["sepa_iban"],
             "BIC": row["sepa_bic"],
-            "amount": row["amount"],
+            "amount": row["open_amount_cents"],
             "type": row.get("sepa_dd_sequence_type", "OOFF"),  # FRST,RCUR,OOFF,FNAL
             "collection_date": row["collection_date"],
             "mandate_id": row["sepa_mandate_id"],
@@ -160,7 +160,7 @@ def write_accounting_dataframe_to_sepa_dd(
 
     for idx, row in df.iterrows():
         if row["payment_status"] != "ok":
-            if row.get("amount", 0) == 0:
+            if row.get("open_amount_cents", 0) == 0:
                 continue  # silently skip non-ok row with amount=0
             _LOGGER.debug(
                 "[SDD] Skip non-ok row id=%s payment_status=%s payment_status_reason=%r",
@@ -171,8 +171,8 @@ def write_accounting_dataframe_to_sepa_dd(
             continue
 
         skip_reasons = []
-        if row.get("amount", 0) == 0:
-            skip_reasons.append("amount = 0")
+        if row.get("open_amount_cents", 0) == 0:
+            skip_reasons.append("open_amount_cents = 0")
         if not row.get("payment_role", None):
             skip_reasons.append("payment_role IS NULL")
         if not row.get("sepa_iban", None):
@@ -188,13 +188,13 @@ def write_accounting_dataframe_to_sepa_dd(
             continue
 
         _LOGGER.info(
-            "[SDD] id=%s sepa_name=%r %r %s print_at=%s amount=%s %s",
+            "[SDD] id=%s sepa_name=%r %r %s print_at=%s open_amount_cents=%s %s",
             row.get("id"),
             row.get("sepa_name"),
             row.get("short_full_name"),
             row.get("payment_role"),
             row.get("print_at"),
-            row.get("amount"),
+            row.get("open_amount_cents"),
             row.get("sepa_iban"),
         )
         try:

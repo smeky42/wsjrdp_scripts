@@ -63,7 +63,7 @@ wir werden den nächsten SEPA Lastschrifteinzug ab dem {collection_date_de} durc
 Du nimmst mit folgenden Daten an diesem Lastschrifteinzug teil:
 
 Teilnehmer*in: {row["full_name"]}
-Betrag: {wsjrdp2027.format_cents_as_eur_de(row["amount"])}
+Betrag: {wsjrdp2027.format_cents_as_eur_de(row["open_amount_cents"])}
 
 Kontoinhaber*in: {row["sepa_name"]}
 IBAN: {row["sepa_iban"]}
@@ -115,8 +115,8 @@ def send_pre_notification_mails(
             row["sepa_status"],
             row["payment_role"],
             wsjrdp2027.format_cents_as_eur_de(row["total_fee_cents"]),
-            wsjrdp2027.format_cents_as_eur_de(row["amount_paid"]),
-            wsjrdp2027.format_cents_as_eur_de(row["amount"]),
+            wsjrdp2027.format_cents_as_eur_de(row["amount_paid_cents"]),
+            wsjrdp2027.format_cents_as_eur_de(row["open_amount_cents"]),
         )
 
 
@@ -200,8 +200,8 @@ def main(argv=None):
             "  Skipped payments DataFrame (payment_status != 'ok'):\n%s",
             textwrap.indent(str(df_not_ok), "  | "),
         )
-        sum_not_ok = int(df_not_ok["amount"].sum())
-        _LOGGER.info("  SUM(amount): %s", wsjrdp2027.format_cents_as_eur_de(sum_not_ok))
+        sum_not_ok = int(df_not_ok["open_amount_cents"].sum())
+        _LOGGER.info("  SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(sum_not_ok))
     else:
         sum_not_ok = 0
 
@@ -213,8 +213,8 @@ def main(argv=None):
         textwrap.indent(str(df_ok), "  | "),
     )
 
-    sum_ok = int(df_ok["amount"].sum())
-    _LOGGER.info("  SUM(amount): %s", wsjrdp2027.format_cents_as_eur_de(sum_ok))
+    sum_ok = int(df_ok["open_amount_cents"].sum())
+    _LOGGER.info("  SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(sum_ok))
     _LOGGER.info("")
 
     if sum_not_ok > 0:
@@ -271,7 +271,7 @@ def main(argv=None):
 
     _LOGGER.info("")
     _LOGGER.info(
-        "SUM(amount): %s", wsjrdp2027.format_cents_as_eur_de(df_ok["amount"].sum())
+        "SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(df_ok["open_amount_cents"].sum())
     )
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)

@@ -31,9 +31,6 @@ def main(argv=None):
             booking_at=ctx.start_time,
             pedantic=True,
             now=ctx.start_time,
-            where=wsjrdp2027.PeopleWhere(
-                status=wsjrdp2027.DB_PEOPLE_ALL_STATUS,
-            ),
         )
 
     _LOGGER.info("Registered: %s", len(df))
