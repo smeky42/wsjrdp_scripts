@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections.abc as _collections_abc
 import contextlib as _contextlib
 import logging as _logging
+import math as _math
 import typing as _typing
 
 
@@ -596,6 +597,17 @@ def dedup_iter(iterable):
 def dedup(iterable):
     """Deduplicate *iterable*."""
     return list(dedup_iter(iterable))
+
+
+def is_nan_or_none(obj) -> bool:
+    return bool(obj is None or (isinstance(obj, float) and _math.isnan(obj)))
+
+
+def nan_to_none(obj: _T) -> _T | None:
+    if isinstance(obj, float) and _math.isnan(obj):
+        return None
+    else:
+        return obj
 
 
 @_typing.overload

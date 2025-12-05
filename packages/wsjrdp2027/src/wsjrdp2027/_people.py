@@ -5,7 +5,7 @@ import datetime as _datetime
 import logging as _logging
 import typing as _typing
 
-from . import _people_query
+from . import _people_query, _util
 
 
 if _typing.TYPE_CHECKING:
@@ -120,10 +120,10 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "custom_installments_comment",
     "custom_installments_issue",
     "pre_notified_amount",
-    "amount_paid",  # bereits bezahlt
-    "amount_unpaid",  # insgesamt offen
-    "amount_due",  # fällig gesamt zum aktuellen Zeitpunkt
-    "amount",  #  fällig in Zahlung
+    "amount_paid_cents",  # bereits bezahlt
+    "amount_unpaid_cents",  # insgesamt offen
+    "amount_due_cents",  # fällig gesamt (at collection_date)
+    "open_amount_cents",  # Betrag der offen ist (at collection_date)
     "payment_status_reason",
     "payment_status",
     "person_dict",
@@ -203,13 +203,19 @@ def find_short_first_name(row) -> str:
         return first_names[0]
 
 
-def compute_installments_cents_from_row(
+def _compute_installments_cents_dict_from_row(
     row, id2fee_rules
 ) -> dict[tuple[int, int], int] | None:
     from . import _payment_role, _util
 
     id = row["id"]
     payment_role: _payment_role.PaymentRole = row["payment_role"]
+    if payment_role is None and row.get("status") in [
+        "registered",
+        "deregistration_noted",
+        "deregistered",
+    ]:
+        return {(2025, 1): 0}
     early_payer = bool(row["early_payer"])
     print_at = _util.to_date_or_none(row["print_at"])
     today = _util.to_date_or_none(row["today"])
@@ -234,8 +240,20 @@ def compute_installments_cents_from_row(
         }
 
 
+def _compute_regular_full_fee_cents(row: _pandas.Series) -> float:
+    payment_role = row.get("payment_role")
+    if payment_role:
+        return payment_role.regular_full_fee_cents
+    else:
+        status = row.get("status")
+        if status in ["registered", "deregistration_noted", "deregistered"]:
+            return 0
+        else:
+            return 10_000_000_00
+
+
 def _compute_total_fee_cents(row: _pandas.Series) -> float | None:
-    regular_full_fee_cents = row.get("regular_full_fee_cents", None)
+    regular_full_fee_cents = _util.nan_to_none(row.get("regular_full_fee_cents", None))
     if regular_full_fee_cents is not None:
         return regular_full_fee_cents - row.get("total_fee_reduction_cents", 0)
     else:
@@ -244,13 +262,62 @@ def _compute_total_fee_cents(row: _pandas.Series) -> float | None:
 
 def _sepa_dd_sequence_type_from_row(row) -> str:
     # FRST, RCUR, OOFF, FNAL
-    if row["early_payer"]:
+    installments_dict = row.get("installments_cents_dict") or {}
+    if row["early_payer"] or len(installments_dict) == 1:
         return "OOFF"
     else:
         # It seems that it is OK to always use RCUR for recurring
-        # payments, even if FRST or FNAL would be somewhat more
-        # correct.
+        # payments, even if FRST or FNAL would be more correct.
         return "RCUR"
+
+
+def fee_due_by_date_in_cent_from_plan(
+    date: _datetime.date, installments_cents: dict[tuple[int, int], int], *, row=None
+) -> int:
+    import bisect
+    import itertools
+    import textwrap
+
+    plan = [
+        (_datetime.date(year, month, 5), cents)
+        for (year, month), cents in sorted(
+            installments_cents.items(), key=lambda item: item[0]
+        )
+    ]
+    dates = [_datetime.date.min, *(x[0] for x in plan), _datetime.date.max]
+    installments = [0, *(x[1] for x in plan), 0]
+    accumulated = list(itertools.accumulate(installments))
+    pos = max(bisect.bisect_right(dates, date) - 1, 0)
+    cents_due = accumulated[pos]
+    if row is not None:
+        installments_str = "\n".join(
+            f"{d}: {i / 100:9.2f} EUR / {a / 100:9.2f} EUR"
+            for d, i, a in zip(dates, installments, accumulated)
+        )
+        _LOGGER.debug(
+            "%s fee due by %s: %s EUR\n%s\n  | -> pos=%s",
+            row["id_and_name"],
+            date,
+            cents_due / 100,
+            textwrap.indent(installments_str, "  | "),
+            pos,
+        )
+    return cents_due
+
+
+def _compute_amount_due_cents(row) -> int:
+    installments_cents = _util.nan_to_none(row["installments_cents_dict"])
+    collection_date: _datetime.date | None = _util.nan_to_none(row["collection_date"])
+    if installments_cents is None or collection_date is None:
+        return 0
+    else:
+        return fee_due_by_date_in_cent_from_plan(
+            collection_date, installments_cents, row=row
+        )
+
+
+def _compute_open_amount_cents(row: _pandas.Series) -> int:
+    return max(row["amount_due_cents"] - row["amount_paid_cents"], 0)
 
 
 def _fetch_id2fee_rules(
@@ -362,7 +429,7 @@ def _enrich_people_dataframe(
     id2person_dicts: dict[int, dict],
     today: _datetime.date,
     print_at: _datetime.date | None = None,
-    collection_date: _datetime.date,
+    collection_date: _datetime.date | None = None,
     extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
 ) -> None:
     from . import _util
@@ -418,7 +485,7 @@ def _enrich_people_dataframe(
 
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
     df["payment_role"] = df["payment_role"].map(lambda s: PaymentRole(s) if s else None)  # fmt: skip
-    df["regular_full_fee_cents"] = df["payment_role"].map(lambda p: (p.regular_full_fee_cents if p else None))  # fmt: skip
+    df["regular_full_fee_cents"] = df.apply(_compute_regular_full_fee_cents, axis=1)
 
     def col_from_fee_rules(
         col_name, *, fee_rules_col_name=None, f=lambda val: val
@@ -434,7 +501,7 @@ def _enrich_people_dataframe(
     col_from_fee_rules("custom_installments_comment")
     col_from_fee_rules("custom_installments_issue")
     col_from_fee_rules("custom_installments_sum_cents")
-    df["installments_cents_dict"] = df.apply(lambda row: compute_installments_cents_from_row(row, id2fee_rules), axis=1)  # fmt: skip
+    df["installments_cents_dict"] = df.apply(lambda row: _compute_installments_cents_dict_from_row(row, id2fee_rules), axis=1)  # fmt: skip
     df["installments_cents_sum"] = df["installments_cents_dict"].map(
         lambda d: sum(d.values()) if d is not None else None
     )
@@ -443,10 +510,13 @@ def _enrich_people_dataframe(
 
     df["total_fee_cents"] = df.apply(_compute_total_fee_cents, axis=1)  # fmt: skip
     df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
-    df["amount_paid"] = df["accounting_entries_amounts_cents"].map(sum)
-    df["amount_unpaid"] = df.apply(
-        lambda r: max(r["total_fee_cents"] - r["amount_paid"], 0), axis=1
-    )
+    df["collection_date"] = collection_date
+    df["amount_paid_cents"] = df["accounting_entries_amounts_cents"].map(sum)
+    df["amount_unpaid_cents"] = df.apply(lambda r: max(r["total_fee_cents"] - r["amount_paid_cents"], 0), axis=1)  # fmt: skip
+    df["amount_due_cents"] = df.apply(_compute_amount_due_cents, axis=1)
+    df["open_amount_cents"] = df.apply(_compute_open_amount_cents, axis=1)
+    # df["amount"] = df["open_amount_cents"]
+
     df["sepa_dd_sequence_type"] = df.apply(_sepa_dd_sequence_type_from_row, axis=1)
 
     df["status_de"] = df["status"].map(_STATUS_TO_DE.get)
@@ -713,7 +783,7 @@ def assert_all_people_rows_consistent(df: _pandas.DataFrame) -> None:
     inconsistent_df = df[df["id"].isin(inconsistent_ids_set)]
     if inconsistent_ids:
         err_msg = (
-            f"Found {len(inconsistent_ids)} inconsistent rows:\n"
+            f"Found {len(inconsistent_ids)} inconsistent row(s):\n"
             + textwrap.indent(str(inconsistent_df), "  | ")
         )
         _LOGGER.error("%s", err_msg)
@@ -848,7 +918,7 @@ def update_postgres_db_for_dataframe(
                 skipped_ids.add(id)
                 logger.debug("  Skip %s (no changes)", id_and_name)
                 continue
-            elif row.get("skip_db_updates"):
+            elif _util.nan_to_none(row.get("skip_db_updates")):
                 skipped_ids.add(id)
                 logger.info("  Skip %s (due to row['skip_db_updates'])", id_and_name)
                 continue

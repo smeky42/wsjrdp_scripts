@@ -23,14 +23,11 @@ _LOGGER = logging.getLogger()
 DEFAULT_COLLECTION_DATE = datetime.date(2025, 1, 1)
 
 
-def parse_args(argv=None):
+def create_argument_parser():
     import argparse
-    import sys
 
     from wsjrdp2027 import to_date_or_none
 
-    if argv is None:
-        argv = sys.argv
     p = argparse.ArgumentParser()
     p.add_argument("--accounting", action="store_true", default=True)
     p.add_argument("--no-accounting", dest="accounting", action="store_false")
@@ -38,22 +35,18 @@ def parse_args(argv=None):
         "--collection-date", type=to_date_or_none, default=DEFAULT_COLLECTION_DATE
     )
     p.add_argument("--payment-initiation-id", type=int)
-    return p.parse_args(argv[1:])
+    return p
 
 
 def main(argv=None):
     import textwrap
 
-    args = parse_args(argv=argv)
-
-    start_time = None
-    # start_time = datetime.datetime(2025, 8, 15, 10, 30, 27).astimezone()
-
     ctx = wsjrdp2027.WsjRdpContext(
-        setup_logging=True,
-        start_time=start_time,
+        argv=argv,
+        argument_parser=create_argument_parser(),
         out_dir="data/sepa_direct_debit_{{ filename_suffix }}",
     )
+    args = ctx.parsed_args
     out_base = ctx.make_out_path("sepa_direct_debit_{{ filename_suffix }}")
     log_filename = out_base.with_suffix(".log")
     xml_filename = out_base.with_suffix(".xml")
@@ -78,20 +71,22 @@ def main(argv=None):
                 collection_date=args.collection_date,
                 booking_at=ctx.start_time,
                 pedantic=False,
-                today=ctx.start_time.date(),
+                now=ctx.start_time,
             )
 
-        sum_amount = df["amount"].sum()
+        sum_amount = df["open_amount_cents"].sum()
 
         for _, row in df.iterrows():
-            if not isinstance(row["amount"], (int, float)):
-                err_msg = "Invalid row: 'amount' value is not int or float"
+            if not isinstance(row["open_amount_cents"], (int, float)):
+                err_msg = "Invalid row: 'open_amount_cents' value is not int or float"
                 _LOGGER.error(
                     "%s:\n%s", err_msg, textwrap.indent(row.to_string(), "  | ")
                 )
                 raise RuntimeError(err_msg)
 
-        _LOGGER.info("SUM(amount): %s", wsjrdp2027.format_cents_as_eur_de(sum_amount))
+        _LOGGER.info(
+            "SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(sum_amount)
+        )
 
         wsjrdp2027.write_accounting_dataframe_to_sepa_dd(
             df,
@@ -123,8 +118,8 @@ def main(argv=None):
         textwrap.indent(str(df_not_ok), "  | "),
     )
     _LOGGER.info(
-        "  SUM(amount): %s",
-        wsjrdp2027.format_cents_as_eur_de(df_not_ok["amount"].sum()),
+        "  SUM(open_amount_cents): %s",
+        wsjrdp2027.format_cents_as_eur_de(df_not_ok["open_amount_cents"].sum()),
     )
 
     _LOGGER.info("")
@@ -135,7 +130,8 @@ def main(argv=None):
         textwrap.indent(str(df_ok), "  | "),
     )
     _LOGGER.info(
-        "  SUM(amount): %s", wsjrdp2027.format_cents_as_eur_de(df_ok["amount"].sum())
+        "  SUM(open_amount_cents): %s",
+        wsjrdp2027.format_cents_as_eur_de(df_ok["open_amount_cents"].sum()),
     )
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)
