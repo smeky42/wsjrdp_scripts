@@ -2,6 +2,39 @@ import pytest
 from wsjrdp2027 import PeopleWhere
 
 
+def _yaml_str_to_dict(yaml_str: str) -> dict:
+    import io
+
+    import yaml
+
+    f = io.StringIO(yaml_str)
+
+    return yaml.load(f, Loader=yaml.FullLoader)
+
+
+class Test_PeopleWhere:
+    def test_empty_where(self):
+        where = PeopleWhere()
+        assert where.status is None
+        assert where.exclude_status is None
+
+
+class Test_PeopleWhere_Yaml_To_Dict:
+    @pytest.mark.parametrize(
+        "yaml_str, expected_dict",
+        [
+            ("""status:""", {}),
+            ("""status: false""", {"status": False}),
+            ("""status: [false, 'registered']""", {"status": [False, "registered"]}),
+        ],
+    )
+    def test_from_yaml(self, yaml_str, expected_dict):
+        yaml_dict = _yaml_str_to_dict(yaml_str)
+        where = PeopleWhere.from_dict(yaml_dict)
+        where_dict = where.to_dict()
+        assert where_dict == expected_dict
+
+
 class Test_PeopleWhere__as_where_condition:
     def test_status(self):
         where_str = PeopleWhere(status="confirmed").as_where_condition()
@@ -38,6 +71,14 @@ class Test_PeopleWhere__as_where_condition:
     def test_unit_code(self):
         where_str = PeopleWhere(unit_code="000000").as_where_condition()
         assert where_str == "people.unit_code = '000000'"
+
+    def test_unit_code_is_null(self):
+        where_str = PeopleWhere(unit_code=False).as_where_condition()
+        assert where_str == "people.unit_code IS NULL"
+
+    def test_unit_code_is_null_or_000000(self):
+        where_str = PeopleWhere(unit_code=[False, "000000"]).as_where_condition()
+        assert where_str == "(people.unit_code = '000000' OR people.unit_code IS NULL)"
 
     def test_exclude_unit_code(self):
         where_str = PeopleWhere(exclude_unit_code="000000").as_where_condition()

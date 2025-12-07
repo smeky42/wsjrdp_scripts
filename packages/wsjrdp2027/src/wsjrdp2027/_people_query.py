@@ -6,6 +6,8 @@ import datetime as _datetime
 import logging as _logging
 import typing as _typing
 
+from . import _types
+
 
 if _typing.TYPE_CHECKING:
     from . import _role
@@ -15,17 +17,25 @@ _LOGGER = _logging.getLogger(__name__)
 
 
 _StrOrIterable = str | _collections_abc.Iterable[str]
-_StrIntOrIterable = str | int | _collections_abc.Iterable[str | int]
+_StrOrNullIterable = (
+    str
+    | bool
+    | _types.NullOrNotType
+    | _collections_abc.Iterable[str | bool | _types.NullOrNotType]
+)
+_StrIntOrIterable = str | int | bool | _collections_abc.Iterable[str | int | bool]
 
 
 @_dataclasses.dataclass(kw_only=True)
 class PeopleWhere:
     exclude_deregistered: bool | None = None
     role: tuple[_role.WsjRole, ...] | None = None
-    status: _collections_abc.Sequence[str] | None = None
-    exclude_status: _collections_abc.Sequence[str] | None = None
-    sepa_status: _collections_abc.Sequence[str] | None = None
-    exclude_sepa_status: _collections_abc.Sequence[str] | None = None
+    status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
+    exclude_status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
+    sepa_status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
+    exclude_sepa_status: (
+        _collections_abc.Sequence[str | _types.NullOrNotType] | None
+    ) = None
     id: _collections_abc.Sequence[int] | None = None
     exclude_id: _collections_abc.Sequence[int] | None = None
     primary_group_id: _collections_abc.Sequence[int] | None = None
@@ -33,8 +43,10 @@ class PeopleWhere:
     early_payer: bool | None = None
     max_print_at: _datetime.date | None = None
     fee_rules: tuple[str, ...] = ("active",)
-    unit_code: _collections_abc.Sequence[str] | None = None
-    exclude_unit_code: _collections_abc.Sequence[str] | None = None
+    unit_code: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
+    exclude_unit_code: _collections_abc.Sequence[str | _types.NullOrNotType] | None = (
+        None
+    )
     tag: _collections_abc.Sequence[str] | None = None
     exclude_tag: _collections_abc.Sequence[str] | None = None
     not_: _typing.Self | None = None
@@ -49,10 +61,10 @@ class PeopleWhere:
         | _role.WsjRole
         | _collections_abc.Iterable[str | _role.WsjRole]
         | None = None,
-        status: _StrOrIterable | None = None,
-        exclude_status: _StrOrIterable | None = None,
-        sepa_status: _StrOrIterable | None = None,
-        exclude_sepa_status: _StrOrIterable | None = None,
+        status: _StrOrNullIterable | None = None,
+        exclude_status: _StrOrNullIterable | None = None,
+        sepa_status: _StrOrNullIterable | None = None,
+        exclude_sepa_status: _StrOrNullIterable | None = None,
         id: _StrIntOrIterable | None = None,
         exclude_id: str | int | _collections_abc.Iterable[str | int] | None = None,
         primary_group_id: _StrIntOrIterable | None = None,
@@ -60,8 +72,8 @@ class PeopleWhere:
         early_payer: bool | None = None,
         max_print_at: _datetime.date | str | None = None,
         fee_rules: _StrOrIterable = "active",
-        unit_code: _StrOrIterable | None = None,
-        exclude_unit_code: _StrOrIterable | None = None,
+        unit_code: _StrOrNullIterable | None = None,
+        exclude_unit_code: _StrOrNullIterable | None = None,
         tag: _StrOrIterable | None = None,
         exclude_tag: _StrOrIterable | None = None,
         not_: _typing.Self | None = None,
@@ -88,10 +100,10 @@ class PeopleWhere:
                 self.role = (_role.WsjRole.from_any(role),)
             else:
                 self.role = tuple(_role.WsjRole.from_any(r) for r in role)
-        self.status = _util.to_str_list_or_none(status)
-        self.exclude_status = _util.to_str_list_or_none(exclude_status)
-        self.sepa_status = _util.to_str_list_or_none(sepa_status)
-        self.exclude_sepa_status = _util.to_str_list_or_none(exclude_sepa_status)
+        self.status = _to_str_or_null_list(status)
+        self.exclude_status = _to_str_or_null_list(exclude_status)
+        self.sepa_status = _to_str_or_null_list(sepa_status)
+        self.exclude_sepa_status = _to_str_or_null_list(exclude_sepa_status)
         self.id = _util.to_int_list_or_none(id)
         self.exclude_id = _util.to_int_list_or_none(exclude_id)
         self.primary_group_id = _util.to_int_list_or_none(primary_group_id)
@@ -106,8 +118,8 @@ class PeopleWhere:
             self.fee_rules = (fee_rules,)
         else:
             self.fee_rules = tuple(fee_rules)
-        self.unit_code = _util.to_str_list_or_none(unit_code)
-        self.exclude_unit_code = _util.to_str_list_or_none(exclude_unit_code)
+        self.unit_code = _to_str_or_null_list(unit_code)
+        self.exclude_unit_code = _to_str_or_null_list(exclude_unit_code)
         self.tag = _util.to_str_list_or_none(tag)
         self.exclude_tag = _util.to_str_list_or_none(exclude_tag)
 
@@ -129,9 +141,16 @@ class PeopleWhere:
         return cls(**d)
 
     def to_dict(self) -> dict:
+        def null_or_not_to_bool(x):
+            if isinstance(x, _types.NullOrNotType):
+                return x.bool_value
+            else:
+                return x
+
         def to_out(elts: _collections_abc.Sequence | None, map=None):
             if elts is None:
                 return None
+            elts = [null_or_not_to_bool(item) for item in elts]
             if map:
                 elts = [map(item) for item in elts]
             if len(elts) == 1:
@@ -360,3 +379,37 @@ class PeopleQuery:
             if v is not None:
                 setattr(obj, k, v)
         return obj
+
+
+_T = _typing.TypeVar("_T")
+_R = _typing.TypeVar("_R")
+
+
+def _to_list(
+    *args: _T | _collections_abc.Iterable[_T],
+    map: _collections_abc.Callable[[_T], _R] = str,
+) -> list[_R]:
+    result = []
+    for arg in args:
+        if arg is None:
+            continue
+        if isinstance(arg, str):
+            result.append(map(_typing.cast(_T, arg)))
+        elif isinstance(arg, _collections_abc.Iterable):
+            result.extend(map(x) for x in arg)
+        else:
+            result.append(map(arg))
+    return result
+
+
+def _to_str_or_null_type(x: _typing.Any) -> str | _types.NullOrNotType:
+    if x is None:
+        return _types.NULL
+    elif isinstance(x, bool):
+        return _types.NOT_NULL if x else _types.NULL
+    else:
+        return str(x)
+
+
+def _to_str_or_null_list(*args) -> list[str | _types.NullOrNotType] | None:
+    return _to_list(*args, map=_to_str_or_null_type) or None
