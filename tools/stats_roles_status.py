@@ -23,13 +23,13 @@ WITH group_names (id, name) AS (VALUES
  (4, 'IST'),
  (5, 'UL Warteliste'),
  (6, 'YP Warteliste'),
- (7, 'IST Warteliste')
+ (7, 'IST Warteliste'),
+ (45, 'BMT')
 )
 
 SELECT group_names.name AS role, status, COUNT(people.id) AS num_people FROM people
 JOIN group_names ON people.primary_group_id = group_names.id
-WHERE primary_group_id IN (1, 2, 3, 4, 5, 6, 7)
-AND status NOT IN ('deregistration_noted', 'deregistered')
+WHERE primary_group_id IN (1, 2, 3, 4, 5, 6, 7, 45)
 
 GROUP BY group_names.name, people.primary_group_id, status
 ORDER BY
@@ -38,10 +38,12 @@ ORDER BY
 """
 
 REG_ROLES = ["CMT", "UL", "YP", "IST"]
-WAIT_ROLES = ["UL Warteliste", "YP Warteliste", "IST Warteliste"]
+WAIT_ROLES = ["UL Warteliste", "YP Warteliste", "IST Warteliste", "BMT"]
 ALL_ROLES = REG_ROLES + WAIT_ROLES
 
 COLUMNS = [
+    "deregistered",
+    "deregistration_noted",
     "registered",
     "printed",
     "upload",
@@ -66,14 +68,23 @@ def main(argv=None):
         "Resulting base pandas DataFrame:\n%s", textwrap.indent(str(base_df), "  ")
     )
 
-    NO_MIN_COLS = ["in_review", "confirmed"]
+    NO_MIN_COLS = [
+        "deregistered",
+        "deregistration_noted",
+        "in_review",
+        "confirmed",
+    ]
+    add_min_cols = True
 
-    df = pd.DataFrame(
-        columns=[
-            *COLUMNS,
-            *(f"min_{col}" for col in COLUMNS if col not in NO_MIN_COLS),
-        ]
-    )
+    if add_min_cols:
+        df = pd.DataFrame(
+            columns=[
+                *COLUMNS,
+                *(f"min_{col}" for col in COLUMNS if col not in NO_MIN_COLS),
+            ]
+        )
+    else:
+        df = pd.DataFrame(columns=COLUMNS.copy())
     for role in REG_ROLES:
         for col in df.columns[0:]:
             df.at[role, col] = 0
@@ -83,28 +94,29 @@ def main(argv=None):
             df.at[role, col] = 0
     for _, row in base_df.iterrows():
         df.at[row["role"], row["status"]] = int(row["num_people"])
-    for idx, row in df.iterrows():
-        if not isinstance(idx, str):
-            continue
-        for j, col in enumerate(COLUMNS):
-            if col not in NO_MIN_COLS:
-                sum_range = slice(j, len(COLUMNS))
-                df.at[idx, f"min_{col}"] = sum(
-                    x for x in row[sum_range] if isinstance(x, (float, int))
-                )
+    if add_min_cols:
+        for idx, row in df.iterrows():
+            if not isinstance(idx, str):
+                continue
+            for j, col in enumerate(COLUMNS):
+                if col not in NO_MIN_COLS:
+                    sum_range = slice(j, len(COLUMNS))
+                    df.at[idx, f"min_{col}"] = sum(
+                        x for x in row[sum_range] if isinstance(x, (float, int))
+                    )
 
     df.loc[len(df)] = [""] * len(df.columns)
     df.loc["Alle"] = sum(df.loc[role] for role in REG_ROLES)
     df.loc["Alle (inkl. Warteliste)"] = sum(df.loc[role] for role in ALL_ROLES)
     df.loc[len(df)] = [""] * len(df.columns)
-    yp_row = df.loc["YP"]
-    ul_row = df.loc["UL"]
-    df.loc["YP+UL"] = yp_row + ul_row
-    for col in df.columns:
-        yp_val = float(yp_row[col])  # type: ignore
-        ul_val = float(ul_row[col])  # type: ignore
-        if ul_val != 0:
-            df.at["YP:UL", col] = yp_val / ul_val
+    # yp_row = df.loc["YP"]
+    # ul_row = df.loc["UL"]
+    # df.loc["YP+UL"] = yp_row + ul_row
+    # for col in df.columns:
+    #     yp_val = float(yp_row[col])  # type: ignore
+    #     ul_val = float(ul_row[col])  # type: ignore
+    #     if ul_val != 0:
+    #         df.at["YP:UL", col] = yp_val / ul_val
 
     _LOGGER.info("Resulting base pandas DataFrame:\n%s", textwrap.indent(str(df), "  "))
 

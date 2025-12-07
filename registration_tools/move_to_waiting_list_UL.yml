@@ -1,0 +1,11 @@
+skip_email: true
+updates:
+  new_primary_group_id: 5
+where:
+  # role: UL  # Hinweis: `role: UL` matcht nicht Personen, die noch keine payment_role haben
+  primary_group_id: 2
+  or:
+    - status: ['deregistration_noted', 'deregistered']
+    - and:
+        status: ['registered']
+        unit_code: [false]
