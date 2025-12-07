@@ -141,7 +141,10 @@ class PreparedMailing:
 
         num_messages = len(self.messages)
         if self.dry_run:
-            _LOGGER.info("Skip sending %s messages (dry_run is True)", num_messages)
+            if self.skip_email:
+                _LOGGER.info("Skip sending %s messages (dry_run is True and skip_email is True)", num_messages)
+            else:
+                _LOGGER.info("Skip sending %s messages (dry_run is True)", num_messages)
             return
         elif self.skip_email:
             _LOGGER.info("Skip sending %s messages (skip_email is True)", num_messages)

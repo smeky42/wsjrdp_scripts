@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import collections.abc as _collections_abc
-import contextlib as _contextlib
 import logging as _logging
 import math as _math
 import typing as _typing
+
+from . import _types
 
 
 if _typing.TYPE_CHECKING:
@@ -46,6 +47,7 @@ __all__ = [
 ]
 
 _T = _typing.TypeVar("_T")
+_R = _typing.TypeVar("_R")
 
 
 class PrefixLoggerAdapter(_logging.LoggerAdapter):
@@ -731,7 +733,11 @@ def combine_where(where: str, *exprs: str, op="AND") -> str:
 
 
 def sql_literal(x):
-    if isinstance(x, (int, float)):
+    if isinstance(x, bool):
+        return "TRUE" if x else "FALSE"
+    elif isinstance(x, _types.NullOrNotType):
+        return x.sql_literal
+    elif isinstance(x, (int, float)):
         return repr(x)
     else:
         x_escaped = x.replace("'", "''")
@@ -755,10 +761,19 @@ def all_in_array_expr(
 def in_expr(expr, elts) -> str:
     """
 
+    ..
+       >>> from ._types import NULL, NOT_NULL
+
     >>> in_expr("x", [1, 2])
     'x IN (1, 2)'
     >>> in_expr("x", [1])
     'x = 1'
+    >>> in_expr("x", [NOT_NULL])
+    'x IS NOT NULL'
+    >>> in_expr("x", [NULL])
+    'x IS NULL'
+    >>> in_expr("x", [None])
+    'x IS NULL'
     >>> in_expr("x", [])
     'FALSE'
     >>> in_expr("x", [1, 2, None])
@@ -769,16 +784,22 @@ def in_expr(expr, elts) -> str:
 
     if elts is None:
         return "FALSE"
-    elif isinstance(elts, (int, float, str)):
+    elif isinstance(elts, (int, float, str, bool)):
         elts = [elts]
     if not elts:
         return "FALSE"
-    elif any(x is None for x in elts):
-        elts_wo_none = [x for x in elts if x is not None]
+    elif any(x in (_types.NULL, None) for x in elts):
+        elts_wo_none = [x for x in elts if x not in (_types.NULL, None)]
         if not elts_wo_none:
             return f"{expr} IS NULL"
         else:
             return f"({in_expr(expr, elts_wo_none)} OR {expr} IS NULL)"
+    elif any(x is _types.NOT_NULL for x in elts):
+        elts_wo_not_null = [x for x in elts if x is not _types.NOT_NULL]
+        if not elts_wo_not_null:
+            return f"{expr} IS NOT NULL"
+        else:
+            return f"({in_expr(expr, elts_wo_not_null)} OR {expr} IS NOT NULL)"
     else:
         if len(elts) == 1:
             return f"{expr} = {sql_literal(elts[0])}"
@@ -790,41 +811,52 @@ def in_expr(expr, elts) -> str:
 def not_in_expr(expr, elts) -> str:
     """
 
+    ..
+       >>> from ._types import NULL, NOT_NULL
+
     >>> not_in_expr("x", [1, 2])
     'x NOT IN (1, 2)'
     >>> not_in_expr("x", [1])
     'x <> 1'
     >>> not_in_expr("x", [])
     'TRUE'
+    >>> not_in_expr("x", [None])
+    'x IS NOT NULL'
+    >>> not_in_expr("x", [NULL])
+    'x IS NOT NULL'
+    >>> not_in_expr("x", [NOT_NULL])
+    'x IS NULL'
     >>> not_in_expr("x", [1, 2, None])
     '(x NOT IN (1, 2) AND x IS NOT NULL)'
+    >>> not_in_expr("x", [1, 2, NOT_NULL])
+    '(x NOT IN (1, 2) AND x IS NULL)'
     >>> not_in_expr("x", None)
     'TRUE'
     """
 
-    def sql_repr(x):
-        if isinstance(x, (int, float)):
-            return repr(x)
-        else:
-            return f"'{x}'"
-
     if elts is None:
         return "TRUE"
-    elif isinstance(elts, (int, float, str)):
+    elif isinstance(elts, (int, float, str, bool)):
         elts = [elts]
     if not elts:
         return "TRUE"
-    elif any(x is None for x in elts):
-        elts_wo_none = [x for x in elts if x is not None]
+    elif any(x in (_types.NULL, None) for x in elts):
+        elts_wo_none = [x for x in elts if x not in (_types.NULL, None)]
         if not elts_wo_none:
-            return f"{expr} IS NULL"
+            return f"{expr} IS NOT NULL"
         else:
             return f"({not_in_expr(expr, elts_wo_none)} AND {expr} IS NOT NULL)"
+    elif any(x is _types.NOT_NULL for x in elts):
+        elts_wo_not_null = [x for x in elts if x is not _types.NOT_NULL]
+        if not elts_wo_not_null:
+            return f"{expr} IS NULL"
+        else:
+            return f"({not_in_expr(expr, elts_wo_not_null)} AND {expr} IS NULL)"
     else:
         if len(elts) == 1:
-            return f"{expr} <> {sql_repr(elts[0])}"
+            return f"{expr} <> {sql_literal(elts[0])}"
         else:
-            elts_list_str = ", ".join(sql_repr(x) for x in elts)
+            elts_list_str = ", ".join(sql_literal(x) for x in elts)
             return f"{expr} NOT IN ({elts_list_str})"
 
 
