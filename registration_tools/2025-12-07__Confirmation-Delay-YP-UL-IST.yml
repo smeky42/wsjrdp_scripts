@@ -1,0 +1,53 @@
+updates:
+  add_tags: 'Confirmation-Delay-Mail'
+query:
+  where:
+    status: ['reviewed']
+    primary_group_id: [2, 3, 4]
+    exclude_tag: ['Warteliste', 'Confirmation-Delay-Mail']
+    # id: [18, 141, 203, 204, 352, 1000, 1189, 1395, 2145, 2147, 2279, 2281]
+  email_only_where:
+    id: [142, 482, 484, 485]  # Test-Accounts
+email_from: anmeldung@worldscoutjamboree.de
+email_subject: "Verschiebung {{ row.payment_role.short_role_name }} Bestätigung {% if (row.amount_unpaid_cents > 0) and (row.open_amount_cents > 0) %} und SEPA Einzug{% endif %} für das Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+email_reply_to: info@worldscoutjamboree.de
+summary: "{{ row.id_and_name }}; open_amount: {{ row.open_amount_cents | format_cents_as_eur_de }}; amount_unpaid: {{ row.amount_unpaid_cents | format_cents_as_eur_de }}; role: {{ row.payment_role.short_role_name }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  leider haben wir aus Polen noch keine Bestätigung für unser Kontingent erhalten. Du bekommst diese Mail, weil du korrekt angemeldet bist und wir davon ausgehen, dass du mitfahren wirst. Deine volle Bestätigung können wir dir aber erst geben, wenn unser Kontingent vom Veranstalter bestätigt wurde.
+
+  Die Bestätigung des Kontingents wurde vom Veranstalter auf Mitte Dezember verschoben.
+
+
+  {% if not row.collection_date %}{{ "collection_date fehlt" | raise_runtime_error }}{% endif %}
+  {% if row.amount_unpaid_cents == 0 %}
+  Dein Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} wurde bereits vollständig bezahlt. Vielen Dank dafür.
+  {% elif row.sepa_status != "ok" %}
+  Wir prüfen gerade deine Beitragszahlung und führen solange keinen SEPA Lastschrifteinzug durch.
+  Schreibe uns bitte eine Antwort auf diese E-Mail, wenn du davon noch nichts weißt.
+  {% elif row.open_amount_cents > 0 %}
+  Daher verschieben wir auch den Dezember SEPA Lastschrifteinzug auf Mitte / Ende Dezember.
+
+  Vorab schon die Daten mit denen du am Einzug teilnehmen wirst:
+
+  Teilnehmer*in: {{ row.full_name }}
+  Betrag: {{ row.open_amount_cents | format_cents_as_eur_de }}
+  Kontoinhaber*in: {{ row.sepa_name }}
+  IBAN: {{ row.sepa_iban }}
+  Mandatsreferenz: {{ row.sepa_mandate_id }}
+  {% elif row.installments_cents_dict %}
+  {% set next_installment_year_month_de = (row.installments_cents_dict.keys() | sort | first | month_year_de) %}
+  {% if row.early_payer or (row.installments_cents_dict | length) == 1 %}
+  Wir planen deinen kompletten Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} im {{ next_installment_year_month_de }} per SEPA Lastschrift einzuziehen.
+  Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+  {% else %}
+  Wir planen die erste Rate deines Teilnahmebetrags im {{ next_installment_year_month_de }} per SEPA Lastschrift einzuziehen.
+  Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+  {% endif %}
+  {% endif %}
+
+
+  Gut Pfad
+  Dein Contingent Management Team
