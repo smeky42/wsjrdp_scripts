@@ -1,0 +1,72 @@
+updates:
+  new_status: confirmed
+  add_tags: 'UL-Confirmation-Mail'
+query:
+  include_sepa_mail_in_mailing_to: true
+  where:
+    role: UL
+    status: ['reviewed']
+    primary_group_id: 2
+    exclude_tag: ['UL-Confirmation-Mail', 'Warteliste']
+  email_only_where:
+    id: [484]  # Test-Account
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: info@worldscoutjamboree.de
+email_subject: "Bestätigung deiner {{ row.payment_role.short_role_name }} Anmeldung zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.new_status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir freuen uns sehr, deine Teilnahme als Unit Leader am World Scout Jamboree 2027 in Polen hiermit offiziell zu bestätigen!
+
+  Name: {{ row.full_name }}
+  Anmeldungs-ID: {{ row.id }}
+  Rolle: {{ row.payment_role.full_role_name }}
+
+
+  Vielen Dank, dass du bereit bist, Verantwortung zu übernehmen und dieses große Abenteuer gemeinsam mit uns für die Teilnehmenden zu gestalten. Deine Rolle ist ein wichtiger Beitrag zum Erfolg unseres deutschen Kontingents.
+
+  Damit du alle wichtigen Informationen für Unit Leader erhältst, findest du hier den speziellen Infokanal für alle UL im deutschen Kontingent:
+
+  UL-Infokanal: https://t.me/+hs96A2oGJIEzOTIy
+
+  Zusätzlich gibt es allgemeine Infokanäle für das gesamte deutsche Kontingent:
+
+      Telegram: https://t.me/wsjrdp
+      WhatsApp: https://whatsapp.com/channel/0029Vb0LOom7DAWzG1tjxf3s
+
+
+  Wir sind jetzt ein Kontingent – und wir freuen uns auf die Zusammenarbeit mit dir und auf die nächsten Schritte auf dem Weg zum Jamboree!
+
+
+  {% if not row.collection_date %}{{ "collection_date fehlt" | raise_runtime_error }}{% endif %}
+  {% if row.amount_unpaid_cents == 0 %}
+  Herzlichen Dank, dass du den Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} bereits vollständig bezahlt hast. Das ist keine Kleinigkeit und wir wollen uns dafür bei dir bedanken! Ohne deine Unterstützung wäre das Jamboree für alle noch teurer geworden.
+  {% elif row.sepa_status != "ok" %}
+  Wir prüfen gerade deine Beitragszahlung und führen solange keinen SEPA Lastschrifteinzug durch.
+  Schreibe uns bitte eine Antwort auf diese E-Mail, wenn du davon noch nichts weißt.
+  {% elif row.open_amount_cents > 0 %}
+  Wir werden {% if row.early_payer or (row.installments_cents_dict | length) == 1 %}deinen Teilnahmebetrag{% else %}die erste Rate deines Teilnahmebetrags{% endif %} voraussichtlich am {{ row.collection_date | date_de }} per SEPA Lastschrift einziehen. Du nimmst mit folgenden Daten am Einzug teil:
+
+  Teilnehmer*in: {{ row.full_name }}
+  Betrag: {{ row.open_amount_cents | format_cents_as_eur_de }}
+
+  Kontoinhaber*in: {{ row.sepa_name }}
+  IBAN: {{ row.sepa_iban | format_iban }}
+  {% if (row.sepa_bank_name is defined) and (row.sepa_bank_name) %}Bank: {{ row.sepa_bank_name }}
+  {% endif %}
+  Mandatsreferenz: {{ row.sepa_mandate_id }}
+  Verwendungszweck: {{ row.sepa_dd_description }}
+  {% elif row.installments_cents_dict %}
+  {% set next_installment_year_month_de = (row.installments_cents_dict.keys() | sort | first | month_year_de) %}
+  {% if row.early_payer or (row.installments_cents_dict | length) == 1 %}
+  Deinen Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+  {% else %}
+  Die erste Rate deines Teilnahmebetrags ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+  {% endif %}
+  {% endif %}
+
+
+  Gut Pfad
+  Dein Contingent Management Team

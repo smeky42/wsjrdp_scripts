@@ -185,7 +185,7 @@ def _dd_description_from_row(row) -> str:
         collection_ym = _util.to_year_month(collection_date)
         installment_num = len([ym for ym in installments_dict if ym <= collection_ym])
         # TODO: Check if amount is larger than usual
-        return f"{prefix} {name_and_id} / {installment_num}. Rate {_util.to_month_year_de(collection_ym)}"
+        return f"{installment_num}. Rate {_util.to_month_year_de(collection_ym)} {prefix} {name_and_id}"
 
 
 def _dd_endtoend_id_from_row(row, *, endtoend_ids: dict[int, str] | None = None) -> str:

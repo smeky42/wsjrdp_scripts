@@ -1,0 +1,88 @@
+# Beispiel:
+# ./tools/mailing_from_yml.py --collection-date=2025-12-22 ./registration_tools/Confirmation-IST.yml -n
+updates:
+  new_status: confirmed
+  add_tags: 'IST-Confirmation-Mail'
+query:
+  include_sepa_mail_in_mailing_to: true
+  where:
+    role: IST
+    status: ['reviewed']
+    primary_group_id: 4
+    exclude_tag: ['IST-Confirmation-Mail', 'Warteliste']
+  email_only_where:
+    id: [485, 486]  # Test-Accounts
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: ist@worldscoutjamboree.de
+email_subject: "Bestätigung deiner {{ row.payment_role.short_role_name }} Anmeldung zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.new_status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir freuen uns sehr, deine Teilnahme im IST am World Scout Jamboree 2027 in Polen hiermit offiziell zu bestätigen!
+
+  Name: {{ row.full_name }}
+  Anmeldungs-ID: {{ row.id }}
+  Rolle: {{ row.payment_role.full_role_name }}
+
+
+  Ein aufregendes Abenteuer liegt vor uns, und wir danken dir für dein Engagement.
+
+
+  Damit du keine wichtigen Informationen verpasst und dich optimal mit dem Team vernetzen kannst, laden wir dich herzlich in unsere Telegram-Gruppen ein:
+
+    * IST-Infokanal //t.me/+WlnM89iA9b4wZWJi (Hier erhältst du wichtige Informationen und Updates direkt von uns.)
+    * IST-Austauschgruppe: //t.me/+Nb1UEfJCof1jOTBi (Hier kannst du dich mit anderen IST-Mitgliedern austauschen und vernetzen.)
+
+
+  ==== Erstes IST-Treffen (20. - 22. März 2026 in Mainz) ====
+
+  Unser erstes, sehr wichtiges IST-Treffen findet am Wochenende vom 20. bis 22. März 2026 in Mainz statt.
+
+  Deine Teilnahme ist entscheidend, um:
+
+    * das Team kennenzulernen.
+    * dich auf deine Rolle als IST in einem internationalen Team vorzubereiten.
+    * dich auf das Abenteuer WSJ vorzubereiten.
+
+  Wichtige Schritte für das Treffen:
+
+    * Angaben prüfen: Bitte kontrolliere bis spätestens Weihnachten im Anmeldesystem, dass alle deine Angaben zu "Essensgewohnheiten" und "Essensbesonderheiten" vollständig und korrekt sind. Nur so kann unser Küchenteam optimal planen.
+
+    * Anmeldung folgt: Im Januar erhältst du eine gesonderte Anmeldung für das Treffen, mit der du deine Teilnahme verbindlich bestätigen kannst.
+
+
+  Wir freuen uns schon sehr darauf, dich im März persönlich kennenzulernen und gemeinsam in die Vorbereitung zu starten!
+
+
+  {% if not row.collection_date %}{{ "collection_date fehlt" | raise_runtime_error }}{% endif %}
+  {% if row.amount_unpaid_cents == 0 %}
+  Herzlichen Dank, dass du den Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} bereits vollständig bezahlt hast. Das ist keine Kleinigkeit und wir wollen uns dafür bei dir bedanken! Ohne deine Unterstützung wäre das Jamboree für alle noch teurer geworden.
+  {% elif row.sepa_status != "ok" %}
+  Wir prüfen gerade deine Beitragszahlung und führen solange keinen SEPA Lastschrifteinzug durch.
+  Schreibe uns bitte eine Antwort auf diese E-Mail, wenn du davon noch nichts weißt.
+  {% elif row.open_amount_cents > 0 %}
+  Wir werden {% if row.early_payer or (row.installments_cents_dict | length) == 1 %}deinen Teilnahmebetrag{% else %}die erste Rate deines Teilnahmebetrags{% endif %} voraussichtlich am {{ row.collection_date | date_de }} per SEPA Lastschrift einziehen. Du nimmst mit folgenden Daten am Einzug teil:
+
+  Teilnehmer*in: {{ row.full_name }}
+  Betrag: {{ row.open_amount_cents | format_cents_as_eur_de }}
+
+  Kontoinhaber*in: {{ row.sepa_name }}
+  IBAN: {{ row.sepa_iban | format_iban }}
+  {% if (row.sepa_bank_name is defined) and (row.sepa_bank_name) %}Bank: {{ row.sepa_bank_name }}
+  {% endif %}
+  Mandatsreferenz: {{ row.sepa_mandate_id }}
+  Verwendungszweck: {{ row.sepa_dd_description }}
+  {% elif row.installments_cents_dict %}
+  {% set next_installment_year_month_de = (row.installments_cents_dict.keys() | sort | first | month_year_de) %}
+  {% if row.early_payer or (row.installments_cents_dict | length) == 1 %}
+  Deinen Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+  {% else %}
+  Die erste Rate deines Teilnahmebetrags ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+  {% endif %}
+  {% endif %}
+
+
+  Gut Pfad
+  Dein Contingent Management Team
