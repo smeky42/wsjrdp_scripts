@@ -603,7 +603,7 @@ def format_iban(iban: str, /) -> str:
             r = s[-right:]
             return l + ("*" * mid_len) + r
 
-    iban = iban.upper().strip().replace(" ", "")
+    iban = str(iban or "").upper().strip().replace(" ", "")
     match iban[:2]:
         case "AT":
             return mask(iban, 4, 4, expected_length=20)

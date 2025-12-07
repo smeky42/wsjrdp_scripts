@@ -162,6 +162,25 @@ class PaymentRole(_enum.Enum):
         return self.name.rsplit("_", 1)[1]
 
     @property
+    def full_role_name(self) -> str:
+        """The short role name.
+
+        >>> PaymentRole.REGULAR_PAYER_CMT.short_role_name
+        'Contingent Management Team (CMT)'
+        >>> PaymentRole.EARLY_PAYER_CMT.short_role_name
+        'CMT'
+        """
+        short_name = self.short_role_name
+        d = {
+            "YP": "Youth Participant",
+            "UL": "Unit Leader",
+            "IST": "International Service Team",
+            "CMT": "Contingent Management Team",
+        }
+        long_name = d[short_name]
+        return f"{long_name} ({short_name})"
+
+    @property
     def regular_full_fee_eur(self) -> int:
         """Full amount due for this role in EUR.
 

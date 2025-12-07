@@ -981,6 +981,7 @@ class WsjRdpContext:
             from_addr=prepared_batch.from_addr, dry_run=dry_run
         ) as mail_client:
             prepared_batch.send(mail_client)
+        prepared_batch.write_results()
 
     def render_template(
         self,
