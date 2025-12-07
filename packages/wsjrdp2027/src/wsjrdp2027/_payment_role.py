@@ -94,6 +94,8 @@ _PAYMENT_ARRAY = [
 
 
 class PaymentRole(_enum.Enum):
+    """Payment role."""
+
     REGULAR_PAYER_CMT = "RegularPayer::Group::Root::Member"
     REGULAR_PAYER_YP = "RegularPayer::Group::Unit::Member"
     REGULAR_PAYER_UL = "RegularPayer::Group::Unit::Leader"
@@ -150,6 +152,13 @@ class PaymentRole(_enum.Enum):
 
     @property
     def short_role_name(self) -> str:
+        """The short role name.
+
+        >>> PaymentRole.REGULAR_PAYER_CMT.short_role_name
+        'CMT'
+        >>> PaymentRole.EARLY_PAYER_CMT.short_role_name
+        'CMT'
+        """
         return self.name.rsplit("_", 1)[1]
 
     @property
