@@ -1,0 +1,36 @@
+updates:
+  new_primary_group_id: 6
+  new_unit_code: '000000'
+  add_tags: ['Warteliste', 'Verschiebung-zu-Warteliste-Mail']
+query:
+  where:
+    role: YP
+    exclude_status: ['confirmed']
+    exclude_primary_group_id: 6  # Warteliste
+    unit_code: '000000'
+    exclude_tag: ['YP-Confirmation-Mail', 'Verschiebung-zu-Warteliste-Mail']
+  email_only_where:
+    id: [142, 482]  # Test-Accounts
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: unit-management@worldscoutjamboree.de
+email_subject: "Deine Anmeldung zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+email_reply_to: unit-management@worldscoutjamboree.de
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  vielen Dank für deine Anmeldung zum World Scout Jamboree 2027 in Polen und dein großes Interesse, Teil dieses besonderen Abenteuers zu werden. Wir haben uns sehr über deine Anmeldung gefreut.
+
+  Leider müssen wir dir mitteilen, dass du derzeit auf der __Warteliste__ stehst. Die Vergabe der Plätze erfolgt nach dem Prinzip First-Come-First-Serve. Maßgeblich ist also das Datum und die Uhrzeit, zu der deine vollständige Anmeldung, inklusive aller erforderlichen Unterlagen, bei uns eingegangen ist.
+
+  Im Rahmen der Unitbildung mussten zusätzlich weitere Kriterien berücksichtigt werden. Dazu gehören unter anderem regionale Aspekte: Wenn beispielsweise in einer bestimmten Region nur noch ein einzelner Platz in einer Unit frei war, konnte es vorkommen, dass ein Youth Participant (YP) aus dieser Region bevorzugt berücksichtigt wurde, um die Unit sinnvoll zu vervollständigen.
+
+  Trotzdem möchten wir dir Mut machen: Aus der Erfahrung der letzten Jamborees wissen wir, dass die Wahrscheinlichkeit, nachzurücken, sehr gut ist. In den vergangenen Jahren konnten viele YPs, die zunächst auf der Warteliste standen, später doch teilnehmen.
+
+  Wir halten dich selbstverständlich auf dem Laufenden und informieren dich sofort, sobald sich deine Platzierung ändert.
+
+  Vielen Dank für dein Verständnis und deine Geduld. Wir drücken die Daumen – und hoffen sehr, dich am Ende doch noch im Kontingent begrüßen zu können!
+
+  Gut Pfad
+  Dein Contingent Management Team
