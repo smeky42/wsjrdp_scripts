@@ -54,6 +54,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "age",
     "gender",
     "primary_group_id",
+    "unit_code",
     "roles",
     "primary_group_roles",
     "primary_group_role_types",
@@ -646,7 +647,7 @@ WITH "people" AS (
     ) AS accounting_entries_amounts_cents
   FROM "people")
 SELECT
-  people.id, people.primary_group_id,
+  people.id, people.primary_group_id, people.unit_code,
   people.created_at, people.updated_at,
   people.print_at, people.contract_upload_at, people.complete_document_upload_at,
   people.status,
