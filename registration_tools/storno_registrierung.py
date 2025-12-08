@@ -21,12 +21,14 @@ def create_argument_parser():
 
     p = argparse.ArgumentParser()
     p.add_argument("--issue")
+    p.add_argument("--refund-amount", type=wsjrdp2027.to_int_or_none, default=None)
     p.add_argument("person_id")
     return p
 
 
 def attach_cancellation_request(ctx, prepared: wsjrdp2027.PreparedEmailMessage) -> None:
     import json
+    import pprint
     import textwrap
 
     row = prepared.row
@@ -42,16 +44,28 @@ def attach_cancellation_request(ctx, prepared: wsjrdp2027.PreparedEmailMessage) 
     pdf_filename = f"{prepared.mailing_name}.pdf"
     pdf_path = ctx.make_out_path(pdf_filename)
 
+    if (refund_amount := getattr(ctx.parsed_args, "refund_amount", None)) is not None:
+        refund_amount_cents = refund_amount * 100
+    else:
+        refund_amount_cents = row["amount_paid_cents"]
+
+    sys_inputs = {
+        "hitobitoid": str(row["id"]),
+        "full_name": row["full_name"],
+        "birthday_de": row["birthday_de"],
+        "deregistration_issue": (row["deregistration_issue"] or ""),
+        "contract_names": json.dumps(row["contract_names"]),
+        "amount_paid": wsjrdp2027.format_cents_as_eur_de(row["amount_paid_cents"]),
+        "refund_amount": wsjrdp2027.format_cents_as_eur_de(refund_amount_cents),
+        "refund_iban": row["sepa_iban"].upper().replace(" ", ""),
+        "refund_account_holder": row["sepa_name"],
+        "refund_show": str(refund_amount_cents > 0).lower(),
+    }
+
+    _LOGGER.info("sys_inputs:\n%s", pprint.pformat(sys_inputs))
+
     wsjrdp2027.typst_compile(
-        SELFDIR / "storno_registrierung.typ",
-        output=pdf_path,
-        sys_inputs={
-            "hitobitoid": str(row["id"]),
-            "full_name": row["full_name"],
-            "birthday_de": row["birthday_de"],
-            "deregistration_issue": (row["deregistration_issue"] or ""),
-            "contract_names": json.dumps(row["contract_names"]),
-        },
+        SELFDIR / "storno_registrierung.typ", output=pdf_path, sys_inputs=sys_inputs
     )
     _LOGGER.info(f"Wrote {pdf_path}")
     pdf_bytes = pdf_path.read_bytes()
