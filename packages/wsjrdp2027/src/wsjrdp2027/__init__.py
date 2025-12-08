@@ -29,7 +29,7 @@ from ._people import (
     load_people_dataframe as load_people_dataframe,
     write_people_dataframe_to_xlsx as write_people_dataframe_to_xlsx,
 )
-from ._people_query import PeopleWhere as PeopleWhere, PeopleQuery as PeopleQuery
+from ._people_query import PeopleQuery as PeopleQuery, PeopleWhere as PeopleWhere
 from ._pg import pg_add_person_tag as pg_add_person_tag
 from ._sepa_direct_debit import (
     CREDITOR_ID as CREDITOR_ID,
@@ -57,6 +57,7 @@ from ._util import (
     to_date_or_none as to_date_or_none,
     to_datetime as to_datetime,
     to_datetime_or_none as to_datetime_or_none,
+    to_int_or_none as to_int_or_none,
     to_str_list as to_str_list,
     to_yaml_str as to_yaml_str,
     write_dataframe_to_xlsx as write_dataframe_to_xlsx,
@@ -109,6 +110,7 @@ __all__ = [
     "to_date_or_none",
     "to_datetime",
     "to_datetime_or_none",
+    "to_int_or_none",
     "to_str_list",
     "to_yaml_str",
     "typst_compile",

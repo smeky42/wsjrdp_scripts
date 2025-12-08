@@ -1,7 +1,7 @@
 #let wsjrdp2027_letter(doc) = {
   set page(
     background: image("WSJ_Brief_blanko.pdf"),
-    margin: (top: 8cm),
+    margin: (top: 7cm),
   )
 
   set text(font: "Montserrat", size: 11pt)
@@ -26,8 +26,8 @@
 
 #let signature_line(name) = {
   grid(
-    columns: (4cm, 6.5cm),
-    rows: (3cm, auto),
+    columns: (4cm, 8cm),
+    rows: (6em, auto),
     column-gutter: .5cm,
     row-gutter: 3pt,
     align: (x, y) => if y == 0 { bottom } else { top },
