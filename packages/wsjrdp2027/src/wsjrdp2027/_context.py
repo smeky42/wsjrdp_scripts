@@ -64,18 +64,6 @@ class WsjRdpContextConfig:
     geo_api_key: str = ""
     hitobito_url: str = ""
 
-    @staticmethod
-    def __to_bool(name: str, value: bool | str) -> bool:
-        if isinstance(value, bool):
-            return value
-        s_low = value.lower()
-        if s_low in {"true", "t", "1", "yes"}:
-            return True
-        elif s_low in {"false", "f", "0", "no"}:
-            return False
-        else:
-            raise ValueError(f"Invalid config {name}! Expected bool, got {value!r}")
-
     @classmethod
     def from_file(cls, path: str | _pathlib.Path | None = None) -> _typing.Self:
         import yaml as _yaml
@@ -106,7 +94,7 @@ class WsjRdpContextConfig:
         else:
             _LOGGER.info("[config] use is_production=%s (from %s)", is_production, path)
 
-        use_ssh_tunnel = cls.__to_bool(
+        use_ssh_tunnel = _to_bool(
             "use_ssh_tunnel", config.get("use_ssh_tunnel", "true")
         )
         if use_ssh_tunnel:
@@ -277,6 +265,22 @@ class WsjRdpContext:
         if dry_run is not None:
             self._dry_run = dry_run
 
+    def __get_env(
+        self, env_name: str, /, *, env=None, ignore_in_prod: bool = True
+    ) -> str | None:
+        if env is None:
+            env = _os.environ
+        env_val = env.get(env_name)
+        self._logger.debug(
+            "found %s%s",
+            env_name,
+            (" not set" if env_val is None else f"={env_val}"),
+        )
+        if ignore_in_prod and (self._config.is_production and env_val is not None):
+            self._logger.warning("Production run: Ignore %s", env_name)
+            env_val = None
+        return env_val
+
     def _determine_start_time(
         self, start_time: _datetime.datetime | str | None = None, *, env=None
     ) -> _datetime.datetime:
@@ -285,18 +289,8 @@ class WsjRdpContext:
 
         from . import _util
 
-        if env is None:
-            env = _os.environ
         env_name = "WSJRDP_SCRIPTS_START_TIME"
-        env_val = env.get(env_name)
-        self._logger.debug(
-            "found %s%s",
-            env_name,
-            (" not set" if env_val is None else f"={env_val}"),
-        )
-        if self._config.is_production and env_val is not None:
-            self._logger.warning("Production run: Ignore %s", env_name)
-            env_val = None
+        env_val = self.__get_env(env_name, env=env, ignore_in_prod=True)
 
         if start_time is not None:
             result = _util.to_datetime_or_none(start_time)
@@ -312,13 +306,53 @@ class WsjRdpContext:
             self._logger.info("start_time=%s (current time)", result.isoformat())
         return result
 
-    def _determine_out_dir(self, p: _pathlib.Path | str | None = None) -> _pathlib.Path:
+    def _determine_out_dir(
+        self, p: _pathlib.Path | str | None = None, *, env=None
+    ) -> _pathlib.Path:
         import os as _os
         import pathlib as _pathlib
 
+        if env is None:
+            env = _os.environ
+
+        override_env_name = "WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE"
+        if override_env_name in env:
+            try:
+                raw_out_dir = self.__get_env(
+                    override_env_name, env=env, ignore_in_prod=False
+                )
+                if raw_out_dir:
+                    out_dir = _pathlib.Path(raw_out_dir).resolve()
+                    self._logger.info(
+                        "output_directory=%s (from env %s)",
+                        _os.path.relpath(out_dir, "."),
+                        override_env_name,
+                    )
+                    return out_dir
+            except Exception as exc:
+                self._logger.exception(
+                    "Failed to fetch env %s: %s", override_env_name, str(exc)
+                )
+
+        env_name = "WSJRDP_SCRIPTS_OUTPUT_DIR"
+        env_val = self.__get_env(env_name, env=env, ignore_in_prod=True)
+
         out_dir: _pathlib.Path
         if p is None:
-            out_dir = _pathlib.Path(".")
+            if env_val:
+                out_dir = _pathlib.Path(env_val).resolve()
+                self._logger.info(
+                    "output_directory=%s (from env %s)",
+                    _os.path.relpath(out_dir, "."),
+                    env_name,
+                )
+                return out_dir
+            else:
+                out_dir = _pathlib.Path(".").resolve()
+                self._logger.info(
+                    "output_directory=%s (default)", _os.path.relpath(out_dir, ".")
+                )
+                return out_dir
         elif isinstance(p, str):
             out_dir = _pathlib.Path(
                 self.render_template(
@@ -328,7 +362,9 @@ class WsjRdpContext:
         else:
             out_dir = p
         out_dir = out_dir.resolve()
-        _LOGGER.info("[ctx] output_directory=%s", _os.path.relpath(out_dir, "."))
+        self._logger.info(
+            "output_directory=%s (explicitly given)", _os.path.relpath(out_dir, ".")
+        )
         return out_dir
 
     def add_common_argument_parser_arguments(
@@ -1012,3 +1048,15 @@ class _UnlimitedBufferingHandler(_logging_handlers.MemoryHandler):
 
     def shouldFlush(self, record) -> bool:
         return False
+
+
+def _to_bool(name: str, value: bool | str) -> bool:
+    if isinstance(value, bool):
+        return value
+    s_low = value.lower()
+    if s_low in {"true", "t", "1", "yes"}:
+        return True
+    elif s_low in {"false", "f", "0", "no"}:
+        return False
+    else:
+        raise ValueError(f"Invalid config {name}! Expected bool, got {value!r}")

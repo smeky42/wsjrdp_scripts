@@ -1,0 +1,38 @@
+name: wsjrdp_scripts-tests
+
+services:
+  mailpit:
+    image: ghcr.io/axllent/mailpit:v1.28
+    container_name: wsjrdp_scripts-tests-mailpit
+    # docker pull ghcr.io/axllent/mailpit:v1.28
+    # pull_policy: never
+    restart: unless-stopped
+    volumes:
+      - mailpit:/data
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:2025:1025"
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  postgres:
+    container_name: wsjrdp_scripts-tests-postgred
+    image: postgres:16
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8432:5432"
+    volumes:
+      #- ./docker/postgresql-setup.sql:/docker-entrypoint-initdb.d/postgresql-setup.sql:ro
+      #- ./docker/test-setup-postgresql.sql:/docker-entrypoint-initdb.d/test-setup-postgresql.sql:ro
+      - postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: hitobito_development
+      POSTGRES_USER: hitobito
+      POSTGRES_PASSWORD: hitobito
+
+
+volumes:
+  postgres:
+  mailpit:
