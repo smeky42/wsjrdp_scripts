@@ -669,12 +669,16 @@ class WsjRdpContext:
                 db_host = self._config.db_host
                 db_port = self._config.db_port
 
-            def run_psql(command):
+            def run_psql(command, dbname: str | None = "postgres"):
                 cmd = [
                     "psql",
                     f"--host={db_host}",
                     f"--username={self._config.db_username}",
                     f"--port={db_port}",
+                ]
+                if dbname:
+                    cmd.append(f"--dbname={dbname}")
+                cmd += [
                     "-c",
                     str(command),
                 ]
