@@ -1,0 +1,23 @@
+is_production: false
+is_staging: false
+
+use_ssh_tunnel: false
+
+db_host: "localhost"
+db_port: 8432
+db_username: "hitobito"
+db_password: "hitobito"
+db_name: "hitobito_development"
+
+hitobito_url: "http://localhost:3000"
+
+smtp_server: "localhost"
+smtp_port: 2025
+
+mail_accounts:
+  anmeldung@worldscoutjamboree.de:
+    smtp_server: localhost
+    smtp_port: 2025
+  unit-management@worldscoutjamboree.de:
+    smtp_server: localhost
+    smtp_port: 2025
