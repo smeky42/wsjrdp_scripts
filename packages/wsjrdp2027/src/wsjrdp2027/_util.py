@@ -728,6 +728,41 @@ def sepa_mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:
 # SQL
 # ==============================================================================
 
+_LIKE_OPS = frozenset(
+    [
+        "LIKE",
+        "ILIKE",
+        "NOT LIKE",
+        "NOT ILIKE",
+        "SIMILAR TO",
+        "NOT SIMILAR TO",
+        "~",
+        "~*",
+        "!~",
+        "!~*",
+    ]
+)
+
+_OP_NEG = {
+    None: None,
+    "=": "<>",
+    "<>": "=",
+    ">=": "<",
+    ">": "<=",
+    "<=": ">",
+    "<": ">=",
+    "~": "!~",
+    "!~": "~",
+    "~*": "!~*",
+    "!~*": "~*",
+    "LIKE": "NOT LIKE",
+    "ILIKE": "NOT ILIKE",
+    "NOT LIKE": "LIKE",
+    "NOT ILIKE": "ILIKE",
+    "SIMILAR TO": "NOT SIMILAR TO",
+    "NOT SIMILAR TO": "SIMILAR TO",
+}
+
 
 def combine_where(where: str, *exprs: str, op="AND") -> str:
     for expr in exprs:
@@ -747,18 +782,50 @@ def sql_literal(x):
         return f"'{x_escaped}'"
 
 
+@_typing.overload
+def negate_sql_comparison_op(op: None, /) -> None: ...
+@_typing.overload
+def negate_sql_comparison_op(op: str, /) -> str: ...
+def negate_sql_comparison_op(op: str | None, /) -> str | None:
+    import re
+
+    if op is None:
+        return None
+    op = re.sub(r"\s+", " ", op.strip().upper())
+    return _OP_NEG[op]
+
+
 def all_in_array_expr(
-    array, *vals, op="==", join_op="AND", array_comp_func="ANY"
+    array, *vals, op="=", join_op="AND", array_comp_func="ANY"
 ) -> str:
     if not vals:
         return ""
-    return (
-        "("
-        + f" {join_op} ".join(
+    if op in _LIKE_OPS:
+        if array_comp_func.upper() in ("ANY", "SOME"):
+            val_str_list = [
+                f"EXISTS(WITH t AS (SELECT UNNEST({array}) AS r) SELECT FROM t WHERE r {op} {sql_literal(val)})"
+                for val in vals
+            ]
+        elif array_comp_func.upper() == "ALL":
+            neg_op = negate_sql_comparison_op(op)
+            val_str_list = [
+                f"NOT EXISTS(WITH t AS (SELECT UNNEST({array}) AS r) SELECT FROM t WHERE r {neg_op} {sql_literal(val)})"
+                for val in vals
+            ]
+        else:
+            raise RuntimeError(
+                f"No support for '{array_comp_func}' with LIKE-like op '{op}'"
+            )
+    else:
+        val_str_list = [
             f"{sql_literal(val)} {op} {array_comp_func}({array})" for val in vals
-        )
-        + ")"
-    )
+        ]
+    if len(val_str_list) == 0:
+        return ""
+    elif len(val_str_list) == 1:
+        return val_str_list[0]
+    else:
+        return "(" + f" {join_op} ".join(val_str_list) + ")"
 
 
 def in_expr(expr, elts) -> str:

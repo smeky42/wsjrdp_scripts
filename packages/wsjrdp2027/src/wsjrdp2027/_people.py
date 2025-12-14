@@ -76,6 +76,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "additional_contact_phone_b",
     "additional_contact_single",
     "tag_list",
+    "note_list",
     "mailing_from",
     "mailing_to",
     "mailing_cc",
@@ -644,7 +645,10 @@ WITH "people" AS (
     ) AS additional_emails_for_mailings,
     ARRAY(SELECT COALESCE("e".amount_cents, 0) FROM accounting_entries AS "e"
           WHERE "e".subject_type = 'Person' AND "e".subject_id = people."id" AND COALESCE("e".amount_currency, 'EUR') = 'EUR'
-    ) AS accounting_entries_amounts_cents
+    ) AS accounting_entries_amounts_cents,
+    ARRAY(SELECT "n".text FROM "notes" AS "n"
+          WHERE "n".subject_type = 'Person' AND "n".subject_id = people."id"
+    ) AS "note_list"
   FROM "people")
 SELECT
   people.id, people.primary_group_id, people.unit_code,
@@ -663,7 +667,7 @@ SELECT
   people.additional_contact_email_b, people.additional_contact_phone_b,
   COALESCE(people.additional_contact_single, FALSE) AS additional_contact_single,
   people.additional_emails_for_mailings,
-  people.tag_list,
+  people.tag_list, people.note_list,
   people.payment_role,
   people.accounting_entries_amounts_cents,
   COALESCE(people.sepa_status, 'ok') AS sepa_status,
@@ -986,10 +990,10 @@ def _update_person_from_row(
     if "tag_list" in person_changes:
         for tag in _util.to_str_list(row.get("add_tags")):
             _pg.pg_add_person_tag(cursor, person_id=row["id"], tag=tag)
-    if (new_note := row.get("new_note")) is not None:
-        _pg.pg_insert_note(cursor, subject_id=row["id"], text=new_note)
+    if (add_note := row.get("add_note")) is not None:
+        _pg.pg_insert_note(cursor, subject_id=row["id"], text=add_note)
     for chg in _person_pg.PERSON_CHANGES:
-        if chg.old_col in ["new_note", "primary_group_role_types", "tag_list"]:
+        if chg.old_col in ["add_note", "primary_group_role_types", "tag_list"]:
             continue
         if chg.col_name in row.index and chg.old_col in person_changes:
             person_updates.append((chg.old_col, row.get(chg.col_name)))

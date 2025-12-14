@@ -46,11 +46,11 @@ class Test_PeopleWhere__as_where_condition:
 
     def test_sepa_status(self):
         where_str = PeopleWhere(sepa_status="ok").as_where_condition()
-        assert where_str == "people.sepa_status = 'ok'"
+        assert where_str == "COALESCE(people.sepa_status, 'ok') = 'ok'"
 
     def test_exclude_sepa_status(self):
         where_str = PeopleWhere(exclude_sepa_status="ok").as_where_condition()
-        assert where_str == "people.sepa_status <> 'ok'"
+        assert where_str == "COALESCE(people.sepa_status, 'ok') <> 'ok'"
 
     def test_id(self):
         where_str = PeopleWhere(id=123).as_where_condition()
@@ -85,13 +85,56 @@ class Test_PeopleWhere__as_where_condition:
         assert where_str == "people.unit_code <> '000000'"
 
     @pytest.mark.parametrize(
+        "note,expected",
+        [
+            (
+                "foo",
+                "'foo' = ANY(people.note_list)",
+            ),
+            (
+                ["foo", "bar"],
+                "('foo' = ANY(people.note_list) AND 'bar' = ANY(people.note_list))",
+            ),
+            (
+                {"expr": "foo", "op": "like"},
+                "EXISTS(WITH t AS (SELECT UNNEST(people.note_list) AS r) SELECT FROM t WHERE r LIKE 'foo')",
+            ),
+        ],
+    )
+    def test_note(self, note, expected):
+        where_str = PeopleWhere(note=note).as_where_condition()
+        assert where_str == expected
+
+    @pytest.mark.parametrize(
+        "exclude_note,expected",
+        [
+            (
+                "foo",
+                "'foo' <> ALL(people.note_list)",
+            ),
+            (
+                ["foo", "bar"],
+                "('foo' <> ALL(people.note_list) AND 'bar' <> ALL(people.note_list))",
+            ),
+            (
+                {"expr": "foo", "op": "like"},
+                "NOT EXISTS(WITH t AS (SELECT UNNEST(people.note_list) AS r) SELECT FROM t WHERE r LIKE 'foo')",
+            ),
+        ],
+    )
+    def test_exclude_note(self, exclude_note, expected):
+        where = PeopleWhere(exclude_note=exclude_note)
+        where_str = where.as_where_condition()
+        assert where_str == expected
+
+    @pytest.mark.parametrize(
         "arg,expected",
         [
-            ("Region Nord", "('Region Nord' == ANY(people.tag_list))"),
-            (["Region Nord"], "('Region Nord' == ANY(people.tag_list))"),
+            ("Region Nord", "'Region Nord' = ANY(people.tag_list)"),
+            (["Region Nord"], "'Region Nord' = ANY(people.tag_list)"),
             (
                 ["a", "b"],
-                "('a' == ANY(people.tag_list) AND 'b' == ANY(people.tag_list))",
+                "('a' = ANY(people.tag_list) AND 'b' = ANY(people.tag_list))",
             ),
         ],
     )
@@ -102,8 +145,8 @@ class Test_PeopleWhere__as_where_condition:
     @pytest.mark.parametrize(
         "arg,expected",
         [
-            ("Region Nord", "('Region Nord' <> ALL(people.tag_list))"),
-            (["Region Nord"], "('Region Nord' <> ALL(people.tag_list))"),
+            ("Region Nord", "'Region Nord' <> ALL(people.tag_list)"),
+            (["Region Nord"], "'Region Nord' <> ALL(people.tag_list)"),
             (
                 ["a", "b"],
                 "('a' <> ALL(people.tag_list) AND 'b' <> ALL(people.tag_list))",
@@ -163,3 +206,54 @@ class Test_PeopleWhere__to_dict:
     def test_exclude_tag(self):
         where_dict = PeopleWhere(exclude_tag="Region Nord").to_dict()
         assert where_dict == {"exclude_tag": "Region Nord"}
+
+    @staticmethod
+    def __extract_op(obj, default: str) -> str:
+        if isinstance(obj, dict):
+            return obj.get("op", default)
+        else:
+            return default
+
+    @pytest.mark.parametrize(
+        "note,expected",
+        [
+            ("foo", "foo"),
+            (["foo"], "foo"),
+            ((x for x in ["foo"]), "foo"),
+            ({"expr": "foo"}, "foo"),
+            ({"expr": "foo", "func": "ANY", "op": "="}, "foo"),
+            (
+                {"expr": "foo", "func": "ANY", "op": "LIKE"},
+                {"expr": "foo", "op": "LIKE"},
+            ),
+        ],
+    )
+    def test_note(self, note, expected):
+        where = PeopleWhere(note=note)
+        where_dict = where.to_dict()
+        expected_where_dict = {"note": expected}
+        assert where_dict == expected_where_dict
+        assert where.note
+        assert where.note.op == self.__extract_op(expected, "=")
+
+    @pytest.mark.parametrize(
+        "exclude_note,expected",
+        [
+            ("foo", "foo"),
+            (["foo"], "foo"),
+            ((x for x in ["foo"]), "foo"),
+            ({"expr": "foo"}, "foo"),
+            ({"expr": "foo", "func": "ANY", "op": "="}, "foo"),
+            (
+                {"expr": "foo", "func": "ANY", "op": "LIKE"},
+                {"expr": "foo", "op": "NOT LIKE"},
+            ),
+        ],
+    )
+    def test_exclude_note(self, exclude_note, expected):
+        where = PeopleWhere(exclude_note=exclude_note)
+        where_dict = where.to_dict()
+        expected_where_dict = {"exclude_note": expected}
+        assert where_dict == expected_where_dict
+        assert where.exclude_note
+        assert where.exclude_note.op == self.__extract_op(expected, "<>")
