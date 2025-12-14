@@ -6,7 +6,12 @@ import pytest
 
 
 _SELFDIR = _pathlib.Path(__file__).parent.resolve()
-_WSJRDP_SCRIPTS_CONFIG = _SELFDIR / "config-integration-tests.yml"
+if "WSJRDP_SCRIPTS_CONFIG_FOR_INTEGRATION_TESTS" in _os.environ:
+    _WSJRDP_SCRIPTS_CONFIG = _pathlib.Path(
+        _os.environ["WSJRDP_SCRIPTS_CONFIG_FOR_INTEGRATION_TESTS"]
+    )
+else:
+    _WSJRDP_SCRIPTS_CONFIG = _SELFDIR / "config-integration-tests.yml"
 _OUT_DIR = (_SELFDIR / ".." / "data" / "integration-tests").resolve()
 
 
