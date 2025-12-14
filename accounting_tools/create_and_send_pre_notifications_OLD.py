@@ -183,7 +183,7 @@ def main(argv=None):
                 where=wsjrdp2027.PeopleWhere(
                     status=["reviewed", "confirmed"],
                     sepa_status="ok",
-                    role=["CMT", "IST", "YP"],
+                    role=["CMT", "IST", "YP", "UL"],
                 ),
                 collection_date=args.collection_date,
             ),
