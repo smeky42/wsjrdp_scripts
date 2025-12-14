@@ -5,19 +5,20 @@ import email.message
 import sys
 
 import wsjrdp2027
-from wsjrdp2027._people_query import PeopleWhere
 
 
 def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(argv=argv)
 
     with ctx.psycopg_connect() as conn:
-        df = wsjrdp2027.load_payment_dataframe(
+        df = wsjrdp2027.load_people_dataframe(
             conn,
-            where=PeopleWhere(
-                early_payer=True,
-                status=["reviewed"],
-                max_print_at="2025-07-31",
+            query=wsjrdp2027.PeopleQuery(
+                where=wsjrdp2027.PeopleWhere(
+                    early_payer=True,
+                    status=["reviewed"],
+                    max_print_at="2025-07-31",
+                )
             ),
         )
 

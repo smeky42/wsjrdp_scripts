@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import datetime
 import email.message
-import pathlib
 import sys
 
 import wsjrdp2027
@@ -13,17 +12,21 @@ COLLECTION_DATE = datetime.date(2025, 8, 15)
 
 
 def main():
-    ctx = wsjrdp2027.WsjRdpContext()
+    ctx = wsjrdp2027.WsjRdpContext(
+        out_dir="data/sepa_direct_debit.{{ filename_suffix }}"
+    )
 
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
-            collection_date=COLLECTION_DATE,
-            where=wsjrdp2027.PeopleWhere(
-                role=["YP", "IST", "CMT"],
-                exclude_deregistered=True,
-                early_payer=True,
-                max_print_at="2025-07-31",
+            query=wsjrdp2027.PeopleQuery(
+                where=wsjrdp2027.PeopleWhere(
+                    role=["YP", "IST", "CMT"],
+                    exclude_deregistered=True,
+                    early_payer=True,
+                    max_print_at="2025-07-31",
+                ),
+                collection_date=COLLECTION_DATE,
             ),
         )
 
@@ -33,15 +36,14 @@ def main():
     ):
         print("Unexpected IDs:")
         print(sorted(unexpected_ids))
-        sys.exit(1)
+        if ctx.is_production:
+            sys.exit(1)
+        else:
+            print("")
 
     collection_date_de = COLLECTION_DATE.strftime("%d.%m.%Y")
 
     ctx.require_approval_to_send_email_in_prod()
-
-    now_str = ctx.start_time.strftime("%Y%m%d-%H%M%S")
-    out_dir = pathlib.Path(f"data/sepa_direct_debit.{now_str}")
-    out_dir.mkdir(exist_ok=True)
 
     with ctx.mail_login() as client:
         for _, row in df.iterrows():
@@ -62,7 +64,7 @@ wir werden den verzögerten SEPA Lastschrifteinzug ab dem {collection_date_de} d
 Du nimmst mit folgenden Daten am Lastschriftverfahren teil:
 
 Teilnehmer*in: {row["full_name"]}
-Betrag: {row["amount"] // 100} €
+Betrag: {row["open_amount_cents"] // 100} €
 
 Kontoinhaber*in: {row["sepa_name"]}
 IBAN: {row["sepa_iban"]}
@@ -78,9 +80,10 @@ Daffi und Peter
                 + wsjrdp2027.EMAIL_SIGNATURE_ORG
             )
 
-            eml_file = out_dir / f"{row['id']}.pre_notification.eml"
+            eml_file = ctx.make_out_path(f"{row['id']}.pre_notification.eml")
+
             print(
-                f"id: {row['id']}; To: {msg['To']}; Cc: {msg['Cc']}; payment_role: {row['payment_role']}; Amount: {row['amount'] // 100} €"
+                f"id: {row['id']}; To: {msg['To']}; Cc: {msg['Cc']}; payment_role: {row['payment_role']}; Amount: {row['open_amount_cents'] // 100} €"
             )
 
             with open(eml_file, "wb") as f:

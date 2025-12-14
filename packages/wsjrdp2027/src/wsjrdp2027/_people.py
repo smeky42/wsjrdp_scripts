@@ -517,7 +517,6 @@ def _enrich_people_dataframe(
     df["amount_unpaid_cents"] = df.apply(lambda r: max(r["total_fee_cents"] - r["amount_paid_cents"], 0), axis=1)  # fmt: skip
     df["amount_due_cents"] = df.apply(_compute_amount_due_cents, axis=1)
     df["open_amount_cents"] = df.apply(_compute_open_amount_cents, axis=1)
-    # df["amount"] = df["open_amount_cents"]
 
     df["sepa_dd_sequence_type"] = df.apply(_sepa_dd_sequence_type_from_row, axis=1)
 
@@ -545,14 +544,9 @@ def load_people_dataframe(
     where: str | _people_query.PeopleWhere | None = "",
     group_by: str = "",
     limit: int | None = None,
-    status: str | _collections_abc.Iterable[str] | None = None,
-    early_payer: bool | None = None,
-    sepa_status: str | _collections_abc.Iterable[str] | None = None,
     fee_rules: str | _collections_abc.Iterable[str] | None = None,
-    exclude_deregistered: bool | None = None,
     log_resulting_data_frame: bool | None = None,
     now: _datetime.datetime | _datetime.date | str | int | float | None = None,
-    collection_date: _datetime.date | str | None = None,
     print_at: _datetime.date | str | None = None,
     extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
     extra_static_df_cols: dict[str, _typing.Any] | None = None,
@@ -566,19 +560,20 @@ def load_people_dataframe(
     from . import _people_query, _util
 
     if query:
-        if not where:
+        if where:
+            raise ValueError("Only one of 'query' and 'where' is allowed")
+        else:
             where = query.where
         if limit is None:
             limit = query.limit
         if now is None:
             now = query.now
-        if collection_date is None:
-            collection_date = query.collection_date
+    else:
+        query = _people_query.PeopleQuery(where=where)
 
     now = _util.to_datetime(now)
     today = now.date()
     print_at = _util.to_date_or_none(print_at)
-    collection_date = _util.to_date_or_none(collection_date)
 
     if extra_cols is not None:
         if isinstance(extra_cols, str):
@@ -595,33 +590,9 @@ def load_people_dataframe(
     if where is None:
         where = ""
     elif isinstance(where, _people_query.PeopleWhere):
-        if exclude_deregistered is None:
-            exclude_deregistered = where.exclude_deregistered
         if fee_rules is None:
             fee_rules = where.fee_rules
         where = where.as_where_condition(people_table="people")
-
-    if exclude_deregistered is None:
-        exclude_deregistered = False
-
-    status = _util.to_str_list_or_none(status)
-    if status is not None:
-        where = _util.combine_where(where, _util.in_expr("people.status", status))
-    elif exclude_deregistered:
-        where = _util.combine_where(
-            where, "people.status NOT IN ('deregistration_noted', 'deregistered')"
-        )
-    if early_payer is not None:
-        if early_payer:
-            where = _util.combine_where(where, "people.early_payer = TRUE")
-        else:
-            where = _util.combine_where(
-                where, "(people.early_payer = FALSE OR people.early_payer IS NULL)"
-            )
-    if sepa_status is not None:
-        where = _util.combine_where(
-            where, _util.in_expr("COALESCE(people.sepa_status, 'ok')", sepa_status)
-        )
 
     where_clause = f"WHERE {where}" if where else ""
     group_by_clause = f"GROUP BY {group_by}" if group_by else ""
@@ -708,7 +679,7 @@ ORDER BY people.id{limit_clause}
             id2person_dicts=id2person_dicts,
             today=today,
             print_at=print_at,
-            collection_date=collection_date,
+            collection_date=query.collection_date,
             extra_mailing_bcc=extra_mailing_bcc,
         )
         df_columns = set(df.columns)
@@ -730,16 +701,16 @@ ORDER BY people.id{limit_clause}
     columns = PEOPLE_DATAFRAME_COLUMNS[:] + extra_columns
     df = df.reindex(columns=columns)
 
-    if collection_date is not None:
+    if query.collection_date is not None:
         _LOGGER.info(
-            "collection_date = %s given => enrich with payment information",
-            collection_date,
+            "query.collection_date = %s given => enrich with payment information",
+            query.collection_date,
         )
         from . import _payment
 
         df = _payment.enrich_people_dataframe_for_payments(
             df,
-            collection_date=collection_date,
+            collection_date=query.collection_date,
             pedantic=False,
             reindex=False,
         )

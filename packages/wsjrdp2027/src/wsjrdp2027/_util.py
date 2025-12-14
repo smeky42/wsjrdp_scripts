@@ -211,7 +211,7 @@ def date_to_datetime(
 
     naive = datetime.datetime.combine(date, datetime.time())
     aware = naive.astimezone(tz=tz)
-    utcoffset = aware.utcoffset()
+    utcoffset: datetime.timedelta = aware.utcoffset()  # type: ignore
     h24 = datetime.timedelta(hours=24)
     if utcoffset.total_seconds() >= 0:
         offset = utcoffset + to_hours((h24 - utcoffset) // 2)
@@ -936,7 +936,7 @@ def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
     # Excel does not support timestamps with timezones, so we remove
     # them here.
     df = df.copy()
-    datetime_cols = df.select_dtypes(include=["datetimetz"]).columns
+    datetime_cols = df.select_dtypes(include=["datetimetz"]).columns  # ty: ignore
     for col in datetime_cols:
         print(col)
         df[col] = df[col].dt.tz_localize(None)
@@ -999,9 +999,9 @@ def write_dataframe_to_xlsx(
     df.to_excel(
         writer,
         engine="xlsxwriter",
-        columns=columns,
+        columns=columns,  # type: ignore
         float_format=float_format,
-        header=header,
+        header=header,  # type: ignore
         index=index,
         merge_cells=merge_cells,
         na_rep=na_rep,

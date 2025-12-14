@@ -49,7 +49,6 @@ def update_mailing_config_from_ctx(
     config: wsjrdp2027.MailingConfig,
     ctx: wsjrdp2027.WsjRdpContext,
 ) -> wsjrdp2027.MailingConfig:
-
     config = config.replace(
         dry_run=ctx.dry_run,
         skip_email=ctx.parsed_args.skip_email,

@@ -68,10 +68,10 @@ def main(argv=None):
         else:
             df = wsjrdp2027.load_payment_dataframe(
                 conn,
-                collection_date=args.collection_date,
+                query=wsjrdp2027.PeopleQuery(
+                    collection_date=args.collection_date, now=ctx.start_time
+                ),
                 booking_at=ctx.start_time,
-                pedantic=False,
-                now=ctx.start_time,
             )
 
         sum_amount = df["open_amount_cents"].sum()

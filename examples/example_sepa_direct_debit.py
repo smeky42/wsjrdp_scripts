@@ -26,11 +26,15 @@ def main(argv=None):
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
-            sepa_status=wsjrdp2027.DB_PEOPLE_ALL_SEPA_STATUS,
-            collection_date=COLLECTION_DATE,
+            query=wsjrdp2027.PeopleQuery(
+                where=wsjrdp2027.PeopleWhere(
+                    sepa_status=wsjrdp2027.DB_PEOPLE_ALL_SEPA_STATUS
+                ),
+                collection_date=COLLECTION_DATE,
+                now=ctx.start_time,
+            ),
             booking_at=ctx.start_time,
             pedantic=True,
-            now=ctx.start_time,
         )
 
     _LOGGER.info("Registered: %s", len(df))

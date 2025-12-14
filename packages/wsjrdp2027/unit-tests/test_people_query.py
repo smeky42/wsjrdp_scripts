@@ -36,6 +36,31 @@ class Test_PeopleWhere_Yaml_To_Dict:
 
 
 class Test_PeopleWhere__as_where_condition:
+    @pytest.mark.parametrize(
+        "raw_sql",
+        [
+            None,
+            "id = 2",
+            "complete_document_upload_at is NULL and status in ('upload', 'in_review', 'reviewed')",
+        ],
+    )
+    def test_raw_sql(self, raw_sql: str | None):
+        where_str = PeopleWhere(raw_sql=raw_sql).as_where_condition()
+        assert where_str == (raw_sql or "")
+
+    @pytest.mark.parametrize(
+        "early_payer,expected",
+        [
+            (True, "people.early_payer = TRUE"),
+            (False, "COALESCE(people.early_payer, FALSE) = FALSE"),
+            (None, ""),
+        ],
+    )
+    def test_early_payer(self, early_payer, expected):
+        where = PeopleWhere(early_payer=early_payer)
+        where_str = where.as_where_condition()
+        assert where_str == expected
+
     def test_status(self):
         where_str = PeopleWhere(status="confirmed").as_where_condition()
         assert where_str == "people.status = 'confirmed'"
@@ -159,6 +184,23 @@ class Test_PeopleWhere__as_where_condition:
 
 
 class Test_PeopleWhere__to_dict:
+    @pytest.mark.parametrize(
+        "raw_sql",
+        [
+            "id = 2",
+            "complete_document_upload_at is NULL and status in ('upload', 'in_review', 'reviewed')",
+        ],
+    )
+    def test_raw_sql(self, raw_sql: str | None):
+        where = PeopleWhere(raw_sql=raw_sql)
+        where_dict = where.to_dict()
+        assert where_dict == {"raw_sql": raw_sql}
+
+    def test_raw_sql__none(self):
+        where = PeopleWhere(raw_sql=None)
+        where_dict = where.to_dict()
+        assert where_dict == {}
+
     def test_status(self):
         where_dict = PeopleWhere(status="confirmed").to_dict()
         assert where_dict == {"status": "confirmed"}

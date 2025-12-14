@@ -17,22 +17,6 @@ _LOGGER = _logging.getLogger(__name__)
 
 CREDITOR_ID = "DE81WSJ00002017275"
 
-WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG = {
-    "name": "Ring deutscher Pfadfinder*innenverbände e.V.",
-    "IBAN": "DE34520900000077228802",
-    "BIC": "GENODE51KS1",
-    "creditor_id": CREDITOR_ID,
-    "currency": "EUR",
-}
-
-WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG = {
-    "name": "Ring deutscher Pfadfinder*innenverbände e.V.",
-    "IBAN": "DE13370601932001939044",
-    "BIC": "GENODED1PAX",
-    "creditor_id": CREDITOR_ID,
-    "currency": "EUR",
-}
-
 
 class SepaDirectDebitConfig(_typing.TypedDict, total=False):
     name: str
@@ -40,6 +24,23 @@ class SepaDirectDebitConfig(_typing.TypedDict, total=False):
     BIC: str
     creditor_id: str
     currency: str
+
+
+WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG: SepaDirectDebitConfig = {
+    "name": "Ring deutscher Pfadfinder*innenverbände e.V.",
+    "IBAN": "DE34520900000077228802",
+    "BIC": "GENODE51KS1",
+    "creditor_id": CREDITOR_ID,
+    "currency": "EUR",
+}
+
+WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG: SepaDirectDebitConfig = {
+    "name": "Ring deutscher Pfadfinder*innenverbände e.V.",
+    "IBAN": "DE13370601932001939044",
+    "BIC": "GENODED1PAX",
+    "creditor_id": CREDITOR_ID,
+    "currency": "EUR",
+}
 
 
 class SepaDirectDebitPayment(_typing.TypedDict, total=False):
@@ -92,7 +93,7 @@ class SepaDirectDebit:
 
         for key in ["name", "description"]:
             if key in raw_payment:
-                raw_payment[key] = _german_transliterate(raw_payment[key])
+                raw_payment[key] = _german_transliterate(raw_payment[key])  # ty: ignore
 
         self._dd.add_payment(raw_payment)
         self._num_payments += 1

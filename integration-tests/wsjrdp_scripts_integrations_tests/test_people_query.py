@@ -14,9 +14,9 @@ class Test_Query_Tags:
 
         tag_set = set()
         for _, row in df.iterrows():
-            tag_list = row['tag_list']
-            assert any('warteliste' in tag.lower() for tag in tag_list)
-            tag_set.update(tag for tag in tag_list if 'warteliste' in tag.lower())
+            tag_list = row["tag_list"]
+            assert any("warteliste" in tag.lower() for tag in tag_list)
+            tag_set.update(tag for tag in tag_list if "warteliste" in tag.lower())
 
         tags = sorted(tag_set)
         print(tags)
