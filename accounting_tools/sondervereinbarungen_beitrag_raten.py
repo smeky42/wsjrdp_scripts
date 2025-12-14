@@ -58,7 +58,7 @@ _RDP_REPRESENTATIVE_TO_NAME = {
 }
 
 
-def load_docx(name: str) -> _docx.Document:
+def load_docx(name: str) -> _docx.Document:  # type: ignore
     import os
 
     import docx as _docx
@@ -139,6 +139,10 @@ def attach_sondervereinbarung_raten(
         row.get("full_name", None),
         textwrap.indent(row.to_string(), "  | "),
     )
+
+    if not prepared.message:
+        _LOGGER.warning("Cannot attach file to non-existing message")
+        return
 
     import python_docx_replace
 

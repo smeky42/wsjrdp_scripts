@@ -30,6 +30,7 @@ def attach_cancellation_confirmation(
 ) -> None:
     import textwrap
 
+    assert prepared.message is not None
     row = prepared.row
     assert row is not None
 

@@ -90,7 +90,9 @@ def create_buddy_id_graph(
             buddy_id_to_id(id, row["buddy_id_yp"]),
             buddy_id_to_id(id, row["buddy_id_ul"]),
         ]
-        other_ids = sorted(set([n for n in maybe_other_ids if is_cluster_member_id(n)]))
+        other_ids = sorted(
+            set(n for n in maybe_other_ids if n is not None and is_cluster_member_id(n))
+        )
 
         for other_id in other_ids:
             G.add_edge(id, other_id)

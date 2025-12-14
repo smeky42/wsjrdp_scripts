@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as _datetime
-import itertools as _itertools
 import logging as _logging
 import typing as _typing
 from collections import abc as _collections_abc
@@ -16,7 +15,7 @@ if _typing.TYPE_CHECKING:
     import psycopg as _psycopg
     import psycopg.sql as _psycopg_sql
 
-    from . import _people, _people_query, _sepa_direct_debit
+    from . import _people_query, _sepa_direct_debit
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -266,7 +265,7 @@ def enrich_people_dataframe_for_payments(
 
 def to_int_or_none(obj: object) -> int | None:
     try:
-        return int(obj)
+        return int(obj)  # type: ignore
     except Exception:
         return None
 
@@ -748,7 +747,7 @@ def load_payment_dataframe_from_payment_initiation(
     import psycopg.rows
     from psycopg.sql import SQL, Identifier, Literal
 
-    from . import _util
+    from . import _people_query, _util
 
     raw_query = """
 SELECT
@@ -859,9 +858,8 @@ WHERE
 
     df = load_payment_dataframe(
         conn,
-        where=where,
+        query=_people_query.PeopleQuery(where=where, collection_date=collection_date),
         pedantic=pedantic,
-        collection_date=collection_date,
         endtoend_ids=endtoend_ids,
     )
     df["sepa_dd_payment_initiation_id"] = payment_initiation_id
@@ -896,53 +894,33 @@ WHERE
 def load_payment_dataframe(
     conn: _psycopg.Connection,
     *,
-    collection_date: _datetime.date | str = "2025-01-01",
     booking_at: _datetime.datetime | None = None,
-    pedantic: bool = True,
+    pedantic: bool = False,
+    query: _people_query.PeopleQuery | None = None,
     where: str | _people_query.PeopleWhere | None = "",
-    early_payer: bool | None = None,
-    max_print_at: str | _datetime.date | None = None,
-    status: str | _collections_abc.Iterable[str] | None = ("reviewed", "confirmed"),
     fee_rules: str | _collections_abc.Iterable[str] = "active",
-    sepa_status: str | _collections_abc.Iterable[str] = "ok",
-    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
     endtoend_ids: dict[int, str] | None = None,
 ) -> _pandas.DataFrame:
     import textwrap
 
-    from . import _people, _people_query, _util
+    from . import _people, _people_query
 
-    now = _util.to_datetime(now)
-    today = now.date()
+    if query:
+        if where:
+            raise ValueError("Only one of 'query' and 'where' is allowed")
+    else:
+        query = _people_query.PeopleQuery(where=where)
 
-    if where is None:
-        where = ""
-    elif isinstance(where, _people_query.PeopleWhere):
-        where = where.as_where_condition(people_table="people")
-
-    if max_print_at is not None:
-        where = _util.combine_where(
-            where,
-            f"people.print_at <= '{_util.to_date_or_none(max_print_at).isoformat()}'",
-        )
+    if query.collection_date is None:
+        raise ValueError("query.collection_date must not be None")
 
     df = _people.load_people_dataframe(
-        conn,
-        where=where,
-        status=status,
-        early_payer=early_payer,
-        sepa_status=sepa_status,
-        fee_rules=fee_rules,
-        log_resulting_data_frame=False,
-        now=now,
-        collection_date=collection_date,
+        conn, query=query, fee_rules=fee_rules, log_resulting_data_frame=False
     )
 
-    collection_date = _util.to_date_or_none(collection_date)
-    today = collection_date if today is None else min(today, collection_date)
     df = enrich_people_dataframe_for_payments(
         df,
-        collection_date=collection_date,
+        collection_date=query.collection_date,
         booking_at=booking_at,
         pedantic=pedantic,
         endtoend_ids=endtoend_ids,

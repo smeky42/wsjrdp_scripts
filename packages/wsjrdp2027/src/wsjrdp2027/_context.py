@@ -977,7 +977,7 @@ class WsjRdpContext:
         template: str,
         *,
         extra_context: dict | None = None,
-        extra_filters: dict[str, _typing_Callable] | None = None,
+        extra_filters: dict[str, _collections_abc.Callable] | None = None,
     ) -> str:
         """Render *template*.
 

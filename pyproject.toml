@@ -5,6 +5,7 @@ requires-python = ">=3.13"
 dependencies = [
     "babel>=2.17.0",
     "docx2pdf>=0.1.8",
+    "lxml>=6.0.2",
     "networkx[default]>=3.5",
     "pytest-docker>=3.2.5",
     "python-docx-replace>=0.4.4",
@@ -50,6 +51,10 @@ default-groups = [
     "pytest",
 ]
 
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
 [tool.uv.sources]
 wsjrdp2027 = { workspace = true }
 
@@ -67,8 +72,16 @@ doctest_optionflags = "NORMALIZE_WHITESPACE IGNORE_EXCEPTION_DETAIL"
 
 
 [tool.ruff]
-extend-exclude = ["2023", "2025-05-22--Mailing-UL-Info.py"]
+extend-exclude = [
+    "2023",
+]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
 lines-after-imports = 2
+
+
+[tool.ty.src]
+exclude = [
+    "2023",
+]

@@ -7,7 +7,7 @@ import pandas as pd
 import wsjrdp2027
 
 
-all_regions = '''BMPPD - Keine Landesebene
+all_regions = """BMPPD - Keine Landesebene
 BdP - Baden-Württemberg
 BdP - Bayern
 BdP - Berlin/Brandenburg
@@ -79,16 +79,27 @@ VCP - Sachsen
 VCP - Schleswig-Holstein
 VCP - Westfalen
 VCP - Württemberg
-'''
+"""
 
 
-def data_frame_by_association(df: pd.DataFrame, role: str, association: str, region: str) -> pd.DataFrame:
-    return df[(df["rdp_association"] == association) & (df["rdp_association_region"] == region) & (df["payment_role"].str.endswith(role))]
+def data_frame_by_association(
+    df: pd.DataFrame, role: str, association: str, region: str
+) -> pd.DataFrame:
+    return df[
+        (df["rdp_association"] == association)
+        & (df["rdp_association_region"] == region)
+        & (df["payment_role"].str.endswith(role))
+    ]
 
 
-def print_frame_by_association(df: pd.DataFrame, association_region: str) -> tuple[int, int]:
-    association, region = association_region.split(" - ")[0].lstrip(), association_region.split(" - ")[1].lstrip()
-    print(f"\n### {association} - {region}" )
+def print_frame_by_association(
+    df: pd.DataFrame, association_region: str
+) -> tuple[int, int]:
+    association, region = (
+        association_region.split(" - ")[0].lstrip(),
+        association_region.split(" - ")[1].lstrip(),
+    )
+    print(f"\n### {association} - {region}")
 
     ul_df = data_frame_by_association(df, "Unit::Leader", association, region)
     yp_df = data_frame_by_association(df, "Unit::Member", association, region)
@@ -100,18 +111,19 @@ def print_frame_by_association(df: pd.DataFrame, association_region: str) -> tup
 
     if ul_count == 0:
         print("No ULs, cannot calculate factor")
-        return [ul_count, yp_count]
+        return (ul_count, yp_count)
 
     if yp_count == 0:
         print("No YPs, cannot calculate factor")
-        return [ul_count, yp_count]
+        return (ul_count, yp_count)
 
     ul_units = ul_count / 4
     yp_units = yp_count / 36
     print(
         f"UL Units: {ul_units:.2f} \t YP Units: {yp_units:.2f} \t Faktor YP/UL: {yp_units / ul_units:.2f}"
     )
-    return [ul_count, yp_count]
+    return (ul_count, yp_count)
+
 
 def print_frame_by_region(df: pd.DataFrame, regions: str) -> None:
     ul_total = 0
@@ -155,7 +167,7 @@ def main():
 
     # print_frame_by_region(df, all_regions)
 
-    regions_bavaria = '''BdP - Bayern
+    regions_bavaria = """BdP - Bayern
 DPSG - München
 PSG - München
 DPSG - Passau
@@ -168,12 +180,12 @@ PSG - Würzburg
 DPSG - Augsburg
 PSG - Augsburg
 DPSG - Eichstätt
-VCP - Bayern'''
+VCP - Bayern"""
 
     print("\n## Bayern")
     print_frame_by_region(df, regions_bavaria)
 
-    regions_bawue_rps = '''BdP - Baden-Württemberg
+    regions_bawue_rps = """BdP - Baden-Württemberg
 BdP - Rheinland-Pfalz/Saar
 DPSG - Freiburg
 PSG - Freiburg
@@ -185,12 +197,11 @@ DPSG - Speyer
 PSG - Speyer
 VCP - Baden
 VCP - Württemberg
-VCP - Rheinland-Pfalz/Saar'''
+VCP - Rheinland-Pfalz/Saar"""
     print("\n# Baden-Württemberg + RPS")
     print_frame_by_region(df, regions_bawue_rps)
 
-
-    regions_nrw_hessen = '''BdP - Hessen
+    regions_nrw_hessen = """BdP - Hessen
 BdP - Nordrhein-Westfalen
 DPSG - Aachen
 PSG - Aachen
@@ -206,11 +217,11 @@ DPSG - Trier
 PSG - Trier
 VCP - Nordrhein
 VCP - Westfalen
-VCP - Hessen'''
+VCP - Hessen"""
     print("\n# NRW + Hessen")
     print_frame_by_region(df, regions_nrw_hessen)
 
-    regions_nord = '''BdP - Bremen
+    regions_nord = """BdP - Bremen
 BdP - Niedersachsen
 BdP - Schleswig-Holstein/Hamburg
 DPSG - Hamburg
@@ -224,11 +235,11 @@ PSG - Paderborn
 VCP - Hamburg
 VCP - Niedersachsen
 VCP - Schleswig-Holstein
-'''
+"""
     print("\n# Norddeutschland")
     print_frame_by_region(df, regions_nord)
 
-    regions_east = '''BMPPD - Keine Landesebene
+    regions_east = """BMPPD - Keine Landesebene
 BdP - Berlin/Brandenburg
 BdP - Sachsen
 BdP - Sachsen-Anhalt
@@ -242,7 +253,7 @@ VCP - Berlin-Brandenburg
 VCP - Mecklenburg-Vorpommern
 VCP - Mitteldeutschland
 VCP - Sachsen
-'''
+"""
 
     print("\n# Ostdeutschland")
     print_frame_by_region(df, regions_east)

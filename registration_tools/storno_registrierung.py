@@ -31,6 +31,7 @@ def attach_cancellation_request(ctx, prepared: wsjrdp2027.PreparedEmailMessage) 
     import pprint
     import textwrap
 
+    assert prepared.message is not None
     row = prepared.row
     assert row is not None
 

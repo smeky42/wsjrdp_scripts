@@ -150,7 +150,7 @@ class MailClient:
         msg: _email_message.EmailMessage | _mailing.PreparedEmailMessage,
         *,
         from_addr: str | None = None,
-        dry_run: bool|None=None,
+        dry_run: bool | None = None,
     ) -> tuple:
         """Send *msg* over SMTP and stores it in the Sent mailbox.
 
@@ -173,6 +173,10 @@ class MailClient:
             raise RuntimeError(err_msg)
         if isinstance(msg, _mailing.PreparedEmailMessage):
             email_msg = msg.message
+            if not email_msg:
+                err_msg = "Cannot send message: msg.message is None"
+                self._logger.error(err_msg)
+                raise RuntimeError(err_msg)
             email_msg_bytes = msg.eml
         else:
             email_msg = msg

@@ -179,13 +179,13 @@ def main(argv=None):
     with ctx.psycopg_connect() as conn:
         df = wsjrdp2027.load_payment_dataframe(
             conn,
-            pedantic=False,
-            collection_date=args.collection_date,
-            # where="people.payment_role NOT LIKE '%::Unit::Leader'",
-            where=wsjrdp2027.PeopleWhere(
-                # early_payer=True,
-                max_print_at=args.collection_date,
-                role=["CMT", "IST", "YP"],
+            query=wsjrdp2027.PeopleQuery(
+                where=wsjrdp2027.PeopleWhere(
+                    status=["reviewed", "confirmed"],
+                    sepa_status="ok",
+                    role=["CMT", "IST", "YP"],
+                ),
+                collection_date=args.collection_date,
             ),
         )
 
@@ -201,7 +201,10 @@ def main(argv=None):
             textwrap.indent(str(df_not_ok), "  | "),
         )
         sum_not_ok = int(df_not_ok["open_amount_cents"].sum())
-        _LOGGER.info("  SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(sum_not_ok))
+        _LOGGER.info(
+            "  SUM(open_amount_cents): %s",
+            wsjrdp2027.format_cents_as_eur_de(sum_not_ok),
+        )
     else:
         sum_not_ok = 0
 
@@ -214,7 +217,9 @@ def main(argv=None):
     )
 
     sum_ok = int(df_ok["open_amount_cents"].sum())
-    _LOGGER.info("  SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(sum_ok))
+    _LOGGER.info(
+        "  SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(sum_ok)
+    )
     _LOGGER.info("")
 
     if sum_not_ok > 0:
@@ -271,7 +276,8 @@ def main(argv=None):
 
     _LOGGER.info("")
     _LOGGER.info(
-        "SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(df_ok["open_amount_cents"].sum())
+        "SUM(open_amount_cents): %s",
+        wsjrdp2027.format_cents_as_eur_de(df_ok["open_amount_cents"].sum()),
     )
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)

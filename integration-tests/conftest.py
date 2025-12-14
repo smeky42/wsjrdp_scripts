@@ -9,7 +9,7 @@ _SELFDIR = _pathlib.Path(__file__).parent.resolve()
 if "WSJRDP_SCRIPTS_CONFIG_FOR_INTEGRATION_TESTS" in _os.environ:
     _WSJRDP_SCRIPTS_CONFIG = _pathlib.Path(
         _os.environ["WSJRDP_SCRIPTS_CONFIG_FOR_INTEGRATION_TESTS"]
-    )
+    ).resolve()
 else:
     _WSJRDP_SCRIPTS_CONFIG = _SELFDIR / "config-integration-tests.yml"
 _OUT_DIR = (_SELFDIR / ".." / "data" / "integration-tests").resolve()
@@ -55,20 +55,25 @@ def ctx(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture
-def run_wsjrdp_script(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
-    from wsjrdp_scripts_integrations_tests.wsjrdp_script_runner import run_script
-
+def run_wsjrdp_script_out_dir(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+):
     test_name = request.node.name
     out_dir = _OUT_DIR / test_name
     out_dir.mkdir(exist_ok=True, parents=True)
-
     with monkeypatch.context() as m:
         _logging.debug("Delete ENV WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE")
         m.delenv("WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE", raising=False)
         _logging.debug("cd %s", out_dir)
         m.chdir(out_dir)
+        yield out_dir
 
-        yield run_script
+
+@pytest.fixture
+def run_wsjrdp_script(run_wsjrdp_script_out_dir):
+    from wsjrdp_scripts_integrations_tests.wsjrdp_script_runner import run_script
+
+    return run_script
 
 
 @pytest.fixture(scope="session", autouse=True)

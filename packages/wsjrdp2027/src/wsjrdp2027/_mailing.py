@@ -429,8 +429,6 @@ class MailingConfig:
                     extra_static_df_cols=extra_static_df_cols,
                     extra_mailing_bcc=extra_mailing_bcc,
                     log_resulting_data_frame=False,
-                    limit=limit,
-                    now=now,
                 )
                 if not df2.empty:
                     df2["skip_db_updates"] = True

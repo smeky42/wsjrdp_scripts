@@ -15,5 +15,28 @@ def run_script(script, *args):
 
     _subprocess.run(
         ["uv", "run", script, *args],
+        stderr=_subprocess.STDOUT,
         check=True,
     )
+
+
+def parse_sdd_xml(filename: _pathlib.Path | str) -> dict:
+    import lxml.etree
+
+    with open(filename, "r") as f:
+        x_tree = lxml.etree.parse(f)
+
+    x = x_tree.getroot()
+    ns = {"sepa": "urn:iso:std:iso:20022:tech:xsd:pain.008.001.02"}
+    grp_hdr_elt = x.xpath(
+        "//sepa:Document/sepa:CstmrDrctDbtInitn/sepa:GrpHdr", namespaces=ns
+    )[0]
+    ctrl_sum_elt = grp_hdr_elt.xpath("sepa:CtrlSum", namespaces=ns)[0]
+    ctrl_sum_cents = int(float(ctrl_sum_elt.text) * 100)
+
+    return {
+        "etree": x,
+        "grp_hdr_elt": grp_hdr_elt,
+        "ctrl_sum_cents": ctrl_sum_cents,
+        "ctrl_sum_elt": ctrl_sum_elt,
+    }

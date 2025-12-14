@@ -84,7 +84,7 @@ class ArrayMatchExpr:
         if isinstance(obj, ArrayMatchExpr):
             return maybe_negate(obj)
         elif isinstance(obj, dict):
-            d: dict = obj.copy()  # type: ignore
+            d: dict[str, _typing.Any] = obj.copy()  # type: ignore
             d.setdefault("op", default_op)
             d.setdefault("func", default_func)
             return maybe_negate(
@@ -193,9 +193,10 @@ class PeopleWhere:
     exclude_tag: ArrayMatchExpr | None = None
     note: ArrayMatchExpr | None = None
     exclude_note: ArrayMatchExpr | None = None
-    not_: _typing.Self | None = None
-    or_: _collections_abc.Sequence[_typing.Self] = ()
-    and_: _collections_abc.Sequence[_typing.Self] = ()
+    raw_sql: str | None = None
+    not_: PeopleWhere | None = None
+    or_: _collections_abc.Sequence[PeopleWhere] = ()
+    and_: _collections_abc.Sequence[PeopleWhere] = ()
 
     def __init__(
         self,
@@ -222,9 +223,10 @@ class PeopleWhere:
         exclude_tag: _ArrayMatchLike | None = None,
         note: _ArrayMatchLike | None = None,
         exclude_note: _ArrayMatchLike | None = None,
-        not_: _typing.Self | None = None,
-        or_: _collections_abc.Iterable[_typing.Self] | _typing.Self | None = None,
-        and_: _collections_abc.Iterable[_typing.Self] | _typing.Self | None = None,
+        raw_sql: str | None = None,
+        not_: PeopleWhere | None = None,
+        or_: _collections_abc.Iterable[PeopleWhere] | PeopleWhere | None = None,
+        and_: _collections_abc.Iterable[PeopleWhere] | PeopleWhere | None = None,
     ) -> None:
         from . import _role, _util
 
@@ -270,6 +272,23 @@ class PeopleWhere:
         self.exclude_tag = ArrayMatchExpr.normalize_or_none(exclude_tag, negate=True)
         self.note = ArrayMatchExpr.normalize_or_none(note)
         self.exclude_note = ArrayMatchExpr.normalize_or_none(exclude_note, negate=True)
+        self.raw_sql = raw_sql or None
+
+    @classmethod
+    def normalize(cls, obj: _PeopleWhereLike, /) -> PeopleWhere:
+        if isinstance(obj, PeopleWhere):
+            return obj
+        elif isinstance(obj, dict):
+            return cls.from_dict(obj)
+        else:
+            return cls(raw_sql=str(obj))
+
+    @classmethod
+    def normalize_or_none(cls, obj: _PeopleWhereLike | None, /) -> PeopleWhere | None:
+        if not obj:
+            return None
+        else:
+            return cls.normalize(obj)
 
     @classmethod
     def from_dict(cls, d: dict | None, /) -> _typing.Self:
@@ -353,6 +372,7 @@ class PeopleWhere:
             "not": recursive_to_dict(self.not_),
             "or": recursive_to_dict(self.or_),
             "and": recursive_to_dict(self.and_),
+            "raw_sql": self.raw_sql or None,
             **{k: to_out(getattr(self, k, None)) for k in to_out_keys},
         }
         return {k: v for k, v in d.items() if v is not None}
@@ -406,7 +426,7 @@ class PeopleWhere:
             early_payer_cond = (
                 f"{people_table}.early_payer = TRUE"
                 if self.early_payer
-                else f"({people_table}.early_payer = FALSE OR {people_table}.early_payer IS NULL)"
+                else f"COALESCE({people_table}.early_payer, FALSE) = FALSE"
             )
             where = combine_where(where, early_payer_cond)
         if self.max_print_at is not None:
@@ -438,6 +458,8 @@ class PeopleWhere:
                     where,
                     exclude_val.as_where_condition(array=f"{people_table}.{col_name}"),
                 )
+        if self.raw_sql is not None:
+            where = combine_where(where, self.raw_sql)
         if self.not_ is not None:
             not_where = self.not_.as_where_condition(people_table=people_table)
             if not_where:
@@ -465,6 +487,9 @@ class PeopleWhere:
         return where
 
 
+_PeopleWhereLike = PeopleWhere | dict | str
+
+
 class PeopleQueryDict(_typing.TypedDict, total=False):
     where: PeopleWhere | None
     email_only_where: PeopleWhere | None
@@ -484,7 +509,7 @@ class PeopleQuery:
     def __init__(
         self,
         *,
-        where: PeopleWhere | dict | None = None,
+        where: PeopleWhere | dict | str | None = None,
         email_only_where: PeopleWhere | dict | None = None,
         limit: int | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
@@ -492,15 +517,15 @@ class PeopleQuery:
     ) -> None:
         from . import _util
 
-        if isinstance(where, dict):
-            where = PeopleWhere.from_dict(where)
-        if isinstance(email_only_where, dict):
-            email_only_where = PeopleWhere.from_dict(email_only_where)
-        self.where = where
-        self.email_only_where = email_only_where
+        self.where = PeopleWhere.normalize_or_none(where)
+        self.email_only_where = PeopleWhere.normalize_or_none(email_only_where)
         self.limit = int(limit) if (isinstance(limit, (int, float)) or limit) else None
         self.now = _util.to_datetime(now)
         self.collection_date = _util.to_date_or_none(collection_date)
+
+    @property
+    def today(self) -> _datetime.date:
+        return self.now.date()
 
     def __to_dict__(self) -> dict[str, _typing.Any]:
         def _map(k, v):
@@ -518,13 +543,12 @@ class PeopleQuery:
         return d
 
     def replace(self, **kwargs: _typing.Unpack[PeopleQueryDict]) -> _typing.Self:
-        import copy
-
-        obj = copy.deepcopy(self)
-        for k, v in kwargs.items():
-            if v is not None:
-                setattr(obj, k, v)
-        return obj
+        for f in _dataclasses.fields(self):
+            key = f.name
+            val = getattr(self, key)
+            if key not in kwargs:
+                kwargs[key] = val
+        return self.__class__(**kwargs)
 
 
 _T = _typing.TypeVar("_T")
@@ -533,7 +557,7 @@ _R = _typing.TypeVar("_R")
 
 def _to_list(
     *args: _T | _collections_abc.Iterable[_T],
-    map: _collections_abc.Callable[[_T], _R] = str,
+    map: _collections_abc.Callable[[_T], _R] = str,  # type: ignore
 ) -> list[_R]:
     result = []
     for arg in args:
@@ -542,7 +566,7 @@ def _to_list(
         if isinstance(arg, str):
             result.append(map(_typing.cast(_T, arg)))
         elif isinstance(arg, _collections_abc.Iterable):
-            result.extend(map(x) for x in arg)
+            result.extend(map(x) for x in arg)  # ty: ignore
         else:
             result.append(map(arg))
     return result
