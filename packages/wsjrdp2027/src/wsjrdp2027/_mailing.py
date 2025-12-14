@@ -34,7 +34,7 @@ _LOGGER = _logging.getLogger(__name__)
 @_dataclasses.dataclass(kw_only=True)
 class PreparedEmailMessage:
     mailing_name: str
-    message: _email_message.EmailMessage
+    message: _email_message.EmailMessage | None = None
     row: _pandas.Series | None = None
     summary: str
     eml_name: str
@@ -44,7 +44,7 @@ class PreparedEmailMessage:
         self,
         *,
         mailing_name: str,
-        message: _email_message.EmailMessage,
+        message: _email_message.EmailMessage | None = None,
         row: _pandas.Series | None = None,
         summary: str,
         eml_name: str | None = None,
@@ -60,7 +60,10 @@ class PreparedEmailMessage:
     @property
     def eml(self) -> bytes:
         if self._eml is None:
-            self._eml = self.message.as_bytes()
+            if self.message is not None:
+                self._eml = self.message.as_bytes()
+            else:
+                self._eml = b""
         return self._eml
 
     @eml.setter
@@ -116,16 +119,24 @@ class PreparedMailing:
             zip_buf = io.BytesIO()
             with zipfile.ZipFile(zip_buf, "w") as zf:
                 for prep_msg in self.messages:
-                    zf.writestr(prep_msg.eml_name, data=prep_msg.eml)
+                    if prep_msg.message is None:
+                        _LOGGER.debug(
+                            "  skip empty email message - %s", prep_msg.summary
+                        )
+                    else:
+                        zf.writestr(prep_msg.eml_name, data=prep_msg.eml)
             eml_zip_path = out_dir / f"{self.name}.zip"
             with open(eml_zip_path, "wb") as f:
                 f.write(zip_buf.getvalue())
             _LOGGER.info("  wrote eml zip %s", eml_zip_path)
         else:
             for prep_msg in self.messages:
-                eml_path = out_dir / prep_msg.eml_name
-                eml_path.write_bytes(prep_msg.eml)
-                _LOGGER.info("  wrote eml %s", eml_path)
+                if prep_msg.message is None:
+                    _LOGGER.debug("  skip empty email message - %s", prep_msg.summary)
+                else:
+                    eml_path = out_dir / prep_msg.eml_name
+                    eml_path.write_bytes(prep_msg.eml)
+                    _LOGGER.info("  wrote eml %s", eml_path)
         _people.write_people_dataframe_to_xlsx(
             self.df, xlsx_path, log_level=_logging.DEBUG
         )
@@ -137,12 +148,16 @@ class PreparedMailing:
         return out_dir
 
     def send(self, mail_client: _mail_client.MailClient, /) -> None:
+        import pprint
         import textwrap
 
         num_messages = len(self.messages)
         if self.dry_run:
             if self.skip_email:
-                _LOGGER.info("Skip sending %s messages (dry_run is True and skip_email is True)", num_messages)
+                _LOGGER.info(
+                    "Skip sending %s messages (dry_run is True and skip_email is True)",
+                    num_messages,
+                )
             else:
                 _LOGGER.info("Skip sending %s messages (dry_run is True)", num_messages)
             return
@@ -153,14 +168,22 @@ class PreparedMailing:
             pcnt = (i / num_messages) * 100.0
             _LOGGER.info("%s %s", f"{i}/{num_messages} ({pcnt:.1f}%)", prep_msg.summary)
             if prep_msg.row is not None:
+                row_d = dict(prep_msg.row)
+                row_d.pop("person_dict", None)
+                row_d.pop("primary_group_roles", None)
                 _LOGGER.debug(
-                    "  row:\n%s", textwrap.indent(prep_msg.row.to_string(), "   | ")
+                    "  person:\n%s", textwrap.indent(pprint.pformat(row_d), "   | ")
                 )
-            try:
-                mail_client.send_message(prep_msg.message, from_addr=self.from_addr)
-            except Exception as exc:
-                _LOGGER.error("  Exception raised during email sending: %s", str(exc))
-                raise
+            if prep_msg.message is None:
+                _LOGGER.debug("  Skip: No actual email message")
+            else:
+                try:
+                    mail_client.send_message(prep_msg.message, from_addr=self.from_addr)
+                except Exception as exc:
+                    _LOGGER.error(
+                        "  Exception raised during email sending: %s", str(exc)
+                    )
+                    raise
 
 
 @_dataclasses.dataclass(kw_only=True)
@@ -177,9 +200,9 @@ class MailingConfig:
     extra_email_bcc: list[str] | None = None
     from_addr: str | None = None
     signature: str = ""
-    content: str = ""
+    content: str | None = None
     name: str = "mailing"
-    summary: str = "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+    summary: str = "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}{% if msg %}; To: {{ msg.to }}; Cc: {{ msg.cc }}{% endif %}"
     action_arguments: dict = _dataclasses.field(default_factory=lambda: {})
     updates: dict = _dataclasses.field(default_factory=lambda: {})
     dry_run: bool = False
@@ -210,7 +233,9 @@ class MailingConfig:
             from_addr = email.utils.parseaddr(self.from_addr)[1]
             object.__setattr__(self, "from_addr", from_addr)
 
-        if self.skip_email is None:
+        if self.content is None and self.skip_email is None:
+            self.skip_email = True
+        elif self.skip_email is None:
             self.skip_email = False
         updates = self.updates
         for key in ["add_tags", "new_primary_group_role_types"]:
@@ -586,7 +611,7 @@ def _row_to_row_dict(row: _pandas.Series) -> dict[str, _typing.Any]:
 def email_message_from_row(
     row: _pandas.Series | dict[str, _typing.Any],
     *,
-    content: str,
+    content: str | None,
     signature: str | None = None,
     email_subject: str,
     email_from: str = "anmeldung@worldscoutjamboree.de",
@@ -599,7 +624,7 @@ def email_message_from_row(
     message_id: str | None = None,
     msgid_idstring: str | None = None,
     msgid_domain: str | None = None,
-) -> _email_message.EmailMessage:
+) -> _email_message.EmailMessage | None:
     import email.message
     import email.utils
 
@@ -610,6 +635,9 @@ def email_message_from_row(
     SIGNATURES = {
         k: v for k, v in wsjrdp2027.__dict__.items() if k.startswith("EMAIL_SIGNATURE_")
     }
+
+    if content is None:
+        return None
 
     email_to = _util.to_str_list_or_none(email_to)
     email_cc = _util.to_str_list_or_none(email_cc)

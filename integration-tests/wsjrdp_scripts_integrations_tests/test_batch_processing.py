@@ -1,15 +1,20 @@
 import uuid
 
+import pytest
 import wsjrdp2027
 
 
 class Test_DB_Updates:
-    def test_new_note(self, ctx: wsjrdp2027.WsjRdpContext):
+    def test_new_note(
+        self, request: pytest.FixtureRequest, ctx: wsjrdp2027.WsjRdpContext
+    ):
         import psycopg.rows
         from psycopg.sql import SQL
 
         marker = str(uuid.uuid4())
+
         bc = wsjrdp2027.MailingConfig(
+            name=request.node.name,
             where=wsjrdp2027.PeopleWhere(id=65),
             updates={"new_note": "New note for {{ row.id }}" + marker},
         )

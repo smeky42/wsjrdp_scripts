@@ -315,6 +315,10 @@ class WsjRdpContext:
         if env is None:
             env = _os.environ
 
+        pytest_current_test = self.__get_env(
+            "PYTEST_CURRENT_TEST", env=env, ignore_in_prod=False
+        )
+
         override_env_name = "WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE"
         if override_env_name in env:
             try:
