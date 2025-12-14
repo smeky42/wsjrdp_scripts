@@ -176,7 +176,7 @@ PERSON_CHANGES: list[_ScalarChange | _StrListChange] = [
     _ScalarChange(
         old_col="primary_group_role_types", new_col="new_primary_group_role_types"
     ),
-    _ScalarChange(old_col=None, new_col="new_note", render_jinja2=True),
+    _ScalarChange(old_col=None, new_col="add_note", render_jinja2=True),
     _StrListChange(old_col="tag_list", add_col="add_tags"),
 ]
 

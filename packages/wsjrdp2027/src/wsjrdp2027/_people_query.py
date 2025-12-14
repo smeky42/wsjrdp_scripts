@@ -26,6 +26,148 @@ _StrOrNullIterable = (
 _StrIntOrIterable = str | int | bool | _collections_abc.Iterable[str | int | bool]
 
 
+class ArrayMatchDict(_typing.TypedDict, total=False):
+    expr: str | _collections_abc.Iterable[str]
+    op: str
+    func: str
+
+
+@_dataclasses.dataclass(kw_only=True)
+class ArrayMatchExpr:
+    expr: list[str]
+    _op: str | None = None
+    _func: str | None = None
+
+    default_op: str = "="
+    default_func: str = "ANY"
+
+    def __init__(
+        self,
+        *,
+        expr: str | _collections_abc.Iterable[str],
+        op: str | None = None,
+        func: str | None = None,
+        default_op: str | None = None,
+        default_func: str | None = None,
+    ) -> None:
+        if isinstance(expr, str):
+            self.expr = [expr]
+        else:
+            self.expr = list(expr)
+        if default_op:
+            self.default_op = default_op.strip().upper()
+        if default_func:
+            self.default_func = default_func.strip().upper()
+        if op:
+            self._op = op.strip().upper()
+        if func:
+            self._func = func.strip().upper()
+
+    @property
+    def op(self) -> str:
+        return self._op or self.default_op
+
+    @property
+    def func(self) -> str:
+        return self._func or self.default_func
+
+    @classmethod
+    def normalize(
+        cls,
+        obj: _ArrayMatchLike,
+        *,
+        default_op: str = "=",
+        default_func: str = "ANY",
+        negate: bool = False,
+    ) -> ArrayMatchExpr:
+        maybe_negate = lambda e: e.negate() if negate else e
+        if isinstance(obj, ArrayMatchExpr):
+            return maybe_negate(obj)
+        elif isinstance(obj, dict):
+            d: dict = obj.copy()  # type: ignore
+            d.setdefault("op", default_op)
+            d.setdefault("func", default_func)
+            return maybe_negate(
+                cls(**d, default_op=default_op, default_func=default_func)
+            )
+        elif isinstance(obj, str):
+            return maybe_negate(
+                cls(expr=obj, default_op=default_op, default_func=default_func)
+            )
+        else:
+            return maybe_negate(
+                cls(expr=list(obj), default_op=default_op, default_func=default_func)
+            )
+
+    @classmethod
+    def normalize_or_none(
+        cls,
+        obj: _ArrayMatchLike | None,
+        *,
+        default_op: str = "=",
+        default_func: str = "ANY",
+        negate: bool = False,
+    ) -> ArrayMatchExpr | None:
+        if obj is None:
+            return None
+        else:
+            return cls.normalize(
+                obj, default_op=default_op, default_func=default_func, negate=negate
+            )
+
+    _FUNC_NEG = {
+        None: None,
+        "ANY": "ALL",
+        "SOME": "ALL",
+        "ALL": "ANY",
+    }
+
+    def negate(self) -> _typing.Self:
+        import copy
+
+        from . import _util
+
+        negate_op = lambda op: _util.negate_sql_comparison_op(op)
+        negate_func = lambda func: self._FUNC_NEG[func]
+
+        return self.__class__(
+            expr=copy.copy(self.expr),
+            op=negate_op(self._op),
+            func=negate_func(self._func),
+            default_op=negate_op(self.default_op),
+            default_func=negate_func(self.default_func),
+        )
+
+    def as_where_condition(self, *, array: str) -> str:
+        from . import _util
+
+        if not self.expr:
+            return ""
+        return _util.all_in_array_expr(
+            array, *self.expr, op=self.op, join_op="AND", array_comp_func=self.func
+        )
+
+    def to_out(self) -> ArrayMatchDict | list[str] | str | None:
+        if not self.expr:
+            return None
+        expr = self.expr[0] if len(self.expr) == 1 else self.expr[:]
+        if (
+            self.op in (self.default_op, None)  #
+            and self.func in (self.default_func, None)
+        ):
+            return expr
+        else:
+            d: ArrayMatchDict = {"expr": expr}
+            if self.op and (self.op != self.default_op):
+                d["op"] = self.op
+            if self.func and (self.func != self.default_func):
+                d["func"] = self.func
+            return d
+
+
+_ArrayMatchLike = ArrayMatchExpr | ArrayMatchDict | str | _collections_abc.Iterable[str]
+
+
 @_dataclasses.dataclass(kw_only=True)
 class PeopleWhere:
     exclude_deregistered: bool | None = None
@@ -47,8 +189,10 @@ class PeopleWhere:
     exclude_unit_code: _collections_abc.Sequence[str | _types.NullOrNotType] | None = (
         None
     )
-    tag: _collections_abc.Sequence[str] | None = None
-    exclude_tag: _collections_abc.Sequence[str] | None = None
+    tag: ArrayMatchExpr | None = None
+    exclude_tag: ArrayMatchExpr | None = None
+    note: ArrayMatchExpr | None = None
+    exclude_note: ArrayMatchExpr | None = None
     not_: _typing.Self | None = None
     or_: _collections_abc.Sequence[_typing.Self] = ()
     and_: _collections_abc.Sequence[_typing.Self] = ()
@@ -74,8 +218,10 @@ class PeopleWhere:
         fee_rules: _StrOrIterable = "active",
         unit_code: _StrOrNullIterable | None = None,
         exclude_unit_code: _StrOrNullIterable | None = None,
-        tag: _StrOrIterable | None = None,
-        exclude_tag: _StrOrIterable | None = None,
+        tag: _ArrayMatchLike | None = None,
+        exclude_tag: _ArrayMatchLike | None = None,
+        note: _ArrayMatchLike | None = None,
+        exclude_note: _ArrayMatchLike | None = None,
         not_: _typing.Self | None = None,
         or_: _collections_abc.Iterable[_typing.Self] | _typing.Self | None = None,
         and_: _collections_abc.Iterable[_typing.Self] | _typing.Self | None = None,
@@ -120,8 +266,10 @@ class PeopleWhere:
             self.fee_rules = tuple(fee_rules)
         self.unit_code = _to_str_or_null_list(unit_code)
         self.exclude_unit_code = _to_str_or_null_list(exclude_unit_code)
-        self.tag = _util.to_str_list_or_none(tag)
-        self.exclude_tag = _util.to_str_list_or_none(exclude_tag)
+        self.tag = ArrayMatchExpr.normalize_or_none(tag)
+        self.exclude_tag = ArrayMatchExpr.normalize_or_none(exclude_tag, negate=True)
+        self.note = ArrayMatchExpr.normalize_or_none(note)
+        self.exclude_note = ArrayMatchExpr.normalize_or_none(exclude_note, negate=True)
 
     @classmethod
     def from_dict(cls, d: dict | None, /) -> _typing.Self:
@@ -147,9 +295,11 @@ class PeopleWhere:
             else:
                 return x
 
-        def to_out(elts: _collections_abc.Sequence | None, map=None):
+        def to_out(elts: _collections_abc.Sequence | ArrayMatchExpr | None, map=None):
             if elts is None:
                 return None
+            elif isinstance(elts, ArrayMatchExpr):
+                return elts.to_out()
             elts = [null_or_not_to_bool(item) for item in elts]
             if map:
                 elts = [map(item) for item in elts]
@@ -189,6 +339,7 @@ class PeopleWhere:
             "primary_group_id",
             "unit_code",
             "tag",
+            "note",
         ]
         exclude_to_out_keys = [f"exclude_{k}" for k in regular_to_out_keys]
         to_out_keys = regular_to_out_keys + exclude_to_out_keys
@@ -264,34 +415,29 @@ class PeopleWhere:
             )
 
         for key in ["id", "primary_group_id", "sepa_status", "status", "unit_code"]:
+            expr = f"{people_table}.{key}"
+            if key == "sepa_status":
+                expr = f"COALESCE({expr}, 'ok')"
             val = getattr(self, key, None)
             if val is not None:
-                where = combine_where(where, in_expr(f"{people_table}.{key}", val))
+                where = combine_where(where, in_expr(expr, val))
             exclude_key = f"exclude_{key}"
             exclude_val = getattr(self, exclude_key, None)
             if exclude_val is not None:
-                where = combine_where(
-                    where, not_in_expr(f"{people_table}.{key}", exclude_val)
-                )
-        for key, col_name in [("tag", "tag_list")]:
-            val = getattr(self, key, None)
+                where = combine_where(where, not_in_expr(expr, exclude_val))
+        for key, col_name in [("tag", "tag_list"), ("note", "note_list")]:
+            val: ArrayMatchExpr | None = getattr(self, key, None)
             if val is not None:
                 where = combine_where(
-                    where, _util.all_in_array_expr(f"{people_table}.{col_name}", *val)
+                    where, val.as_where_condition(array=f"{people_table}.{col_name}")
                 )
             exclude_key = f"exclude_{key}"
             exclude_val = getattr(self, exclude_key, None)
             if exclude_val is not None:
                 where = combine_where(
                     where,
-                    _util.all_in_array_expr(
-                        f"{people_table}.{col_name}",
-                        *exclude_val,
-                        op="<>",
-                        array_comp_func="ALL",
-                    ),
+                    exclude_val.as_where_condition(array=f"{people_table}.{col_name}"),
                 )
-
         if self.not_ is not None:
             not_where = self.not_.as_where_condition(people_table=people_table)
             if not_where:
