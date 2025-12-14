@@ -536,3 +536,33 @@ def pg_insert_role(
         "roles", colval_pairs=colval_pairs, returning="id"
     )
     return _execute_query_fetchone(cursor, insert_query)[0]
+
+
+def pg_insert_note(
+    cursor: _psycopg.Cursor,
+    /,
+    *,
+    subject_id: int,
+    subject_type: str = "Person",
+    author_id: int = 1,
+    text: str,
+    created_at: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    updated_at: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    now: _datetime.datetime | None = None,
+) -> int:
+    from . import _util
+
+    created_at = _util.to_datetime(created_at, now=now)
+    updated_at = _util.to_datetime(updated_at, now=created_at)
+    colval_pairs = [
+        ("subject_id", subject_id),
+        ("subject_type", subject_type),
+        ("author_id", author_id),
+        ("created_at", created_at),
+        ("updated_at", updated_at),
+        ("text", text),
+    ]
+    insert_query = col_val_pairs_to_insert_sql_query(
+        "notes", colval_pairs=colval_pairs, returning="id"
+    )
+    return _execute_query_fetchone(cursor, insert_query)[0]

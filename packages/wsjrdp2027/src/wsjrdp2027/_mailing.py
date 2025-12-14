@@ -344,7 +344,7 @@ class MailingConfig:
         if not inplace:
             df = df.copy(deep=True)
 
-        keys_set = set(self.updates) & _person_pg.VALID_PERSON_UPDATE_KWARG_KEYS
+        keys_set = set(self.updates) & _person_pg.VALID_PERSON_UPDATE_KEYS
         _people.update_dataframe_for_updates(
             df,
             conn=conn,

@@ -821,7 +821,7 @@ def update_dataframe_for_updates(
 ):
     import collections
 
-    from . import _person_pg, _pg, _util
+    from . import _person_pg, _util
 
     now = _util.to_datetime(now)
     updates = updates or {}
@@ -829,16 +829,15 @@ def update_dataframe_for_updates(
     used_changes = []
 
     for key in updates:
-        if key not in _person_pg.VALID_PERSON_UPDATE_KWARG_KEYS:
+        if key not in _person_pg.VALID_PERSON_UPDATE_KEYS:
             raise TypeError(f"Invalid keyword argument {key!r}")
 
-    for chg in _person_pg.PERSON_CHANGES:
-        if chg.col_name in updates:
-            new_val = updates.get(chg.col_name)
-            used_changes.append(chg)
-            df[chg.col_name] = df.apply(
-                lambda row: chg.compute_df_val(row, new_val), axis=1
-            )
+        chg = _person_pg.UPDATE_KEY_TO_CHANGE[key]
+        new_val = updates.get(chg.col_name)
+        used_changes.append(chg)
+        df[chg.col_name] = df.apply(
+            lambda row: chg.compute_df_val(row, new_val), axis=1
+        )
 
     if used_changes:
         df["db_changes"] = False
@@ -852,15 +851,19 @@ def update_dataframe_for_updates(
             for chg in used_changes:
                 if not chg.old_col:
                     changed = True
+                    new_val = chg.get_new_val(row)
+                    _LOGGER.debug("{%s} %s", id, chg.col_name)
+                    _LOGGER.debug("{%s} + %s", id, new_val)
                     continue
-                old_val = chg.get_old_val(person_dict)
-                new_val = chg.get_new_val(row)
-                _LOGGER.debug("{%s} compare %s", id, chg.old_col)
-                _LOGGER.debug("{%s} - %s", id, old_val)
-                _LOGGER.debug("{%s} + %s", id, new_val)
-                if new_val != old_val:
-                    changed = True
-                    object_changes[chg.old_col] = [old_val, new_val]
+                else:
+                    old_val = chg.get_old_val(person_dict)
+                    new_val = chg.get_new_val(row)
+                    _LOGGER.debug("{%s} compare %s", id, chg.old_col)
+                    _LOGGER.debug("{%s} - %s", id, old_val)
+                    _LOGGER.debug("{%s} + %s", id, new_val)
+                    if new_val != old_val:
+                        changed = True
+                        object_changes[chg.old_col] = [old_val, new_val]
             df.at[idx, "db_changes"] = changed
             df.at[idx, "person_changes"] = object_changes
 
@@ -983,8 +986,10 @@ def _update_person_from_row(
     if "tag_list" in person_changes:
         for tag in _util.to_str_list(row.get("add_tags")):
             _pg.pg_add_person_tag(cursor, person_id=row["id"], tag=tag)
+    if (new_note := row.get("new_note")) is not None:
+        _pg.pg_insert_note(cursor, subject_id=row["id"], text=new_note)
     for chg in _person_pg.PERSON_CHANGES:
-        if chg.old_col in ["tag_list", "primary_group_role_types"]:
+        if chg.old_col in ["new_note", "primary_group_role_types", "tag_list"]:
             continue
         if chg.col_name in row.index and chg.old_col in person_changes:
             person_updates.append((chg.old_col, row.get(chg.col_name)))

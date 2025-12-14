@@ -3,6 +3,8 @@ from __future__ import annotations
 import dataclasses as _dataclasses
 import typing as _typing
 
+from . import _util
+
 
 if _typing.TYPE_CHECKING:
     import pandas as _pandas
@@ -102,25 +104,37 @@ PERSON_VERSION_COLS = [
 class _ScalarChange:
     old_col: str | None = None
     new_col: str
+    col_type: type | None = None
+    render_jinja2: bool = False
 
     @property
     def col_name(self) -> str:
         return self.new_col
 
+    def __normalize(self, value):
+        from . import _util
+
+        if self.col_type and not issubclass(self.col_type, (int, float)):
+            return _util.nan_to_none(value)
+        else:
+            return value
+
     def compute_df_val(self, row: _pandas.Series, new_val):
         if row.get("skip_db_updates") and self.old_col:
-            return row[self.old_col]
+            return self.__normalize(row[self.old_col])
+        elif self.render_jinja2:
+            return _util.render_template(new_val, {"row": row})
         else:
             return new_val
 
     def get_old_val(self, row: _pandas.Series):
         if self.old_col:
-            return row[self.old_col]
+            return self.__normalize(row[self.old_col])
         else:
             return None
 
     def get_new_val(self, row: _pandas.Series):
-        return row[self.new_col]
+        return self.__normalize(row[self.new_col])
 
 
 @_dataclasses.dataclass(kw_only=True)
@@ -162,8 +176,10 @@ PERSON_CHANGES: list[_ScalarChange | _StrListChange] = [
     _ScalarChange(
         old_col="primary_group_role_types", new_col="new_primary_group_role_types"
     ),
+    _ScalarChange(old_col=None, new_col="new_note", render_jinja2=True),
     _StrListChange(old_col="tag_list", add_col="add_tags"),
 ]
 
+UPDATE_KEY_TO_CHANGE = {chg.col_name: chg for chg in PERSON_CHANGES}
 
-VALID_PERSON_UPDATE_KWARG_KEYS = frozenset([chg.col_name for chg in PERSON_CHANGES])
+VALID_PERSON_UPDATE_KEYS = frozenset(UPDATE_KEY_TO_CHANGE.keys())
