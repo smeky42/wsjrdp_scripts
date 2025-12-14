@@ -33,19 +33,46 @@ def docker_cleanup():
 
 
 @pytest.fixture
-def ctx():
+def ctx(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch):
     from wsjrdp2027 import WsjRdpContext
 
-    return WsjRdpContext(
-        config=_WSJRDP_SCRIPTS_CONFIG,
-        setup_logging=False,
-        log_level=_logging.DEBUG,
-        out_dir=_OUT_DIR,
-        argv=["app"],
-    )
+    test_name = request.node.name
+    out_dir = _OUT_DIR / test_name
+
+    with monkeypatch.context() as m:
+        _logging.debug("Delete ENV WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE")
+        m.delenv("WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE", raising=False)
+
+        wsjrdp_ctx = WsjRdpContext(
+            config=_WSJRDP_SCRIPTS_CONFIG,
+            setup_logging=False,
+            log_level=_logging.DEBUG,
+            out_dir=out_dir,
+            argv=["app"],
+        )
+        wsjrdp_ctx.configure_log_file(out_dir / f"{test_name}.log")
+        yield wsjrdp_ctx
+
+
+@pytest.fixture
+def run_wsjrdp_script(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
+    from wsjrdp_scripts_integrations_tests.wsjrdp_script_runner import run_script
+
+    test_name = request.node.name
+    out_dir = _OUT_DIR / test_name
+    out_dir.mkdir(exist_ok=True, parents=True)
+
+    with monkeypatch.context() as m:
+        _logging.debug("Delete ENV WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE")
+        m.delenv("WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE", raising=False)
+        _logging.debug("cd %s", out_dir)
+        m.chdir(out_dir)
+
+        yield run_script
 
 
 @pytest.fixture(scope="session", autouse=True)
 def wsjrdp_scripts_integration_test_defaults(docker_services):
+    _os.environ["WSJRDP_SCRIPTS_START_TIME"] = "2027-08-01 08:00:00"
     _os.environ["WSJRDP_SCRIPTS_CONFIG"] = str(_WSJRDP_SCRIPTS_CONFIG)
     _os.environ["WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE"] = str(_OUT_DIR)

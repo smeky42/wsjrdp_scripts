@@ -130,16 +130,19 @@ def configure_file_logging(
     level: int | str | None,
     logger: _logging.Logger | str | None = None,
 ) -> _logging.Handler:
-    import logging
+    import logging as _logging
+    import pathlib as _pathlib
 
     if logger is None:
-        logger = logging.getLogger()
+        logger = _logging.getLogger()
     elif isinstance(logger, str):
-        logger = logging.getLogger(logger)
-    level = to_log_level(level, default=logging.NOTSET)
+        logger = _logging.getLogger(logger)
+    level = to_log_level(level, default=_logging.NOTSET)
+    filename = _pathlib.Path(filename).resolve()
+    filename.parent.mkdir(exist_ok=True, parents=True)
 
-    formatter = logging.Formatter("%(asctime)s %(levelname)-1s %(message)s")
-    handler = logging.FileHandler(filename, encoding="utf-8")
+    formatter = _logging.Formatter("%(asctime)s %(levelname)-1s %(message)s")
+    handler = _logging.FileHandler(filename, encoding="utf-8")
     handler.setFormatter(formatter)
     handler.setLevel(level)
     logger.addHandler(handler)
