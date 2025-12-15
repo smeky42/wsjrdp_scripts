@@ -14,12 +14,17 @@ class Test_Run_Accounting_Tools:
             "--skip-db-updates",
             "--collection-date=2027-05-31",
             "--limit=200",
+            """--query=---
+where:
+  id: [4, 141, 203, 204, 352, 1000, 1189, 1395, 2145, 2147]
+limit: 100
+""",
         )
         xml_files = list(run_wsjrdp_script_out_dir.rglob("*.xml"))
         assert len(xml_files) == 1
         sdd_xml_path = xml_files[0]
         sdd = parse_sdd_xml(sdd_xml_path)
-        assert sdd["ctrl_sum_cents"] > 100_000_00
+        assert sdd["ctrl_sum_cents"] > 10_000_00
 
     def test__acounting_tools__2025_08_05__Mailing_SEPA_Delay(self, run_wsjrdp_script):
         run_wsjrdp_script("accounting_tools/2025-08-05--Mailing-SEPA-Delay.py")

@@ -10,6 +10,7 @@ import typing as _typing
 
 import pandas as pd
 import wsjrdp2027
+from wsjrdp2027._people_query import PeopleQuery
 
 
 if _typing.TYPE_CHECKING:
@@ -54,6 +55,7 @@ def _create_argument_parser():
         default=COLLECTION_DATE.strftime("%Y-%m-%d"),
         help="The collection date",
     )
+    p.add_argument("--query", default=None, help="YAML oder JSON query")
     return p
 
 
@@ -75,7 +77,12 @@ def _update_batch_config_from_ctx(
         skip_db_updates=ctx.parsed_args.skip_db_updates,
     )
     args = ctx.parsed_args
-    query = config.query
+    if (query_str := getattr(args, "query")) is not None:
+        query = _load_query_from_string(query_str)
+        _LOGGER.info("set query = %s (from cli_args)", str(query))
+        config.query = query
+    else:
+        query = config.query
     query.now = ctx.start_time
     if (limit := args.limit) is not None:
         _LOGGER.debug("set limit = %s (from cli args)", limit)
@@ -90,6 +97,16 @@ def _update_batch_config_from_ctx(
         _LOGGER.debug("add to add_tags = %s (from cli args)", tags)
         config.updates.setdefault("add_tags", []).extend(tags)
     return config
+
+
+def _load_query_from_string(query_str: str) -> wsjrdp2027.PeopleQuery:
+    import io
+
+    import yaml
+
+    f = io.StringIO(query_str)
+    d = yaml.load(f, Loader=yaml.FullLoader)
+    return wsjrdp2027.PeopleQuery(**d)
 
 
 def _insert_pre_notifications_into_db(
