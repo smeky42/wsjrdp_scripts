@@ -87,6 +87,7 @@ class PreparedBatch:
     dry_run: bool = False
     skip_email: bool = False
     skip_db_updates: bool = False
+    results: dict = _dataclasses.field(default_factory=lambda: {})
 
     def __post_init__(self) -> None:
         if self.now is None:
@@ -103,20 +104,59 @@ class PreparedBatch:
     def write_data(
         self, *, out_dir: _pathlib.Path | None = None, zip_eml: bool | None = None
     ) -> _pathlib.Path:
-        import io
-        import zipfile
-
         from . import _people
 
         if zip_eml is None:
             zip_eml = True
         out_dir = self._get_out_dir(out_dir=out_dir)
 
+        self.__collect_default_results()
+
         out_dir.mkdir(exist_ok=True, parents=True)
         _LOGGER.info("  mailing output directory: %s", out_dir)
+
         xlsx_path = out_dir / f"{self.name}.xlsx"
         unfiltered_xlsx_path = out_dir / f"{self.name}.unfiltered.xlsx"
         yml_path = out_dir / f"{self.name}.yml"
+
+        self.__write_eml(out_dir=out_dir, zip_eml=zip_eml)
+
+        _people.write_people_dataframe_to_xlsx(
+            self.df, xlsx_path, log_level=_logging.DEBUG
+        )
+        _LOGGER.info("  wrote df xlsx %s", xlsx_path)
+
+        if self.unfiltered_df is not None:
+            _people.write_people_dataframe_to_xlsx(
+                self.unfiltered_df, unfiltered_xlsx_path, log_level=_logging.DEBUG
+            )
+            _LOGGER.info("  wrote unfiltered_df xlsx %s", unfiltered_xlsx_path)
+
+        if self.config_yaml:
+            with open(yml_path, "wb") as f:
+                f.write(self.config_yaml)
+            _LOGGER.info("  wrote yml %s", yml_path)
+
+        return out_dir
+
+    def __collect_default_results(self):
+        if self.unfiltered_df is not None:
+            unfiltered_ids_set = frozenset(self.unfiltered_df["id"])
+        else:
+            unfiltered_ids_set = frozenset()
+        ids_set = frozenset(self.df[self.df["skip_db_updates"] == False]["id"])
+        email_only_ids_set = frozenset(
+            self.df[self.df["skip_db_updates"] != False]["id"]
+        )
+        self.results["ids"] = sorted(ids_set)
+        self.results["email_only_ids"] = sorted(email_only_ids_set)
+        skipped_ids_set = unfiltered_ids_set - ids_set - email_only_ids_set
+        self.results["skipped_ids"] = sorted(skipped_ids_set)
+
+    def __write_eml(self, *, out_dir: _pathlib.Path, zip_eml: bool) -> None:
+        import io
+        import zipfile
+
         if zip_eml:
             zip_buf = io.BytesIO()
             with zipfile.ZipFile(zip_buf, "w") as zf:
@@ -139,20 +179,19 @@ class PreparedBatch:
                     eml_path = out_dir / prep_msg.eml_name
                     eml_path.write_bytes(prep_msg.eml)
                     _LOGGER.info("  wrote eml %s", eml_path)
-        _people.write_people_dataframe_to_xlsx(
-            self.df, xlsx_path, log_level=_logging.DEBUG
-        )
-        _LOGGER.info("  wrote df xlsx %s", xlsx_path)
-        if self.unfiltered_df is not None:
-            _people.write_people_dataframe_to_xlsx(
-                self.unfiltered_df, unfiltered_xlsx_path, log_level=_logging.DEBUG
-            )
-            _LOGGER.info("  wrote unfiltered_df xlsx %s", unfiltered_xlsx_path)
-        if self.config_yaml:
-            with open(yml_path, "wb") as f:
-                f.write(self.config_yaml)
-            _LOGGER.info("  wrote yml %s", yml_path)
-        return out_dir
+
+    def write_results(
+        self, *, out_dir: _pathlib.Path | None = None, json_indent: int | None = None
+    ) -> None:
+        import json
+
+        out_dir = self._get_out_dir(out_dir=out_dir)
+        json_path = out_dir / f"{self.name}.json"
+
+        with open(json_path, "w") as f:
+            json_d = {"results": self.results}
+            json.dump(json_d, f, indent=json_indent)
+        _LOGGER.info("  wrote json %s", json_path)
 
     def send(self, mail_client: _mail_client.MailClient, /) -> None:
         import pprint
