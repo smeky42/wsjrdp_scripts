@@ -69,7 +69,7 @@ def main(argv=None):
         argv=argv,
     )
 
-    mailing_config = wsjrdp2027.MailingConfig.from_yaml(
+    batch_config = wsjrdp2027.BatchConfig.from_yaml(
         SELFDIR / "bestätigung_storno_registrierung.yml",
         where=wsjrdp2027.PeopleWhere(
             id=ctx.parsed_args.person_id,
@@ -77,8 +77,8 @@ def main(argv=None):
         ),
     )
     issue = ctx.parsed_args.issue or ""
-    df = ctx.load_person_dataframe_for_mailing(
-        mailing_config,
+    df = ctx.load_person_dataframe_for_batch(
+        batch_config,
         extra_static_df_cols={"deregistration_issue": issue},
         extra_mailing_bcc=("unit-management@worldscoutjamboree.de" if issue else None),
     )
@@ -86,13 +86,13 @@ def main(argv=None):
     row = df.iloc[0]
     id_and_name = f"{row['id']} {row['short_full_name']}"
     ctx.out_dir = ctx.out_dir / id_and_name
-    mailing_config.name = f"WSJ27 Bestätigung Storno Registrierung {id_and_name}"
+    batch_config.name = f"WSJ27 Bestätigung Storno Registrierung {id_and_name}"
 
-    out_base = ctx.make_out_path(mailing_config.name)
+    out_base = ctx.make_out_path(batch_config.name)
     ctx.configure_log_file(out_base.with_suffix(".log"))
 
     with ctx.psycopg_connect() as conn:
-        mailing = mailing_config.prepare_mailing_for_dataframe(
+        mailing = batch_config.prepare_batch_for_dataframe(
             df,
             conn=conn,
             msg_cb=lambda p: attach_cancellation_confirmation(ctx, p),

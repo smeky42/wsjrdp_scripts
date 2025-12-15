@@ -15,7 +15,7 @@ if _typing.TYPE_CHECKING:
     import imaplib as _imaplib
     import smtplib as _smtplib
 
-    from . import _mail_config, _mailing
+    from . import _batch, _mail_config
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -147,7 +147,7 @@ class MailClient:
 
     def send_message(
         self,
-        msg: _email_message.EmailMessage | _mailing.PreparedEmailMessage,
+        msg: _email_message.EmailMessage | _batch.PreparedEmailMessage,
         *,
         from_addr: str | None = None,
         dry_run: bool | None = None,
@@ -163,7 +163,7 @@ class MailClient:
         import copy
         import email.utils
 
-        from . import _mailing
+        from . import _batch
 
         if dry_run is None:
             dry_run = self._dry_run
@@ -171,7 +171,7 @@ class MailClient:
             err_msg = "Cannot send message: Not connected"
             self._logger.error(err_msg)
             raise RuntimeError(err_msg)
-        if isinstance(msg, _mailing.PreparedEmailMessage):
+        if isinstance(msg, _batch.PreparedEmailMessage):
             email_msg = msg.message
             if not email_msg:
                 err_msg = "Cannot send message: msg.message is None"

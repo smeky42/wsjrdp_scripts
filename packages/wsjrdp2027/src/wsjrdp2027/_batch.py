@@ -22,9 +22,9 @@ if _typing.TYPE_CHECKING:
 
 
 __all__ = [
-    "MailingConfig",
+    "BatchConfig",
     "PreparedEmailMessage",
-    "PreparedMailing",
+    "PreparedBatch",
 ]
 
 
@@ -72,7 +72,7 @@ class PreparedEmailMessage:
 
 
 @_dataclasses.dataclass(kw_only=True)
-class PreparedMailing:
+class PreparedBatch:
     name: str = "mailing"
     df: _pandas.DataFrame
     unfiltered_df: _pandas.DataFrame | None = None
@@ -194,7 +194,7 @@ class PreparedMailing:
 
 
 @_dataclasses.dataclass(kw_only=True)
-class MailingConfig:
+class BatchConfig:
     query: _people_query.PeopleQuery = _dataclasses.field(
         default_factory=lambda: _people_query.PeopleQuery()
     )
@@ -420,7 +420,7 @@ class MailingConfig:
             collection_date=_util.to_date_or_none(collection_date),
             now=_util.to_datetime_or_none(now),
         )
-        _LOGGER.debug("MailingConfig.load_people_dataframe")
+        _LOGGER.debug("BatchConfig.load_people_dataframe")
         _LOGGER.debug("  collection_date: %s", query.collection_date)
         _LOGGER.debug("  now: %s", query.now)
 
@@ -466,7 +466,7 @@ class MailingConfig:
         return df
 
     @_util.log_exception_decorator
-    def query_people_and_prepare_mailing(
+    def query_people_and_prepare_batch(
         self,
         *,
         ctx: _context.WsjRdpContext,
@@ -489,7 +489,7 @@ class MailingConfig:
         | float
         | None
         | _types.MissingType = _types.MISSING,
-    ) -> PreparedMailing:
+    ) -> PreparedBatch:
         from . import _util
 
         limit = _util.coalesce_missing(limit, self.query.limit)
@@ -514,7 +514,7 @@ class MailingConfig:
                 df = df_cb(df)
             if out_dir is None:
                 out_dir = ctx.out_dir
-            return self.prepare_mailing_for_dataframe(
+            return self.prepare_batch_for_dataframe(
                 df,
                 unfiltered_df=unfiltered_df,
                 conn=conn,
@@ -525,7 +525,7 @@ class MailingConfig:
                 now=now,
             )
 
-    def prepare_mailing_for_dataframe(
+    def prepare_batch_for_dataframe(
         self,
         df: _pandas.DataFrame,
         *,
@@ -539,7 +539,7 @@ class MailingConfig:
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
-    ) -> PreparedMailing:
+    ) -> PreparedBatch:
         import time
 
         from . import _util
@@ -568,7 +568,7 @@ class MailingConfig:
         toc = time.monotonic()
         _LOGGER.info("  finished preparation of mailing (%g seconds)", toc - tic)
         config_yaml = self.__to_yaml__().encode("utf-8")
-        return PreparedMailing(
+        return PreparedBatch(
             name=self.name,
             df=df,
             unfiltered_df=unfiltered_df,
@@ -732,7 +732,7 @@ def email_message_from_row(
 
 def write_data_and_send_mailing(
     ctx: _context.WsjRdpContext,
-    mailing: PreparedMailing,
+    mailing: PreparedBatch,
     *,
     dry_run: bool | None = None,
     out_dir: str | _pathlib.Path | None = None,

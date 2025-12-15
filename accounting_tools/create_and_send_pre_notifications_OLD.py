@@ -229,7 +229,8 @@ def main(argv=None):
 
     sum_ok = int(df_ok["open_amount_cents"].sum())
     _LOGGER.info(
-        "  OK payments: SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(sum_ok)
+        "  OK payments: SUM(open_amount_cents): %s",
+        wsjrdp2027.format_cents_as_eur_de(sum_ok),
     )
     _LOGGER.info("")
 
