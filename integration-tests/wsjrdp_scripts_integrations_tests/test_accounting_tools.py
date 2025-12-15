@@ -17,8 +17,9 @@ class Test_Run_Accounting_Tools:
             "--limit=200",
             """--query=---
 where:
-  id: [4, 141, 203, 204, 352, 1000, 1189, 1395, 1422, 2145, 2147, 2437]
+  id: [4, 141, 182, 203, 204, 352, 356, 1000, 1189, 1395, 1422, 2145, 2147, 2437]
 limit: 100
+include_sepa_mail_in_mailing_to: true
 """,
         )
         xml_files = list(run_wsjrdp_script_out_dir.rglob("*.xml"))

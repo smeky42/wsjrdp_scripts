@@ -272,15 +272,15 @@ class PaymentRole(_enum.Enum):
         {(2025, 12): 200, (2026, 1): 400, (2026, 2): 400, (2026, 3): 350}
 
         >>> PaymentRole.EARLY_PAYER_CMT.get_installments_eur(today="2025-07-31")
-        {(2025, 8): 1600}
+        {(2026, 1): 1600}
         >>> PaymentRole.EARLY_PAYER_YP.get_installments_eur(today="2025-07-31")
-        {(2025, 8): 3400}
+        {(2026, 1): 3400}
         >>> PaymentRole.EARLY_PAYER_UL.get_installments_eur(today="2025-07-31")
-        {(2025, 8): 2400}
+        {(2026, 1): 2400}
         >>> PaymentRole.EARLY_PAYER_IST.get_installments_eur(today="2025-07-31")
-        {(2025, 8): 2600}
+        {(2026, 1): 2600}
         >>> PaymentRole.EARLY_PAYER_YP.get_installments_eur(today="2025-07-31", fee_reduction_eur=1700)
-        {(2025, 8): 1700}
+        {(2026, 1): 1700}
         """
         from . import _util
 
@@ -339,7 +339,7 @@ class PaymentRole(_enum.Enum):
         """Dictionary of year-month tuple to installments.
 
         >>> PaymentRole.EARLY_PAYER_CMT.get_installments_cents(today="2025-07-31")
-        {(2025, 8): 160000}
+        {(2026, 1): 160000}
         """
         fee_reduction_eur = fee_reduction_cents / 100
         if fee_reduction_eur == round(fee_reduction_eur):

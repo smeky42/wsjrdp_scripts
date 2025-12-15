@@ -741,14 +741,18 @@ def to_yaml_str(
         return str_io.getvalue()
 
 
-def merge_mail_addresses(*args) -> list[str] | None:
+@_typing.overload
+def merge_mail_addresses(*args, default: list[str]) -> list[str]: ...
+@_typing.overload
+def merge_mail_addresses(*args, default: None=None) -> list[str] | None: ...
+def merge_mail_addresses(*args, default: list[str] | None = None) -> list[str] | None:
     if all(arg is None for arg in args):
-        return None
+        return default
     addrs = []
     for arg in args:
         addrs.extend(to_str_list_or_none(arg) or [])
     addrs = list(dedup(addrs))
-    return addrs or None
+    return addrs or default
 
 
 def get_default_email_policy() -> _email_policy.EmailPolicy:

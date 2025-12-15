@@ -174,6 +174,18 @@ def get_contract_names(row: _pandas.Series) -> list[str]:
     ]
 
 
+def _row_to_mailing_to(
+    row: _pandas.Series, query: _people_query.PeopleQuery
+) -> list[str] | None:
+    from . import _util
+
+    if query.include_sepa_mail_in_mailing_to:
+        candidates = [row.get("email"), row.get("sepa_mail")]
+    else:
+        candidates = [row.get("email")]
+    return _util.merge_mail_addresses(*candidates)
+
+
 def row_to_mailing_cc(row) -> list[str] | None:
     other = set(row["additional_emails_for_mailings"])
     other.update(get_contract_additional_emails(row))
@@ -437,6 +449,7 @@ def _filtered_join(*args, sep=" "):
 def _enrich_people_dataframe(
     df: _pandas.DataFrame,
     *,
+    query: _people_query.PeopleQuery,
     id2fee_rules: dict,
     id2roles: dict[int, list[dict[str, _typing.Any]]],
     id2person_dicts: dict[int, dict],
@@ -476,7 +489,7 @@ def _enrich_people_dataframe(
         lambda d: d.strftime("%d.%m.%Y") if d is not None else None
     )
     df["mailing_from"] = "anmeldung@worldscoutjamboree.de"
-    df["mailing_to"] = df["email"].map(lambda s: ([s] if s else None))
+    df["mailing_to"] = df.apply(lambda r: _row_to_mailing_to(r, query), axis=1)
     df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)
     df["mailing_bcc"] = df["id"].map(
         lambda _: _util.merge_mail_addresses(extra_mailing_bcc)
@@ -683,6 +696,7 @@ ORDER BY people.id{limit_clause}
         id2person_dicts = _fetch_id2person_dicts(conn, df=df)
         _enrich_people_dataframe(
             df,
+            query=query,
             id2fee_rules=id2fee_rules,
             id2roles=id2roles,
             id2person_dicts=id2person_dicts,

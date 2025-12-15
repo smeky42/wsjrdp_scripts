@@ -505,6 +505,7 @@ class PeopleQuery:
     limit: int | None = None
     now: _datetime.datetime
     collection_date: _datetime.date | None = None
+    include_sepa_mail_in_mailing_to: bool | None = None
 
     def __init__(
         self,
@@ -514,6 +515,7 @@ class PeopleQuery:
         limit: int | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
         collection_date: _datetime.date | str | None = None,
+        include_sepa_mail_in_mailing_to: bool | None = None,
     ) -> None:
         from . import _util
 
@@ -522,6 +524,7 @@ class PeopleQuery:
         self.limit = int(limit) if (isinstance(limit, (int, float)) or limit) else None
         self.now = _util.to_datetime(now)
         self.collection_date = _util.to_date_or_none(collection_date)
+        self.include_sepa_mail_in_mailing_to = include_sepa_mail_in_mailing_to
 
     @property
     def today(self) -> _datetime.date:
