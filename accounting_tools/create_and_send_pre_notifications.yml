@@ -22,7 +22,7 @@ content: |
   Betrag: {{ row.open_amount_cents | format_cents_as_eur_de }}
 
   Kontoinhaber*in: {{ row.sepa_name }}
-  IBAN: {{ row.sepa_iban }}
+  IBAN: {{ row.sepa_iban | format_iban }}
   Mandatsreferenz: {{ row.sepa_mandate_id }}
   Verwendungszweck: {{ row.sepa_dd_description }}
   Kundenreferenz: {{ row.sepa_dd_endtoend_id }}
