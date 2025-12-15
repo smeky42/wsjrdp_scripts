@@ -23,6 +23,8 @@ content: |
 
   Kontoinhaber*in: {{ row.sepa_name }}
   IBAN: {{ row.sepa_iban | format_iban }}
+  {% if (row.sepa_bank_name is defined) and (row.sepa_bank_name) %}Bank: {{ row.sepa_bank_name }}
+  {% endif %}
   Mandatsreferenz: {{ row.sepa_mandate_id }}
   Verwendungszweck: {{ row.sepa_dd_description }}
   Kundenreferenz: {{ row.sepa_dd_endtoend_id }}

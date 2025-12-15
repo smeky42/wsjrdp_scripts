@@ -103,6 +103,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "sepa_mailing_bcc",
     "sepa_mailing_reply_to",
     "sepa_iban",
+    "sepa_bank_name",
     "sepa_bic",
     "sepa_bic_status",
     "sepa_bic_status_reason",
@@ -322,6 +323,16 @@ def _compute_open_amount_cents(row: _pandas.Series) -> int:
     return max(row["amount_due_cents"] - row["amount_paid_cents"], 0)
 
 
+def _iban_to_bank_name(iban: str) -> str | None:
+    import schwifty
+
+    try:
+        return schwifty.IBAN(iban).bank_name
+    except Exception as exc:
+        _LOGGER.debug("Could not determine bank name for IBAN %r: %s", iban, str(exc))
+    return None
+
+
 def _fetch_id2fee_rules(
     conn: _psycopg.Connection,
     fee_rules: str | _collections_abc.Iterable[str] = "active",
@@ -479,6 +490,7 @@ def _enrich_people_dataframe(
     )
     df["sepa_mailing_reply_to"] = None
 
+    df["sepa_bank_name"] = df["sepa_iban"].map(_iban_to_bank_name)
     df["sepa_mandate_id"] = df["id"].map(_util.sepa_mandate_id_from_hitobito_id)
     df["sepa_mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
 
