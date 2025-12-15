@@ -113,6 +113,7 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "sepa_mailing_bcc",
     "sepa_mailing_reply_to",
     "sepa_iban",
+    "sepa_bank_name",
     "sepa_bic",
     "sepa_bic_status",
     "sepa_bic_status_reason",

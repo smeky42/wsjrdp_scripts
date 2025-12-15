@@ -13,10 +13,11 @@ class Test_Run_Accounting_Tools:
             "accounting_tools/create_and_send_pre_notifications.py",
             "--skip-db-updates",
             "--collection-date=2027-05-31",
+            "--no-zip-eml",
             "--limit=200",
             """--query=---
 where:
-  id: [4, 141, 203, 204, 352, 1000, 1189, 1395, 2145, 2147]
+  id: [4, 141, 203, 204, 352, 1000, 1189, 1395, 1422, 2145, 2147, 2437]
 limit: 100
 """,
         )
