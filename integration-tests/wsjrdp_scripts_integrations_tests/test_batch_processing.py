@@ -9,12 +9,12 @@ import wsjrdp2027
 class Test_DB_Updates:
     def add_marker_note(self, request, ctx: wsjrdp2027.WsjRdpContext, where):
         marker = str(uuid.uuid4())
-        bc = wsjrdp2027.MailingConfig(
+        bc = wsjrdp2027.BatchConfig(
             name=request.node.name,
             where=where,
             updates={"add_note": "New note for {{ row.id }}" + " " + marker},
         )
-        prepared_batch = ctx.load_people_and_prepare_mailing(bc)
+        prepared_batch = ctx.load_people_and_prepare_batch(bc)
         ctx.update_db_and_send_mailing(prepared_batch, zip_eml=False)
         return marker
 

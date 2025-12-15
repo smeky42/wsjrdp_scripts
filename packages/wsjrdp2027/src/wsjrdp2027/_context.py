@@ -22,7 +22,7 @@ if _typing.TYPE_CHECKING:
     import psycopg as _psycopg
     import sshtunnel as _sshtunnel
 
-    from . import _mail_client, _mail_config, _mailing
+    from . import _batch, _mail_client, _mail_config
 
 
 __all__ = [
@@ -826,45 +826,45 @@ class WsjRdpContext:
         with client:
             yield client
 
-    def __compute_mailing_out_dir(
+    def __compute_batch_out_dir(
         self,
-        mailing: _mailing.PreparedMailing,
+        prepared_batch: _batch.PreparedBatch,
         out_dir: _pathlib.Path | str | None = None,
         *,
         relative: bool = True,
         mkdir: bool = True,
     ) -> _pathlib.Path:
-        if mailing.out_dir:
-            return mailing.out_dir
+        if prepared_batch.out_dir:
+            return prepared_batch.out_dir
         else:
             out_dir = _pathlib.Path(out_dir) if out_dir else self.out_dir
             out_dir_tpl = str(
-                out_dir / (mailing.name + "__{{ filename_suffix }}")
+                out_dir / (prepared_batch.name + "__{{ filename_suffix }}")
             ).replace("\\", "/")
             return self.make_out_path(out_dir_tpl, relative=relative, mkdir=mkdir)
 
     def send_mailing(
         self,
-        mailing: _mailing.PreparedMailing,
+        prepared_batch: _batch.PreparedBatch,
         *,
         zip_eml: bool | None = None,
         dry_run: bool | None = None,
     ) -> None:
-        from . import _mailing
+        from . import _batch
 
         if dry_run is None:
             dry_run = self._dry_run
-        _mailing.write_data_and_send_mailing(
+        _batch.write_data_and_send_mailing(
             self,
-            mailing,
+            prepared_batch,
             dry_run=dry_run,
             out_dir=self.out_dir,
             zip_eml=zip_eml,
         )
 
-    def load_person_dataframe_for_mailing(
+    def load_person_dataframe_for_batch(
         self,
-        mailing_config: _mailing.MailingConfig,
+        batch_config: _batch.BatchConfig,
         /,
         *,
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
@@ -875,7 +875,7 @@ class WsjRdpContext:
 
         if now is None:
             now = self.start_time
-        df = mailing_config.load_people_dataframe(
+        df = batch_config.load_people_dataframe(
             ctx=self,
             extra_static_df_cols=extra_static_df_cols,
             extra_mailing_bcc=extra_mailing_bcc,
@@ -895,9 +895,9 @@ class WsjRdpContext:
             raise RuntimeError(err_msg)
         return df
 
-    def load_people_and_prepare_mailing(
+    def load_people_and_prepare_batch(
         self,
-        mailing_config: _mailing.MailingConfig,
+        batch_config: _batch.BatchConfig,
         /,
         *,
         collection_date: _datetime.date | str | None = None,
@@ -906,14 +906,14 @@ class WsjRdpContext:
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
         df_cb: _collections_abc.Callable[[_pandas.DataFrame], _pandas.DataFrame]
         | None = None,
-    ) -> _mailing.PreparedMailing:
+    ) -> _batch.PreparedBatch:
         from . import _util
 
-        now = _util.coalesce(now, mailing_config.query.now, self.start_time)
+        now = _util.coalesce(now, batch_config.query.now, self.start_time)
         collection_date = _util.coalesce(
-            collection_date, mailing_config.query.collection_date
+            collection_date, batch_config.query.collection_date
         )
-        mailing = mailing_config.query_people_and_prepare_mailing(
+        prepared_batch = batch_config.query_people_and_prepare_batch(
             ctx=self,
             limit=limit,
             collection_date=collection_date,
@@ -922,8 +922,8 @@ class WsjRdpContext:
             df_cb=df_cb,
         )
         if not out_dir:
-            mailing.out_dir = self.__compute_mailing_out_dir(mailing)
-        return mailing
+            prepared_batch.out_dir = self.__compute_batch_out_dir(prepared_batch)
+        return prepared_batch
 
     def update_db_for_dataframe(
         self,
@@ -958,29 +958,29 @@ class WsjRdpContext:
 
     def update_db_and_send_mailing(
         self,
-        mailing: _mailing.PreparedMailing,
+        prepared_batch: _batch.PreparedBatch,
         *,
         conn: _psycopg.Connection | None = None,
         zip_eml: bool | None = None,
         dry_run: bool | None = None,
     ) -> None:
-        if not mailing.out_dir:
-            mailing.out_dir = self.__compute_mailing_out_dir(mailing)
+        if not prepared_batch.out_dir:
+            prepared_batch.out_dir = self.__compute_batch_out_dir(prepared_batch)
         if dry_run is None:
             dry_run = self.dry_run
-        mailing.write_data(zip_eml=zip_eml)
+        prepared_batch.write_data(zip_eml=zip_eml)
         self.update_db_for_dataframe(
-            mailing.df,
+            prepared_batch.df,
             conn=conn,
-            now=mailing.now,
+            now=prepared_batch.now,
             dry_run=dry_run,
-            skip_db_updates=mailing.skip_db_updates,
+            skip_db_updates=prepared_batch.skip_db_updates,
         )
 
         with self.mail_login(
-            from_addr=mailing.from_addr, dry_run=dry_run
+            from_addr=prepared_batch.from_addr, dry_run=dry_run
         ) as mail_client:
-            mailing.send(mail_client)
+            prepared_batch.send(mail_client)
 
     def render_template(
         self,

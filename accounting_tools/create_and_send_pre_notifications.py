@@ -60,9 +60,9 @@ def _create_argument_parser():
 
 
 def _update_batch_config_from_ctx(
-    config: wsjrdp2027.MailingConfig,
+    config: wsjrdp2027.BatchConfig,
     ctx: wsjrdp2027.WsjRdpContext,
-) -> wsjrdp2027.MailingConfig:
+) -> wsjrdp2027.BatchConfig:
     if ctx.parsed_args.dry_run is not None:
         _LOGGER.debug("set dry_run = %s (from cli args)", ctx.parsed_args.dry_run)
     if ctx.parsed_args.skip_email is not None:
@@ -241,7 +241,7 @@ def main(argv=None):
     sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig = (  # type: ignore
         wsjrdp2027.WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG
     )
-    batch_config = wsjrdp2027.MailingConfig.from_yaml(
+    batch_config = wsjrdp2027.BatchConfig.from_yaml(
         _SELFDIR / "create_and_send_pre_notifications.yml"
     )
     batch_config = _update_batch_config_from_ctx(batch_config, ctx)
@@ -252,7 +252,7 @@ def main(argv=None):
 
     assert batch_config.query.collection_date is not None
 
-    prepared_batch = ctx.load_people_and_prepare_mailing(batch_config, df_cb=handle_df)
+    prepared_batch = ctx.load_people_and_prepare_batch(batch_config, df_cb=handle_df)
     prepared_batch.write_data(zip_eml=ctx.parsed_args.zip_eml)
     df_ok = prepared_batch.df
     wsjrdp2027.write_accounting_dataframe_to_sepa_dd(

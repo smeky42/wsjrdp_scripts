@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+from ._batch import (
+    BatchConfig as BatchConfig,
+    PreparedBatch as PreparedBatch,
+    PreparedEmailMessage as PreparedEmailMessage,
+)
 from ._context import (
     WsjRdpContext as WsjRdpContext,
     WsjRdpContextConfig as WsjRdpContextConfig,
 )
 from ._mail_client import MailClient as MailClient
-from ._mailing import (
-    MailingConfig as MailingConfig,
-    PreparedEmailMessage as PreparedEmailMessage,
-    PreparedMailing as PreparedMailing,
-)
 from ._payment import (
     DB_PEOPLE_ALL_SEPA_STATUS as DB_PEOPLE_ALL_SEPA_STATUS,
     DB_PEOPLE_ALL_STATUS as DB_PEOPLE_ALL_STATUS,
@@ -77,13 +77,13 @@ __all__ = [
     "WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG",
     "WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG",
     #
+    "BatchConfig",
     "MailClient",
-    "MailingConfig",
     "PaymentRole",
     "PeopleQuery",
     "PeopleWhere",
+    "PreparedBatch",
     "PreparedEmailMessage",
-    "PreparedMailing",
     "SepaDirectDebit",
     "SepaDirectDebitConfig",
     "SepaDirectDebitPayment",

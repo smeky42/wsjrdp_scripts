@@ -45,10 +45,10 @@ def create_argument_parser():
     return p
 
 
-def update_mailing_config_from_ctx(
-    config: wsjrdp2027.MailingConfig,
+def update_batch_config_from_ctx(
+    config: wsjrdp2027.BatchConfig,
     ctx: wsjrdp2027.WsjRdpContext,
-) -> wsjrdp2027.MailingConfig:
+) -> wsjrdp2027.BatchConfig:
     config = config.replace(
         dry_run=ctx.dry_run,
         skip_email=ctx.parsed_args.skip_email,
@@ -74,17 +74,17 @@ def main(argv=None):
         argv=argv,
         out_dir="data/mailings{{ kind | omit_unless_prod | upper | to_ext }}",
     )
-    mailing_config = wsjrdp2027.MailingConfig.from_yaml(ctx.parsed_args.yaml_file)
-    mailing_config = update_mailing_config_from_ctx(mailing_config, ctx)
+    batch_config = wsjrdp2027.BatchConfig.from_yaml(ctx.parsed_args.yaml_file)
+    batch_config = update_batch_config_from_ctx(batch_config, ctx)
 
-    ctx.out_dir = ctx.make_out_path(mailing_config.name + "__{{ filename_suffix }}")
-    out_base = ctx.make_out_path(mailing_config.name)
+    ctx.out_dir = ctx.make_out_path(batch_config.name + "__{{ filename_suffix }}")
+    out_base = ctx.make_out_path(batch_config.name)
     log_filename = out_base.with_suffix(".log")
     ctx.configure_log_file(log_filename)
 
-    prepared_mailing = ctx.load_people_and_prepare_mailing(mailing_config)
+    prepared_batch = ctx.load_people_and_prepare_batch(batch_config)
 
-    ctx.update_db_and_send_mailing(prepared_mailing, zip_eml=ctx.parsed_args.zip_eml)
+    ctx.update_db_and_send_mailing(prepared_batch, zip_eml=ctx.parsed_args.zip_eml)
 
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)

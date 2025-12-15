@@ -255,7 +255,7 @@ def main(argv=None):
     if not ctx.parsed_args.pdf:
         ctx.dry_run = True
 
-    mailing_config = wsjrdp2027.MailingConfig.from_yaml(
+    batch_config = wsjrdp2027.BatchConfig.from_yaml(
         SELFDIR / "sondervereinbarungen_beitrag_raten.yml",
         where=wsjrdp2027.PeopleWhere(
             id=ctx.parsed_args.person_id,
@@ -263,22 +263,22 @@ def main(argv=None):
             fee_rules=["planned", "active"],
         ),
     )
-    df = ctx.load_person_dataframe_for_mailing(mailing_config)
+    df = ctx.load_person_dataframe_for_batch(batch_config)
     row = df.iloc[0]
     id_and_name = f"{row['id']} {row['short_full_name']}"
     ctx.out_dir = ctx.out_dir / id_and_name
-    mailing_config.name = f"WSJ27 Sondervereinbarung Ratenplan {id_and_name}"
+    batch_config.name = f"WSJ27 Sondervereinbarung Ratenplan {id_and_name}"
     if row["custom_installments_issue"]:
-        mailing_config.extra_email_bcc = wsjrdp2027.merge_mail_addresses(
-            mailing_config.extra_email_bcc, "unit-management@worldscoutjamboree.de"
+        batch_config.extra_email_bcc = wsjrdp2027.merge_mail_addresses(
+            batch_config.extra_email_bcc, "unit-management@worldscoutjamboree.de"
         )
-    mailing_config.update_raw_yaml()
+    batch_config.update_raw_yaml()
 
-    out_base = ctx.make_out_path(mailing_config.name)
+    out_base = ctx.make_out_path(batch_config.name)
     ctx.configure_log_file(out_base.with_suffix(".log"))
 
     with ctx.psycopg_connect() as conn:
-        mailing = mailing_config.prepare_mailing_for_dataframe(
+        mailing = batch_config.prepare_batch_for_dataframe(
             df,
             conn=conn,
             msg_cb=lambda p: attach_sondervereinbarung_raten(ctx, p),
