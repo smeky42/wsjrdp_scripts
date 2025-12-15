@@ -1,0 +1,16 @@
+[build-system]
+requires = ["uv_build>=0.9.17,<0.10.0"]
+build-backend = "uv_build"
+
+[project]
+name = "pytest-wsjrdp2027"
+version = "0.0.1"
+description = "PyTest Helpers for wsjrdp_scripts"
+readme = "README.md"
+authors = [
+    { name = "David Fritzsche", email = "david.fritzsche@worldscoutjamboree.de" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "pytest",
+]

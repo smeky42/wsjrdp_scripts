@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses as _dataclasses
 import datetime as _datetime
 import logging as _logging
 import typing as _typing
@@ -427,7 +428,7 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
         cursor,
         subject_id=row["id"],
         author_id=row["accounting_author_id"],
-        amount=int(row.get("amount", 0)),
+        amount=int(row.get("open_amount_cents", 0)),
         description=row["accounting_description"],
         created_at=booking_at,
         payment_initiation_id=row.get("sepa_dd_payment_initiation_id"),
@@ -733,6 +734,90 @@ def write_payment_dataframe_to_xlsx(
     writer.close()
 
 
+@_dataclasses.dataclass(kw_only=True)
+class _PreNotificationInfo:
+    ids: list[int] = _dataclasses.field(default_factory=lambda: [])
+    collection_date: _datetime.date = _datetime.date.min
+    endtoend_ids: dict = _dataclasses.field(default_factory=lambda: {})
+    id_to_pn_row: dict[int, _pandas.Series] = _dataclasses.field(
+        default_factory=lambda: {}
+    )
+
+    @classmethod
+    def from_pn_df(cls, raw_pn_df) -> _typing.Self:
+        if len(raw_pn_df) == 0:
+            return cls.__from_empty()
+        else:
+            return cls.__from_raw_pn_df(raw_pn_df)
+
+    @classmethod
+    def __from_empty(cls) -> _typing.Self:
+        return cls()
+
+    @classmethod
+    def __from_raw_pn_df(cls, raw_pn_df: _pandas.DataFrame) -> _typing.Self:
+        import textwrap
+
+        raw_pn_df["full_name"] = raw_pn_df["first_name"] + " " + raw_pn_df["last_name"]
+        id_to_pn_row = {row["subject_id"]: row for _, row in raw_pn_df.iterrows()}
+        all_pn_ids = set(raw_pn_df["id"])
+
+        _LOGGER.info(
+            "all pre notifications:\n%s", textwrap.indent(str(raw_pn_df), "  | ")
+        )
+        _LOGGER.info(
+            "all pre notification id's (%s):\n  | all_pn_ids = %s",
+            len(all_pn_ids),
+            sorted(all_pn_ids),
+        )
+
+        pn_df = raw_pn_df[raw_pn_df["try_skip"] == False]
+        keep_pn_ids = set(pn_df["id"])
+
+        _LOGGER.info(
+            "not skipped pre notification id's (%s):\n  | keep_pn_ids = %s",
+            len(keep_pn_ids),
+            sorted(keep_pn_ids),
+        )
+        skipped_pn_df = raw_pn_df[~raw_pn_df["id"].isin(keep_pn_ids)]
+
+        if len(skipped_pn_df):
+            for _, row in skipped_pn_df.iterrows():
+                _LOGGER.info(
+                    """skipped pre notification (do not collect) for %s %s (pre notification id: %s):
+      try_skip: %s
+      payment_status: %s
+      row:
+    %s""",
+                    row["subject_id"],
+                    row["full_name"],
+                    row["id"],
+                    row["try_skip"],
+                    row["payment_status"],
+                    textwrap.indent(row.to_string(), "    | "),
+                )
+
+            _LOGGER.info(
+                "skipped pre notifications:\n%s",
+                textwrap.indent(str(skipped_pn_df), "  | "),
+            )
+        else:
+            _LOGGER.info("No pre notifications have been skipped")
+
+        ids = list(pn_df["subject_id"])
+        collection_dates = set(pn_df["collection_date"])
+        assert len(collection_dates) == 1
+        collection_date = list(collection_dates)[0]
+        endtoend_ids = {k: v["endtoend_id"] for k, v in id_to_pn_row.items()}
+
+        return cls(
+            ids=ids,
+            collection_date=collection_date,
+            endtoend_ids=endtoend_ids,
+            id_to_pn_row=id_to_pn_row,
+        )
+
+
 def load_payment_dataframe_from_payment_initiation(
     conn: _psycopg.Connection,
     *,
@@ -804,90 +889,59 @@ WHERE
         cur.close()
 
     raw_pn_df = pd.DataFrame(rows)
-    raw_pn_df["full_name"] = raw_pn_df["first_name"] + " " + raw_pn_df["last_name"]
 
-    id_to_pn_row = {row["subject_id"]: row for _, row in raw_pn_df.iterrows()}
+    pninf = _PreNotificationInfo.from_pn_df(raw_pn_df=raw_pn_df)
 
-    _LOGGER.info("all pre notifications:\n%s", textwrap.indent(str(raw_pn_df), "  | "))
-    all_pn_ids = set(raw_pn_df["id"])
-    _LOGGER.info(
-        "all pre notification id's (%s):\n  | all_pn_ids = %s",
-        len(all_pn_ids),
-        sorted(all_pn_ids),
-    )
-
-    pn_df = raw_pn_df[raw_pn_df["try_skip"] == False]
-    keep_pn_ids = set(pn_df["id"])
-
-    _LOGGER.info(
-        "not skipped pre notification id's (%s):\n  | keep_pn_ids = %s",
-        len(keep_pn_ids),
-        sorted(keep_pn_ids),
-    )
-    skipped_pn_df = raw_pn_df[~raw_pn_df["id"].isin(keep_pn_ids)]
-
-    if len(skipped_pn_df):
-        for _, row in skipped_pn_df.iterrows():
-            _LOGGER.info(
-                """skipped pre notification (do not collect) for %s %s (pre notification id: %s):
-  try_skip: %s
-  payment_status: %s
-  row:
-%s""",
-                row["subject_id"],
-                row["full_name"],
-                row["id"],
-                row["try_skip"],
-                row["payment_status"],
-                textwrap.indent(row.to_string(), "    | "),
-            )
-
-        _LOGGER.info(
-            "skipped pre notifications:\n%s",
-            textwrap.indent(str(skipped_pn_df), "  | "),
-        )
-    else:
-        _LOGGER.info("No pre notifications have been skipped")
-
-    ids = list(pn_df["subject_id"])
-    collection_dates = set(pn_df["collection_date"])
-    assert len(collection_dates) == 1
-    collection_date = list(collection_dates)[0]
-    endtoend_ids = {k: v["endtoend_id"] for k, v in id_to_pn_row.items()}
-
-    where = _util.combine_where(where, _util.in_expr("people.id", ids))
+    where = _util.combine_where(where, _util.in_expr("people.id", pninf.ids))
 
     df = load_payment_dataframe(
         conn,
-        query=_people_query.PeopleQuery(where=where, collection_date=collection_date),
+        query=_people_query.PeopleQuery(
+            where=where, collection_date=pninf.collection_date
+        ),
         pedantic=pedantic,
-        endtoend_ids=endtoend_ids,
-    )
-    df["sepa_dd_payment_initiation_id"] = payment_initiation_id
-    df["sepa_dd_direct_debit_payment_info_id"] = df["id"].map(
-        lambda person_id: id_to_pn_row[person_id]["direct_debit_payment_info_id"]
-    )
-    df["sepa_dd_pre_notification_id"] = df["id"].map(
-        lambda person_id: id_to_pn_row[person_id]["id"]
-    )
-    df["pre_notified_amount"] = df["id"].map(
-        lambda person_id: id_to_pn_row[person_id]["amount_cents"]
+        endtoend_ids=pninf.endtoend_ids,
     )
 
-    amount_changed_df = df[df["open_amount_cents"] != df["pre_notified_amount"]]
-    if report_amount_differences:
-        if len(amount_changed_df):
-            for _, row in amount_changed_df.iterrows():
+    if len(df):
+        df["sepa_dd_payment_initiation_id"] = payment_initiation_id
+        df["sepa_dd_direct_debit_payment_info_id"] = df["id"].map(
+            lambda person_id: pninf.id_to_pn_row[person_id][
+                "direct_debit_payment_info_id"
+            ]
+        )
+        df["sepa_dd_pre_notification_id"] = df["id"].map(
+            lambda person_id: pninf.id_to_pn_row[person_id]["id"]
+        )
+        df["pre_notified_amount"] = df["id"].map(
+            lambda person_id: pninf.id_to_pn_row[person_id]["amount_cents"]
+        )
+
+        amount_changed_df = df[df["open_amount_cents"] != df["pre_notified_amount"]]
+        if report_amount_differences:
+            if len(amount_changed_df):
+                for _, row in amount_changed_df.iterrows():
+                    _LOGGER.info(
+                        "amount different between pre notification and current computation for %s %s:\n%s",
+                        row["id"],
+                        row["full_name"],
+                        textwrap.indent(row.to_string(), "  | "),
+                    )
+            else:
                 _LOGGER.info(
-                    "amount different between pre notification and current computation for %s %s:\n%s",
-                    row["id"],
-                    row["full_name"],
-                    textwrap.indent(row.to_string(), "  | "),
+                    "All due amounts are the same between pre notification and current computation"
                 )
-        else:
-            _LOGGER.info(
-                "All due amounts are the same between pre notification and current computation"
-            )
+    else:
+        new_cols = [
+            "sepa_dd_payment_initiation_id",
+            "sepa_dd_direct_debit_payment_info_id",
+            "sepa_dd_pre_notification_id",
+            "pre_notified_amount",
+        ]
+        columns = list(df.columns) + [
+            col for col in new_cols if col not in set(df.columns)
+        ]
+        df = df.reindex(columns=columns)
 
     return df
 

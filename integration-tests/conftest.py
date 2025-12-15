@@ -71,7 +71,7 @@ def run_wsjrdp_script_out_dir(
 
 @pytest.fixture
 def run_wsjrdp_script(run_wsjrdp_script_out_dir):
-    from wsjrdp_scripts_integrations_tests.wsjrdp_script_runner import run_script
+    from pytest_wsjrdp2027 import run_script
 
     return run_script
 

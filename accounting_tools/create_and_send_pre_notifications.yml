@@ -4,8 +4,9 @@ updates:
 query:
   where:
     sepa_status: 'ok'
-    status: ['reviewed', 'confirmed']
+    status: ['confirmed']
     role: ['CMT', 'UL', 'YP', 'IST']
+    exclude_primary_group_id: [5, 6, 7, 45]
   include_sepa_mail_in_mailing_to: true
 from_addr: "anmeldung@worldscoutjamboree.de"
 email_from: "anmeldung@worldscoutjamboree.de"
