@@ -1,0 +1,8 @@
+name: confirm_reviewed
+updates:
+  new_status: confirmed
+query:
+  where:
+    status: reviewed
+    exclude_primary_group_id: [5, 6, 7]
+skip_email: true

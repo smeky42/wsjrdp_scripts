@@ -25,10 +25,13 @@ dev = [
     "ruff>=0.12.7",
     "sepaxml>=2.6.2",
     "sshtunnel>=0.4.0",
+    "ty>=0.0.1a34",
+    "types-lxml>=2025.11.25",
     "xlsxwriter>=3.2.5",
 ]
 local = [
     "wsjrdp2027",
+    "pytest-wsjrdp2027",
 ]
 mypy = [
     "mypy>=1.17.1",
@@ -57,10 +60,12 @@ default = true
 
 [tool.uv.sources]
 wsjrdp2027 = { workspace = true }
+pytest-wsjrdp2027 = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "packages/wsjrdp2027",
+    "packages/pytest_wsjrdp2027",
 ]
 
 

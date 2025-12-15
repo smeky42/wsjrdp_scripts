@@ -1,12 +1,41 @@
 from __future__ import annotations
 
+import logging as _logging
 import os as _os
 import pathlib as _pathlib
+import shlex as _shlex
 import subprocess as _subprocess
 
 
+_LOGGER = _logging.getLogger(__name__)
 _SELFDIR = _pathlib.Path(__file__).parent.resolve()
-_ROOT_DIR = (_SELFDIR / ".." / "..").resolve()
+_ROOT_DIR = (_SELFDIR / ".." / ".." / ".." / "..").resolve()
+
+
+def uv_run(
+    args, stderr=_subprocess.STDOUT, env=None, check=True, env_update=None, **kwargs
+):
+    if env is None:
+        env = _os.environ.copy()
+    else:
+        env = env.copy()
+    env["WSJRDP_SCRIPTS_CONFIG"] = str(
+        _ROOT_DIR / "integration-tests" / "config-integration-tests.yml"
+    )
+    if env_update is not None:
+        env.update(env_update)
+    if isinstance(args, str):
+        args = f"uv run {args}"
+        cmd_string = args
+    else:
+        args = ["uv", "run", *args]
+        cmd_string = " ".join(_shlex.quote(a) for a in args)
+    _LOGGER.info("Run %s", cmd_string)
+    return _subprocess.run(args, **kwargs, stderr=stderr, env=env, check=check)
+
+
+def restore_integration_tests_db():
+    uv_run(["./tools/db_restore.py", "./integration-tests/hitobito_production.dump"])
 
 
 def run_script(script, *args):

@@ -306,8 +306,8 @@ def fee_due_by_date_in_cent_from_plan(
     cents_due = accumulated[pos]
     if row is not None:
         installments_str = "\n".join(
-            f"{d}: {i / 100:9.2f} EUR / {a / 100:9.2f} EUR"
-            for d, i, a in zip(dates, installments, accumulated)
+            f"{'*' if idx == pos else ' '} {d}: {i / 100:9.2f} EUR  / {a / 100:9.2f} EUR"
+            for idx, (d, i, a) in enumerate(zip(dates, installments, accumulated))
         )
         _LOGGER.debug(
             "%s fee due by %s: %s EUR\n%s\n  | -> pos=%s",
@@ -827,6 +827,8 @@ def update_dataframe_for_updates(
 
     used_changes = []
 
+    new_cols = []
+
     for key in updates:
         if key not in _person_pg.VALID_PERSON_UPDATE_KEYS:
             raise TypeError(f"Invalid keyword argument {key!r}")
@@ -834,9 +836,17 @@ def update_dataframe_for_updates(
         chg = _person_pg.UPDATE_KEY_TO_CHANGE[key]
         new_val = updates.get(chg.col_name)
         used_changes.append(chg)
-        df[chg.col_name] = df.apply(
-            lambda row: chg.compute_df_val(row, new_val), axis=1
-        )
+        if len(df) == 0:
+            new_cols.append(chg.col_name)
+        else:
+            df[chg.col_name] = df.apply(
+                lambda row: chg.compute_df_val(row, new_val), axis=1
+            )
+
+    if len(df) == 0:
+        if used_changes:
+            new_cols.extend(["db_changes", "person_changes"])
+        return df.reindex(columns=list(df.columns) + new_cols)
 
     if used_changes:
         df["db_changes"] = False

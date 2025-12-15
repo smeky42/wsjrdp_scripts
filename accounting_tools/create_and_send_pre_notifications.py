@@ -209,8 +209,9 @@ def handle_df(df: pd.DataFrame) -> pd.DataFrame:
         _LOGGER.error("Would skip amounts. Exit")
         raise SystemExit(1)
     if sum_ok == 0:
-        _LOGGER.warning("No amount to transfer. Exit")
-        raise SystemExit(0)
+        _LOGGER.warning("")
+        _LOGGER.warning("No amount to transfer.")
+        _LOGGER.warning("")
 
     payment_finished_ids = (
         frozenset(wsjrdp2027.EARLY_PAYER_AUGUST_IDS_SUPERSET)
