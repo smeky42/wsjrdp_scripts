@@ -356,7 +356,7 @@ def pg_update_person(
 
     updates = list(updates)
     if not updates:
-        _LOGGER.debug('Skip executing UPDATE "people" ... as now updates were given')
+        _LOGGER.debug('Skip executing UPDATE "people" ... as no updates were given')
         return
 
     sql_updates = SQL(", ").join(

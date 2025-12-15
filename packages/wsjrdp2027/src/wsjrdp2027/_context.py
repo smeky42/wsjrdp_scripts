@@ -9,7 +9,7 @@ import os as _os
 import pathlib as _pathlib
 import typing as _typing
 
-from ._mail_config import WsjRdpMailConfig
+from . import _types
 
 
 if _typing.TYPE_CHECKING:
@@ -22,13 +22,12 @@ if _typing.TYPE_CHECKING:
     import psycopg as _psycopg
     import sshtunnel as _sshtunnel
 
-    from . import _mail_client, _mailing
+    from . import _mail_client, _mail_config, _mailing
 
 
 __all__ = [
     "WsjRdpContext",
     "WsjRdpContextConfig",
-    "WsjRdpMailConfig",
 ]
 
 
@@ -57,7 +56,7 @@ class WsjRdpContextConfig:
     smtp_username: str = ""
     smtp_password: str = ""
 
-    mail_accounts: dict[str, WsjRdpMailConfig] = _dataclasses.field(
+    mail_accounts: dict[str, _mail_config.WsjRdpMailConfig] = _dataclasses.field(
         default_factory=lambda: {}
     )
 
@@ -67,6 +66,8 @@ class WsjRdpContextConfig:
     @classmethod
     def from_file(cls, path: str | _pathlib.Path | None = None) -> _typing.Self:
         import yaml as _yaml
+
+        from . import _mail_config
 
         if path is None:
             _LOGGER.debug("[config] Check if env WSJRDP_SCRIPTS_CONFIG is set")
@@ -109,8 +110,8 @@ class WsjRdpContextConfig:
                 ssh_username=ssh_username,
                 ssh_private_key=ssh_private_key,
             )
-        mail_accounts: dict[str, WsjRdpMailConfig] = {
-            "": WsjRdpMailConfig(
+        mail_accounts: dict[str, _mail_config.WsjRdpMailConfig] = {
+            "": _mail_config.WsjRdpMailConfig(
                 smtp_server=config["smtp_server"],
                 smtp_port=config["smtp_port"],
                 smtp_username=str(config.get("smtp_username", "")),
@@ -121,7 +122,7 @@ class WsjRdpContextConfig:
         if (mail_accounts_config := config.get("mail_accounts")) is not None:
             mail_accounts.update(
                 {
-                    k: WsjRdpMailConfig(**{"email_from": k, **v})
+                    k: _mail_config.WsjRdpMailConfig(**{"email_from": k, **v})
                     for k, v in mail_accounts_config.items()
                 }
             )
@@ -767,15 +768,15 @@ class WsjRdpContext:
         else:
             return ""
 
-    def get_mail_config(self, from_addr: str | None) -> WsjRdpMailConfig:
+    def get_mail_config(self, from_addr: str | None) -> _mail_config.WsjRdpMailConfig:
         from_addr = self.__normalize_email_addr(from_addr)
         return self._config.mail_accounts[from_addr]
 
     def __get_mail_config(
         self,
-        mail_config: WsjRdpMailConfig | None = None,
+        mail_config: _mail_config.WsjRdpMailConfig | None = None,
         from_addr: str | None = None,
-    ) -> WsjRdpMailConfig:
+    ) -> _mail_config.WsjRdpMailConfig:
         if mail_config is not None:
             if from_addr:
                 raise ValueError("Only one of mail_config and email_from must be given")
@@ -788,14 +789,14 @@ class WsjRdpContext:
     def mail_login(
         self,
         *,
-        mail_config: WsjRdpMailConfig | None = None,
+        mail_config: _mail_config.WsjRdpMailConfig | None = None,
         from_addr: str | None = None,
         dry_run: bool | None = None,
     ) -> _typing.Iterator[_mail_client.MailClient]:
         from . import _mail_client
 
         def confirm_send_callback(
-            config: WsjRdpMailConfig, message: _email_message.EmailMessage
+            config: _mail_config.WsjRdpMailConfig, message: _email_message.EmailMessage
         ) -> bool:
             prompt = (
                 f"Do you want to send email messages in a PRODUCTION environment "
@@ -898,18 +899,25 @@ class WsjRdpContext:
         /,
         *,
         collection_date: _datetime.date | str | None = None,
-        limit: int | None = None,
+        limit: int | None | _types.MissingType = _types.MISSING,
         out_dir: _pathlib.Path | str | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        df_cb: _collections_abc.Callable[[_pandas.DataFrame], _pandas.DataFrame]
+        | None = None,
     ) -> _mailing.PreparedMailing:
-        if now is None:
-            now = self.start_time
+        from . import _util
+
+        now = _util.coalesce(now, mailing_config.query.now, self.start_time)
+        collection_date = _util.coalesce(
+            collection_date, mailing_config.query.collection_date
+        )
         mailing = mailing_config.query_people_and_prepare_mailing(
             ctx=self,
             limit=limit,
             collection_date=collection_date,
             out_dir=(_pathlib.Path(out_dir) if out_dir else self.out_dir),
             now=now,
+            df_cb=df_cb,
         )
         if not out_dir:
             mailing.out_dir = self.__compute_mailing_out_dir(mailing)

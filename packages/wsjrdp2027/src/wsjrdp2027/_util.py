@@ -590,6 +590,22 @@ def _raise_runtime_error(s):
     raise RuntimeError(s)
 
 
+def coalesce(*args: _T | None) -> _T | None:
+    for arg in args:
+        if arg is not None:
+            return arg
+    else:
+        return None
+
+
+def coalesce_missing(*args: _T | _types.MissingType) -> _T | None:
+    for arg in args:
+        if not isinstance(arg, _types.MissingType):
+            return arg
+    else:
+        return None
+
+
 def dedup_iter(iterable):
     """Deduplicate *iterable*."""
     memo = set()

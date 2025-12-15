@@ -6,6 +6,8 @@ import typing as _typing
 __all__ = [
     "NULL",
     "NOT_NULL",
+    "MissingType",
+    "MISSING",
 ]
 
 
@@ -38,3 +40,19 @@ class NullOrNotType:
 
 NULL = NullOrNotType(name="NULL", sql_literal="NULL", bool_value=False)
 NOT_NULL = NullOrNotType(name="NOT_NULL", sql_literal="NOT NULL", bool_value=True)
+
+
+class MissingType:
+    def __copy__(self) -> _typing.Self:
+        return self
+
+    def __deepcopy__(self, memo) -> _typing.Self:
+        return self
+
+    def __repr__(self) -> str:
+        return "MISSING"
+
+    __str__ = __repr__
+
+
+MISSING = MissingType()

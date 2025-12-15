@@ -8,7 +8,7 @@ import logging as _logging
 import pathlib as _pathlib
 import typing as _typing
 
-from . import _people_query, _util
+from . import _people_query, _types, _util
 
 
 if _typing.TYPE_CHECKING:
@@ -75,6 +75,7 @@ class PreparedEmailMessage:
 class PreparedMailing:
     name: str = "mailing"
     df: _pandas.DataFrame
+    unfiltered_df: _pandas.DataFrame | None = None
     messages: tuple[PreparedEmailMessage, ...] = ()
     action_arguments: dict = _dataclasses.field(default_factory=lambda: {})
     updates: dict = _dataclasses.field(default_factory=lambda: {})
@@ -114,6 +115,7 @@ class PreparedMailing:
         out_dir.mkdir(exist_ok=True, parents=True)
         _LOGGER.info("  mailing output directory: %s", out_dir)
         xlsx_path = out_dir / f"{self.name}.xlsx"
+        unfiltered_xlsx_path = out_dir / f"{self.name}.unfiltered.xlsx"
         yml_path = out_dir / f"{self.name}.yml"
         if zip_eml:
             zip_buf = io.BytesIO()
@@ -140,7 +142,12 @@ class PreparedMailing:
         _people.write_people_dataframe_to_xlsx(
             self.df, xlsx_path, log_level=_logging.DEBUG
         )
-        _LOGGER.info("  wrote xlsx %s", xlsx_path)
+        _LOGGER.info("  wrote df xlsx %s", xlsx_path)
+        if self.unfiltered_df is not None:
+            _people.write_people_dataframe_to_xlsx(
+                self.unfiltered_df, unfiltered_xlsx_path, log_level=_logging.DEBUG
+            )
+            _LOGGER.info("  wrote unfiltered_df xlsx %s", unfiltered_xlsx_path)
         if self.config_yaml:
             with open(yml_path, "wb") as f:
                 f.write(self.config_yaml)
@@ -207,7 +214,7 @@ class MailingConfig:
     updates: dict = _dataclasses.field(default_factory=lambda: {})
     dry_run: bool = False
     skip_email: bool = None  # type: ignore
-    skip_db_updates: bool = False
+    skip_db_updates: bool | None = None
     raw_yaml: bytes | None = None
 
     def __post_init__(
@@ -331,6 +338,9 @@ class MailingConfig:
         from . import _util
 
         d = {
+            "dry_run": self.dry_run,
+            "skip_db_updates": self.skip_db_updates,
+            "skip_email": self.skip_email,
             "action_arguments": (self.action_arguments or None),
             "updates": (self.updates or None),
             "query": (self.query.__to_dict__() if self.query is not None else None),
@@ -387,8 +397,14 @@ class MailingConfig:
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         log_resulting_data_frame: bool | None = None,
-        limit: int | None = None,
-        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        limit: int | None | _types.MissingType = _types.MISSING,
+        now: _datetime.datetime
+        | _datetime.date
+        | str
+        | int
+        | float
+        | None
+        | _types.MissingType = _types.MISSING,
     ) -> _pandas.DataFrame:
         import textwrap
 
@@ -396,11 +412,17 @@ class MailingConfig:
 
         from . import _people, _util
 
+        limit = _util.coalesce_missing(limit, self.query.limit)
+        now = _util.coalesce_missing(collection_date, self.query.collection_date)
+
         query = self.query.replace(
             limit=limit,
             collection_date=_util.to_date_or_none(collection_date),
             now=_util.to_datetime_or_none(now),
         )
+        _LOGGER.debug("MailingConfig.load_people_dataframe")
+        _LOGGER.debug("  collection_date: %s", query.collection_date)
+        _LOGGER.debug("  now: %s", query.now)
 
         with _contextlib.ExitStack() as exit_stack:
             if conn is None:
@@ -452,23 +474,32 @@ class MailingConfig:
         collection_date: _datetime.date | str | None = None,
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
+        df_cb: _collections_abc.Callable[[_pandas.DataFrame], _pandas.DataFrame]
+        | None = None,
         msg_cb: _collections_abc.Callable[[PreparedEmailMessage], None] | None = None,
         out_dir: _pathlib.Path | None = None,
         msgid_idstring: str | None = None,
         msgid_domain: str | None = None,
         log_resulting_data_frame: bool | None = None,
-        limit: int | None = None,
-        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        limit: int | None | _types.MissingType = _types.MISSING,
+        now: _datetime.datetime
+        | _datetime.date
+        | str
+        | int
+        | float
+        | None
+        | _types.MissingType = _types.MISSING,
     ) -> PreparedMailing:
         from . import _util
 
-        now = _util.to_datetime(now)
+        limit = _util.coalesce_missing(limit, self.query.limit)
+        now = _util.to_datetime(_util.coalesce_missing(now, self.query.now))
 
         with _contextlib.ExitStack() as exit_stack:
             if conn is None:
                 conn = exit_stack.enter_context(ctx.psycopg_connect())
 
-            df = self.load_people_dataframe(
+            df = unfiltered_df = self.load_people_dataframe(
                 ctx=ctx,
                 conn=conn,
                 collection_date=collection_date,
@@ -478,10 +509,14 @@ class MailingConfig:
                 limit=limit,
                 now=now,
             )
+            if df_cb is not None:
+                _LOGGER.info("Update dataframe using callback %s", str(df_cb))
+                df = df_cb(df)
             if out_dir is None:
                 out_dir = ctx.out_dir
             return self.prepare_mailing_for_dataframe(
                 df,
+                unfiltered_df=unfiltered_df,
                 conn=conn,
                 msg_cb=msg_cb,
                 out_dir=out_dir,
@@ -495,6 +530,7 @@ class MailingConfig:
         df: _pandas.DataFrame,
         *,
         conn: _psycopg.Connection,
+        unfiltered_df: _pandas.DataFrame | None = None,
         msg_cb: _collections_abc.Callable[[PreparedEmailMessage], None] | None = None,
         out_dir: _pathlib.Path | None = None,
         msgid_idstring: str | None = None,
@@ -535,6 +571,7 @@ class MailingConfig:
         return PreparedMailing(
             name=self.name,
             df=df,
+            unfiltered_df=unfiltered_df,
             messages=messages,
             config_yaml=config_yaml,
             action_arguments=self.action_arguments,
@@ -545,7 +582,7 @@ class MailingConfig:
             now=now,
             dry_run=dry_run,
             skip_email=skip_email,
-            skip_db_updates=skip_db_updates,
+            skip_db_updates=bool(_util.coalesce(skip_db_updates, False)),
         )
 
     def prepare_email_message_for_row(

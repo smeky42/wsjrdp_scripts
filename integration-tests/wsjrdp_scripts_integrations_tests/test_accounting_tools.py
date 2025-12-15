@@ -11,8 +11,9 @@ class Test_Run_Accounting_Tools:
 
         run_wsjrdp_script(
             "accounting_tools/create_and_send_pre_notifications.py",
-            "--no-accounting",
+            "--skip-db-updates",
             "--collection-date=2027-05-31",
+            "--limit=200",
         )
         xml_files = list(run_wsjrdp_script_out_dir.rglob("*.xml"))
         assert len(xml_files) == 1

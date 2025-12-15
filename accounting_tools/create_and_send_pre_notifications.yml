@@ -1,0 +1,35 @@
+name: pre_notification
+updates:
+  add_note: "Pre-Notification für SEPA Einzug {{ row.collection_date | month_year_de }} verschickt"
+query:
+  where:
+    sepa_status: 'ok'
+    status: ['reviewed', 'confirmed']
+    role: ['CMT', 'UL', 'YP', 'IST']
+from_addr: "anmeldung@worldscoutjamboree.de"
+email_from: "anmeldung@worldscoutjamboree.de"
+email_reply_to: "info@worldscoutjamboree.de"
+email_subject: "WSJ 2027 - {{ row.short_full_name }} (id {{ row.id }}) - Ankündigung SEPA Lastschrifteinzug ab {{ row.collection_date | date_de }}"
+signature: "{{ EMAIL_SIGNATURE_ORG }}"
+content: |
+  Hallo {{ row.sepa_name }}, Hallo {{ row.greeting_name }},
+
+  wir werden den nächsten SEPA Lastschrifteinzug ab dem {{ row.collection_date | date_de }} durchführen.
+
+  Du nimmst mit folgenden Daten an diesem Lastschrifteinzug teil:
+
+  Teilnehmer*in: {{ row.full_name }}
+  Betrag: {{ row.open_amount_cents | format_cents_as_eur_de }}
+
+  Kontoinhaber*in: {{ row.sepa_name }}
+  IBAN: {{ row.sepa_iban }}
+  Mandatsreferenz: {{ row.sepa_mandate_id }}
+  Verwendungszweck: {{ row.sepa_dd_description }}
+  Kundenreferenz: {{ row.sepa_dd_endtoend_id }}
+
+
+  Falls du Fragen hast, schau auf unserer Homepage https://worldscoutjamboree.de/ vorbei oder wende dich an info@worldscoutjamboree.de.
+
+  Dein WSJ-Orga-Team
+
+  Daffi und Peter
