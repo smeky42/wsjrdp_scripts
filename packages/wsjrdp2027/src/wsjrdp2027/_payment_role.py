@@ -290,7 +290,10 @@ class PaymentRole(_enum.Enum):
         else:
             print_at = _util.to_date(print_at)
             print_at_plus_notification_days = print_at + _datetime.timedelta(days=4)
-            single_payment_at = max(today, print_at_plus_notification_days)
+            if today < _datetime.date(2026, 1, 1):
+                single_payment_at = max(today, print_at_plus_notification_days)
+            else:
+                single_payment_at = print_at_plus_notification_days
 
         if early_payer is None:
             early_payer = self.is_early_payer
@@ -298,14 +301,14 @@ class PaymentRole(_enum.Enum):
             start_of_next_month = (
                 single_payment_at.replace(day=1) + _datetime.timedelta(days=32)
             ).replace(day=1)
-            if start_of_next_month.year == 2025 and start_of_next_month.month == 12:
-                start_of_next_month = start_of_next_month.replace(year=2026, month=1)
-            return {
-                (
-                    start_of_next_month.year,
-                    start_of_next_month.month,
-                ): max(self.regular_full_fee_eur - fee_reduction_eur, 0)
-            }
+            ym = (start_of_next_month.year, start_of_next_month.month)
+            total_fee = max(self.regular_full_fee_eur - fee_reduction_eur, 0)
+            if ym <= (2025, 12):
+                return {(2026, 1): total_fee}
+            elif ym in ((2025, 9), (2025, 10)):
+                return {(2025, 11): total_fee}
+            else:
+                return {ym: total_fee}
 
         dates = _PAYMENT_DATES
         raw_installments: list[float] = _PAYMENT_ROLE_TO_INSTALLMENTS[self]  # type: ignore

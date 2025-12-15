@@ -430,7 +430,6 @@ def _enrich_people_dataframe(
     id2roles: dict[int, list[dict[str, _typing.Any]]],
     id2person_dicts: dict[int, dict],
     today: _datetime.date,
-    print_at: _datetime.date | None = None,
     collection_date: _datetime.date | None = None,
     extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
 ) -> None:
@@ -465,8 +464,6 @@ def _enrich_people_dataframe(
     df["birthday_de"] = df["birthday"].map(
         lambda d: d.strftime("%d.%m.%Y") if d is not None else None
     )
-    if print_at is not None:
-        df["print_at"] = print_at
     df["mailing_from"] = "anmeldung@worldscoutjamboree.de"
     df["mailing_to"] = df["email"].map(lambda s: ([s] if s else None))
     df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)
@@ -543,7 +540,6 @@ def load_people_dataframe(
     query: _people_query.PeopleQuery | None = None,
     where: str | _people_query.PeopleWhere | None = "",
     group_by: str = "",
-    limit: int | None = None,
     fee_rules: str | _collections_abc.Iterable[str] | None = None,
     log_resulting_data_frame: bool | None = None,
     now: _datetime.datetime | _datetime.date | str | int | float | None = None,
@@ -564,8 +560,6 @@ def load_people_dataframe(
             raise ValueError("Only one of 'query' and 'where' is allowed")
         else:
             where = query.where
-        if limit is None:
-            limit = query.limit
         if now is None:
             now = query.now
     else:
@@ -597,8 +591,8 @@ def load_people_dataframe(
     where_clause = f"WHERE {where}" if where else ""
     group_by_clause = f"GROUP BY {group_by}" if group_by else ""
 
-    if limit is not None:
-        limit_clause = f"\nLIMIT {limit}"
+    if query.limit is not None:
+        limit_clause = f"\nLIMIT {query.limit}"
     else:
         limit_clause = ""
 
@@ -654,12 +648,15 @@ ORDER BY people.id{limit_clause}
 
         if "\n" in where_clause:
             _LOGGER.info(
-                "Fetch people SQL where clause:\n%s",
+                "load_people_dataframe: Fetch people SQL where clause:\n%s",
                 textwrap.indent(where_clause, "  "),
             )
         else:
-            _LOGGER.info("Fetch people %s", where_clause)
-        _LOGGER.debug("Fetch people SQL Query:\n%s", textwrap.indent(sql_stmt, "  "))
+            _LOGGER.info("load_people_dataframe: Fetch people %s", where_clause)
+        _LOGGER.debug(
+            "load_people_dataframe: Fetch people SQL Query:\n%s",
+            textwrap.indent(sql_stmt, "  "),
+        )
         cur.execute(sql_stmt)  # type: ignore
         rows = cur.fetchall()
         cur.close()
@@ -678,7 +675,6 @@ ORDER BY people.id{limit_clause}
             id2roles=id2roles,
             id2person_dicts=id2person_dicts,
             today=today,
-            print_at=print_at,
             collection_date=query.collection_date,
             extra_mailing_bcc=extra_mailing_bcc,
         )
@@ -687,7 +683,7 @@ ORDER BY people.id{limit_clause}
             assert key not in df_columns, f"Cannot overwrite existing column {key}"
             df[key] = df.apply(lambda r: val, axis=1)
     if not (set(df) <= set(PEOPLE_DATAFRAME_COLUMNS)):
-        warn_msg = "Some columns of the resulting dataframe are not listed in PEOPLE_DATAFRAME_COLUMNS"
+        warn_msg = "load_people_dataframe: Some columns of the resulting dataframe are not listed in PEOPLE_DATAFRAME_COLUMNS"
         for col_name in list(df):
             if col_name not in PEOPLE_DATAFRAME_COLUMNS:
                 warn_msg += (
@@ -697,13 +693,13 @@ ORDER BY people.id{limit_clause}
     extra_columns = [
         col for col in df.columns if col not in frozenset(PEOPLE_DATAFRAME_COLUMNS)
     ]
-    _LOGGER.debug("detected extra columns: %s", extra_columns)
+    _LOGGER.debug("load_people_dataframe: detected extra columns: %s", extra_columns)
     columns = PEOPLE_DATAFRAME_COLUMNS[:] + extra_columns
     df = df.reindex(columns=columns)
 
     if query.collection_date is not None:
         _LOGGER.info(
-            "query.collection_date = %s given => enrich with payment information",
+            "load_people_dataframe: query.collection_date = %s given => enrich with payment information",
             query.collection_date,
         )
         from . import _payment
@@ -714,6 +710,8 @@ ORDER BY people.id{limit_clause}
             pedantic=False,
             reindex=False,
         )
+    else:
+        _LOGGER.debug("load_people_dataframe: query.collection_date is None")
 
     if log_resulting_data_frame or (log_resulting_data_frame is None):
         _LOGGER.info("Resulting pandas DataFrame:\n%s", textwrap.indent(str(df), "  "))

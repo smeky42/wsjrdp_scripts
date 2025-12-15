@@ -189,27 +189,38 @@ def main(argv=None):
             ),
         )
 
+    _LOGGER.info("")
+    _LOGGER.info("==== Overall payments: %s", len(df))
+    _LOGGER.info("")
     df_ok = df[df["payment_status"] == "ok"]
     df_not_ok = df[df["payment_status"] != "ok"]
 
     if len(df_not_ok):
         _LOGGER.info("")
-        _LOGGER.info("==== Skipped payments")
+        _LOGGER.info("==== Skipped payments (payment_status != 'ok')")
         _LOGGER.info("  Number of skipped payments: %s", len(df_not_ok))
         _LOGGER.info(
             "  Skipped payments DataFrame (payment_status != 'ok'):\n%s",
             textwrap.indent(str(df_not_ok), "  | "),
         )
+        for _, row in df_not_ok.iterrows():
+            _LOGGER.debug(
+                "    %5d %s / %s / %s",
+                row["id"],
+                row["short_full_name"],
+                row["payment_status"],
+                row["payment_status_reason"],
+            )
         sum_not_ok = int(df_not_ok["open_amount_cents"].sum())
         _LOGGER.info(
-            "  SUM(open_amount_cents): %s",
+            "  NOT OK payments: SUM(open_amount_cents): %s",
             wsjrdp2027.format_cents_as_eur_de(sum_not_ok),
         )
     else:
         sum_not_ok = 0
 
     _LOGGER.info("")
-    _LOGGER.info("==== Payments")
+    _LOGGER.info("==== Payments (payment_status == 'ok')")
     _LOGGER.info("  Number of payments: %s", len(df_ok))
     _LOGGER.info(
         "  Payments DataFrame (payment_status == 'ok'):\n%s",
@@ -218,7 +229,7 @@ def main(argv=None):
 
     sum_ok = int(df_ok["open_amount_cents"].sum())
     _LOGGER.info(
-        "  SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(sum_ok)
+        "  OK payments: SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(sum_ok)
     )
     _LOGGER.info("")
 
