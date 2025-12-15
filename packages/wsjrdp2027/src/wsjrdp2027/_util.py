@@ -531,6 +531,7 @@ def render_template(
             "raise_runtime_error": _raise_runtime_error,
             "log_info": (lambda s: _LOGGER.info("%s", s)),
             "tee_log_info": (lambda s: _tee_log(_logging.INFO, s)),
+            "format_iban": format_iban,
         }
     )
     jinja_env.filters.update(extra_filters or {})
@@ -588,6 +589,34 @@ def to_month_year_de(
 
 def _raise_runtime_error(s):
     raise RuntimeError(s)
+
+
+def format_iban(iban: str, /) -> str:
+    def mask(s: str, left: int, right: int, expected_length: int | None = None) -> str:
+        if expected_length is not None and len(s) != expected_length:
+            return s
+        mid_len = len(s) - left - right
+        if mid_len <= 0:
+            return s
+        else:
+            l = s[:left]
+            r = s[-right:]
+            return l + ("*" * mid_len) + r
+
+    iban = iban.upper().strip().replace(" ", "")
+    match iban[:2]:
+        case "AT":
+            return mask(iban, 4, 4, expected_length=20)
+        case "CH":
+            return mask(iban, 4, 4, expected_length=21)
+        case "DE":
+            return mask(iban, 4, 4, expected_length=22)
+        case "NL":
+            return mask(iban, 5, 4, expected_length=18)
+        case "IT":
+            return mask(iban, 5, 4, expected_length=27)
+        case _:
+            return iban
 
 
 def coalesce(*args: _T | None) -> _T | None:
