@@ -116,7 +116,7 @@ def _insert_pre_notifications_into_db(
     sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig,
     dry_run: bool | None = None,
     skip_db_updates: bool | None = None,
-) -> int | None:
+) -> dict:
     skip_reasons = []
     if dry_run:
         skip_reasons.append("dry_run is True")
@@ -124,7 +124,7 @@ def _insert_pre_notifications_into_db(
         skip_reasons.append("skip_db_updates is true")
     if skip_reasons:
         _LOGGER.info("Skip DB updates (%s)", ", ".join(skip_reasons))
-        return None
+        return {}
     _LOGGER.info("Update DB - INSERT pre notifications")
 
     with conn.cursor() as cur:
@@ -140,15 +140,24 @@ def _insert_pre_notifications_into_db(
         )
         _LOGGER.info("direct debit payment info id: %s", pymnt_inf_id)
 
+        pre_notification_ids = []
+        sum_open_amount_cents = 0
         for _, row in df.iterrows():
-            wsjrdp2027.insert_direct_debit_pre_notification_from_row(
+            sum_open_amount_cents += row["open_amount_cents"]
+            pre_note_id = wsjrdp2027.insert_direct_debit_pre_notification_from_row(
                 cur,
                 row=row,
                 payment_initiation_id=pain_id,
                 direct_debit_payment_info_id=pymnt_inf_id,
                 creditor_id=wsjrdp2027.CREDITOR_ID,
             )
-    return pain_id
+            pre_notification_ids.append(pre_note_id)
+    return {
+        "payment_initiation_id": pain_id,
+        "direct_debit_payment_info_id": pymnt_inf_id,
+        "direct_debit_pre_notification_ids": pre_notification_ids,
+        "sum_open_amount_cents": sum_open_amount_cents,
+    }
 
 
 def handle_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -265,14 +274,16 @@ def main(argv=None):
             now=prepared_batch.now,
             skip_db_updates=prepared_batch.skip_db_updates,
         )
-        maybe_pain_id = _insert_pre_notifications_into_db(
+        results = _insert_pre_notifications_into_db(
             conn=conn,
             df=df_ok,
             sepa_dd_config=sepa_dd_config,
             dry_run=prepared_batch.dry_run,
             skip_db_updates=prepared_batch.skip_db_updates,
         )
+        prepared_batch.results.update(results)
 
+    prepared_batch.write_results(json_indent=2)
     with ctx.mail_login(from_addr=prepared_batch.from_addr) as mail_client:
         prepared_batch.send(mail_client)
 
@@ -283,10 +294,10 @@ def main(argv=None):
         "SUM(open_amount_cents): %s",
         wsjrdp2027.format_cents_as_eur_de(df_ok["open_amount_cents"].sum()),
     )
-    if maybe_pain_id is None:
+    if (pain_id := results.get("payment_initiation_id")) is None:
         _LOGGER.info("No payment initiation written")
     else:
-        _LOGGER.info("Wrote payment initiation with id=%s", maybe_pain_id)
+        _LOGGER.info("Wrote payment initiation with id=%s", pain_id)
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)
     _LOGGER.info("  SEPA XML: %s", xml_filename)
