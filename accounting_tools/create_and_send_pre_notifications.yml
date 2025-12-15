@@ -6,6 +6,7 @@ query:
     sepa_status: 'ok'
     status: ['reviewed', 'confirmed']
     role: ['CMT', 'UL', 'YP', 'IST']
+  include_sepa_mail_in_mailing_to: true
 from_addr: "anmeldung@worldscoutjamboree.de"
 email_from: "anmeldung@worldscoutjamboree.de"
 email_reply_to: "info@worldscoutjamboree.de"

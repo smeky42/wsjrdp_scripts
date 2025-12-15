@@ -222,7 +222,9 @@ class WsjRdpContext:
 
         >>> prod_conf = WsjRdpContextConfig(is_production=True)
         >>> now = datetime.datetime(2025, 8, 15, 10, 30, 27, 1234, tzinfo=zoneinfo.ZoneInfo("Europe/Berlin"))
-        >>> prod_ctx = WsjRdpContext(prod_conf, setup_logging=False, out_dir="data/foo_{{ filename_suffix }}", start_time=now)
+        >>> prod_ctx = WsjRdpContext(prod_conf, setup_logging=False,
+        ...                          out_dir="data/foo_{{ filename_suffix }}", start_time=now,
+        ...                          parse_arguments=False)
         >>> str(prod_ctx.out_dir.relative_to(Path.cwd()))
         'data/foo_20250815-103027_PROD'
         """
@@ -1019,11 +1021,11 @@ class WsjRdpContext:
 
         >>> template = "data/my_out.{{ start_time | strftime('%Y%m%d-%H%M%S') }}{{ kind | omit_unless_prod | upper | to_ext }}"
 
-        >>> prod_ctx = WsjRdpContext(prod, setup_logging=False, out_dir=".", start_time=now)
+        >>> prod_ctx = WsjRdpContext(prod, setup_logging=False, out_dir=".", start_time=now, parse_arguments=False)
         >>> prod_ctx.render_template(template)
         'data/my_out.20250815-103027.PROD'
 
-        >>> dev_ctx = WsjRdpContext(dev, setup_logging=False, out_dir=".", start_time=now)
+        >>> dev_ctx = WsjRdpContext(dev, setup_logging=False, out_dir=".", start_time=now, parse_arguments=False)
         >>> dev_ctx.render_template(template)
         'data/my_out.20250815-103027'
         """
