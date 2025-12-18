@@ -27,6 +27,7 @@ dev = [
     "sshtunnel>=0.4.0",
     "ty>=0.0.1a34",
     "types-lxml>=2025.11.25",
+    "types-networkx>=3.6.1.20251212",
     "xlsxwriter>=3.2.5",
 ]
 local = [
