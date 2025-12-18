@@ -1211,15 +1211,15 @@ wheels = [
 
 [[package]]
 name = "sepaxml"
-version = "2.6.2"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "text-unidecode" },
     { name = "xmlschema" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ad/89/6ebe206cc660d840183183a940c7d39c134c28841de4f2126584f6aa54a9/sepaxml-2.6.2.tar.gz", hash = "sha256:1f6f747bb4e15a12af1034964424c9cc17481127229e8d95693a5a96a3267561", size = 23946, upload-time = "2024-11-19T14:03:18.618Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/3a/24325baaf9cbc6ee9f6b8c66fe8079e0b8a85c0f21876c0ef52a8c8ddc95/sepaxml-2.7.0.tar.gz", hash = "sha256:77c6ea8c4ea59e53dcabed1d5d8bb79559a0aac47cf25c8e78b06ff5fef6c2bd", size = 53222, upload-time = "2025-09-02T12:28:15.783Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/e2/976ab01d28a0e4e25dc35e166b88eceb1bbcf2bd3b6ca85a7ebe3ad2faa3/sepaxml-2.6.2-py3-none-any.whl", hash = "sha256:2713adcc4e4d7893166382837351e7bd34cefebd9dab702389a1c051e2ee7066", size = 26976, upload-time = "2024-11-19T14:03:16.026Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/06/7128b1dee5d616587b5e83597d1e6a651c56668820c3b8f2d7e870c1ae76/sepaxml-2.7.0-py3-none-any.whl", hash = "sha256:6644f695c66c2bf8f49065d4d7b0814da42140d03292131ec08e09798ad07b5d", size = 60537, upload-time = "2025-09-02T12:28:14.702Z" },
 ]
 
 [[package]]
@@ -1554,6 +1554,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pyyaml" },
     { name = "schwifty" },
+    { name = "sepaxml" },
     { name = "sshtunnel" },
     { name = "typst" },
 ]
@@ -1574,7 +1575,8 @@ requires-dist = [
     { name = "paramiko", specifier = "<4" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.9" },
     { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "schwifty", specifier = ">=2025.7.0" },
+    { name = "schwifty", specifier = ">=2025.9.0" },
+    { name = "sepaxml", specifier = ">=2.7.0" },
     { name = "sshtunnel", specifier = ">=0.4.0" },
     { name = "typst", specifier = ">=0.14" },
 ]
