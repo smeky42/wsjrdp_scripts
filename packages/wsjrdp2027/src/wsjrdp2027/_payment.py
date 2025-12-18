@@ -675,7 +675,8 @@ def write_payment_dataframe_to_db(
     conn: _psycopg.Connection, df: _pandas.DataFrame
 ) -> None:
     with conn.cursor() as cursor:
-        for idx, row in df.iterrows():
+        idx: int
+        for idx, row in df.iterrows():  # type: ignore
             if row["payment_status"] != "ok":
                 _LOGGER.debug(
                     "[ACC] Skip non-ok row id=%s payment_status=%s payment_status_reason=%s",

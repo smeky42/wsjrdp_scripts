@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging as _logging
 import sys
+import typing
 
 import networkx as nx
 import pandas as pd
@@ -183,14 +184,15 @@ def main(argv=None):
         )
         df["old_cluster_code"] = df["cluster_code"]
         df["new_cluster_code"] = None
-    for idx, row in df.iterrows():
+    idx: int
+    for idx, row in df.iterrows():  # type: ignore
         buddy_id = f"{row['buddy_id']}-{row['id']}"
         df.at[idx, "buddy_id"] = buddy_id
 
     _LOGGER.info("Found %s YP and UL", len(df))
 
     id2row = {row["id"]: row for _, row in df.iterrows()}
-    id2idx = {row["id"]: idx for idx, row in df.iterrows()}
+    id2idx = {row["id"]: typing.cast(int, idx) for idx, row in df.iterrows()}
     G = create_buddy_id_graph(df, include_registered=args.include_registered)
     all_conn_comps = sorted(nx.connected_components(G), key=len, reverse=True)
 
