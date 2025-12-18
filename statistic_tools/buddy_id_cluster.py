@@ -59,7 +59,7 @@ def _is_registered(row) -> bool:
 
 def create_buddy_id_graph(
     df: pd.DataFrame, include_registered: bool = False
-) -> nx.Graph:
+) -> nx.Graph[int]:
     id2row = {row["id"]: row for _, row in df.iterrows()}
 
     def buddy_id_to_id(id: int, s: str | None) -> int | None:
@@ -80,7 +80,7 @@ def create_buddy_id_graph(
             else:
                 return True
 
-    G = nx.Graph()
+    G = nx.Graph[int]()
     for _, row in df.iterrows():
         if _is_deregistered(row):
             continue
@@ -194,7 +194,11 @@ def main(argv=None):
     id2row = {row["id"]: row for _, row in df.iterrows()}
     id2idx = {row["id"]: typing.cast(int, idx) for idx, row in df.iterrows()}
     G = create_buddy_id_graph(df, include_registered=args.include_registered)
-    all_conn_comps = sorted(nx.connected_components(G), key=len, reverse=True)
+    all_conn_comps: list[set[int]] = sorted(
+        nx.connected_components(G),  # ty: ignore
+        key=len,
+        reverse=True,
+    )
 
     conn_comps = [cc for cc in all_conn_comps if any(_is_ul(id2row[id]) for id in cc)]
 
