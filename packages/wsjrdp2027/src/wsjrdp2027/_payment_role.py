@@ -165,10 +165,10 @@ class PaymentRole(_enum.Enum):
     def full_role_name(self) -> str:
         """The short role name.
 
-        >>> PaymentRole.REGULAR_PAYER_CMT.short_role_name
+        >>> PaymentRole.REGULAR_PAYER_CMT.full_role_name
         'Contingent Management Team (CMT)'
-        >>> PaymentRole.EARLY_PAYER_CMT.short_role_name
-        'CMT'
+        >>> PaymentRole.EARLY_PAYER_CMT.full_role_name
+        'Contingent Management Team (CMT)'
         """
         short_name = self.short_role_name
         d = {
