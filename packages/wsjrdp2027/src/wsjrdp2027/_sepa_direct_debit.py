@@ -159,7 +159,8 @@ def write_accounting_dataframe_to_sepa_dd(
 
     already_not_ok = len(df[df["payment_status"] != "ok"])
 
-    for idx, row in df.iterrows():
+    idx: int
+    for idx, row in df.iterrows():  # type: ignore
         if row["payment_status"] != "ok":
             if row.get("open_amount_cents", 0) == 0:
                 continue  # silently skip non-ok row with amount=0

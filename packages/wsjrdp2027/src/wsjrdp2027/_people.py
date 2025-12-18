@@ -852,7 +852,8 @@ def update_dataframe_for_updates(
         df["db_changes"] = False
         df["person_changes"] = df.apply(lambda _: {}, axis=1)
 
-        for idx, row in df.iterrows():
+        idx: int
+        for idx, row in df.iterrows():  # type: ignore
             id = row["id"]
             person_dict = collections.ChainMap(row["person_dict"], row.to_dict())
             changed = False
