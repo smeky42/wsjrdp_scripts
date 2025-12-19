@@ -30,17 +30,28 @@ dev = [
     "types-networkx>=3.6.1.20251212",
     "xlsxwriter>=3.2.5",
 ]
-local = [
+editables = [
     "wsjrdp2027",
     "pytest-wsjrdp2027",
 ]
-mypy = [
+type-checking = [
     "mypy>=1.17.1",
+    "pandas-stubs",
+    "ty",
     "types-humanfriendly>=10.0.1.20250319",
+    "types-lxml",
+    "types-networkx",
 ]
 pytest = [
-    "pytest>=8.4.1",
-    "time-machine>=2.17.0",
+    "pytest>=9.0.2",
+    "time-machine>=3.2.0",
+]
+tox = [
+    "tox>=4.32.0",
+    "tox-uv>=1.29.0",
+]
+ruff = [
+    "ruff",
 ]
 
 
@@ -50,9 +61,9 @@ pytest = [
 constraint-dependencies = ["paramiko<4"]
 default-groups = [
     "dev",
-    "local",
-    "mypy",
+    "editables",
     "pytest",
+    "type-checking",
 ]
 
 [[tool.uv.index]]
@@ -71,9 +82,10 @@ members = [
 
 
 
-[tool.pytest.ini_options]
-addopts = "--doctest-modules"
-doctest_optionflags = "NORMALIZE_WHITESPACE IGNORE_EXCEPTION_DETAIL"
+[tool.pytest]
+addopts = ["--doctest-modules", "--pyargs", "--showlocals", "-vv"]
+doctest_optionflags = ["NORMALIZE_WHITESPACE", "IGNORE_EXCEPTION_DETAIL"]
+norecursedirs = ["integration-tests", "2023"]
 
 
 
@@ -82,9 +94,18 @@ extend-exclude = [
     "2023",
 ]
 
+[tool.ruff.lint]
+ignore = [
+    "E712",  # Avoid equality comparisons to `{}`; use `{}` for false checks
+    "E731",  # Do not assign a `lambda` expression, use a `def`
+    "F541",  # f-string without any placeholders
+    "F841",  # Local variable `{}` is assigned to but never used
+]
+
 [tool.ruff.lint.isort]
 combine-as-imports = true
 lines-after-imports = 2
+
 
 
 [tool.ty.src]

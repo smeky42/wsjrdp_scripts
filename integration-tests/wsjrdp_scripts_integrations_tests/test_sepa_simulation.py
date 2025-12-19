@@ -67,7 +67,7 @@ class Test_Run_Monthly_SEPA_Direct_Debits:
                 m.chdir(out_dir)
                 yield out_dir
 
-        with change_out_dir("setup") as p, monkeypatch.context() as m:
+        with change_out_dir("setup") as p:
             pytest_wsjrdp2027.uv_run(
                 [
                     f"{_ROOT_DIR}/tools/mailing_from_yml.py",

@@ -98,7 +98,7 @@ def installments_replacements_from_row(row: pd.Series, keys) -> dict[str, str]:
         if (key := year_month_to_key(year, month)) in keys_set
     }
     for key in sorted(set(keys) - set(replacements)):
-        if m := re.fullmatch("i[0-9]+_[0-9]+", key):
+        if re.fullmatch("i[0-9]+_[0-9]+", key):
             replacements[key] = to_eur(0)
     replacements = {
         k: v for k, v in sorted(replacements.items(), key=lambda item: item[0])

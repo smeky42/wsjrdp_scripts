@@ -14,7 +14,6 @@ if _typing.TYPE_CHECKING:
 
     import pandas as _pandas
     import psycopg as _psycopg
-    import psycopg.sql as _psycopg_sql
 
     from . import _people_query, _sepa_direct_debit
 
@@ -832,7 +831,7 @@ def load_payment_dataframe_from_payment_initiation(
 
     import pandas as pd
     import psycopg.rows
-    from psycopg.sql import SQL, Identifier, Literal
+    from psycopg.sql import SQL, Literal
 
     from . import _people_query, _util
 
