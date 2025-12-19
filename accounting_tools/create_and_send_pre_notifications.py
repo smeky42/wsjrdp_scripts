@@ -10,7 +10,6 @@ import typing as _typing
 
 import pandas as pd
 import wsjrdp2027
-from wsjrdp2027._people_query import PeopleQuery
 
 
 if _typing.TYPE_CHECKING:

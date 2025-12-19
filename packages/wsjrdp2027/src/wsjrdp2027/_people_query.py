@@ -403,7 +403,6 @@ class PeopleWhere:
     __str__ = __repr__
 
     def as_where_condition(self, *, people_table: str = "people") -> str:
-        from . import _util
         from ._util import combine_where, in_expr, not_in_expr
 
         where = ""

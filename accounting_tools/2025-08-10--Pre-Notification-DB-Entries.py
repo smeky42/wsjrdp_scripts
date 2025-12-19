@@ -45,7 +45,7 @@ def main():
         "Do you want to store pre-notification data in the PRODUCTION Hitobito database?"
     )
 
-    sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig = (  # type: ignore
+    sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig = (  # noqa  # type: ignore
         wsjrdp2027.WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG
     )
 
@@ -53,7 +53,7 @@ def main():
     pymnt_inf_id = _AUG2025_DD_PYMNT_INF_ID
 
     with ctx.psycopg_connect() as conn:
-        with conn.cursor() as cur:
+        with conn.cursor() as _:
             # insert_payment_initiation_and_dd_payment_info(
             #     cur, sepa_dd_config=sepa_dd_config
             # )

@@ -288,7 +288,6 @@ class WsjRdpContext:
         self, start_time: _datetime.datetime | str | None = None, *, env=None
     ) -> _datetime.datetime:
         import datetime as _datetime
-        import os as _os
 
         from . import _util
 
@@ -318,9 +317,9 @@ class WsjRdpContext:
         if env is None:
             env = _os.environ
 
-        pytest_current_test = self.__get_env(
-            "PYTEST_CURRENT_TEST", env=env, ignore_in_prod=False
-        )
+        # pytest_current_test = self.__get_env(
+        #     "PYTEST_CURRENT_TEST", env=env, ignore_in_prod=False
+        # )
 
         override_env_name = "WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE"
         if override_env_name in env:

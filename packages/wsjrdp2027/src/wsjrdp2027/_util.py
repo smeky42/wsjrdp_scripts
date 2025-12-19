@@ -599,9 +599,9 @@ def format_iban(iban: str, /) -> str:
         if mid_len <= 0:
             return s
         else:
-            l = s[:left]
-            r = s[-right:]
-            return l + ("*" * mid_len) + r
+            lft = s[:left]
+            rgt = s[-right:]
+            return lft + ("*" * mid_len) + rgt
 
     iban = str(iban or "").upper().strip().replace(" ", "")
     match iban[:2]:

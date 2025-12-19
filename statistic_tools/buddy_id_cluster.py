@@ -194,7 +194,7 @@ def main(argv=None):
     id2row = {row["id"]: row for _, row in df.iterrows()}
     id2idx = {row["id"]: typing.cast(int, idx) for idx, row in df.iterrows()}
     G = create_buddy_id_graph(df, include_registered=args.include_registered)
-    all_conn_comps: list[set[int]] = sorted(
+    all_conn_comps: list[set[int]] = sorted(  # ty: ignore
         nx.connected_components(G),  # ty: ignore
         key=len,
         reverse=True,

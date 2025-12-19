@@ -4,11 +4,9 @@ from __future__ import annotations
 import logging as _logging
 import random
 import sys
-from urllib.parse import quote
 
 import pandas as _pandas
 import wsjrdp2027
-from requests.structures import CaseInsensitiveDict
 
 
 _LOGGER = _logging.getLogger(__name__)
