@@ -573,14 +573,17 @@ class WsjRdpContext:
         import contextlib
 
         import psycopg
+        import psycopg.types
+        import psycopg.types.hstore
 
         with contextlib.ExitStack() as exit_stack:
             if self._config.use_ssh_tunnel:
                 forwarder = self.__create_ssh_forwarder(
                     remote_bind_address=(self._config.db_host, self._config.db_port)
                 )
-                _LOGGER.info(
-                    "Start SSH tunnel:\n%s", self.__ssh_forwarder_to_str(forwarder)
+                self._logger.info(
+                    "psycopg_connect: Start SSH tunnel:\n%s",
+                    self.__ssh_forwarder_to_str(forwarder),
                 )
                 exit_stack.enter_context(forwarder)
 
@@ -597,6 +600,15 @@ class WsjRdpContext:
                 password=self._config.db_password,
                 dbname=self._config.db_name,
             )
+            hstore_info = psycopg.types.TypeInfo.fetch(conn, "hstore")
+            if hstore_info is not None:
+                self._logger.debug("psycopg_connect: hstore_info: %s", str(hstore_info))
+                self._logger.info("psycopg_connect: Register HSTORE type info")
+                psycopg.types.hstore.register_hstore(hstore_info, conn)
+            else:
+                self._logger.warning(
+                    "psycopg_connect: No HSTORE type info found => HSTORE not registered"
+                )
             exit_stack.enter_context(conn)
             yield conn
 
