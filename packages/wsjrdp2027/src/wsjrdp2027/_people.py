@@ -875,7 +875,7 @@ def update_dataframe_for_updates(
                         changed = True
                         object_changes[chg.old_col] = [old_val, new_val]
             df.at[idx, "db_changes"] = changed
-            df.at[idx, "person_changes"] = object_changes
+            df.at[idx, "person_changes"] = object_changes  # ty: ignore
 
     return df
 
