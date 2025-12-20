@@ -22,13 +22,15 @@ dev = [
     "paramiko>=3.5.1",
     "psycopg[binary]>=3.2.9",
     "pyyaml>=6.0.2",
-    "ruff>=0.12.7",
     "sepaxml>=2.6.2",
     "sshtunnel>=0.4.0",
-    "ty>=0.0.1a34",
     "types-lxml>=2025.11.25",
     "types-networkx>=3.6.1.20251212",
     "xlsxwriter>=3.2.5",
+    {include-group = "pytest"},
+    {include-group = "ruff"},
+    {include-group = "tox"},
+    {include-group = "type-checking"},
 ]
 editables = [
     "wsjrdp2027",
@@ -37,7 +39,7 @@ editables = [
 type-checking = [
     "mypy>=1.17.1",
     "pandas-stubs",
-    "ty",
+    "ty>=0.0.4",
     "types-humanfriendly>=10.0.1.20250319",
     "types-lxml",
     "types-networkx",
@@ -51,7 +53,7 @@ tox = [
     "tox-uv>=1.29.0",
 ]
 ruff = [
-    "ruff",
+    "ruff>=0.14.10",
 ]
 
 
