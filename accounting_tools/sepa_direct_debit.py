@@ -62,6 +62,7 @@ def main(argv=None):
                 conn,
                 payment_initiation_id=args.payment_initiation_id,
                 pedantic=False,
+                # report_amount_differences=False,
                 # booking_at=ctx.start_time,
                 # today=ctx.start_time.date(),
             )

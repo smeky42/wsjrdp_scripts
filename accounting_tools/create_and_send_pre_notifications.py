@@ -127,15 +127,16 @@ def _insert_pre_notifications_into_db(
     _LOGGER.info("Update DB - INSERT pre notifications")
 
     with conn.cursor() as cur:
-        pain_id = wsjrdp2027.insert_payment_initiation(
+        pain_id = wsjrdp2027.pg_insert_payment_initiation(
             cursor=cur,
             sepa_dd_config=sepa_dd_config,
         )
         _LOGGER.info("payment initiation id: %s", pain_id)
-        pymnt_inf_id = wsjrdp2027.insert_direct_debit_payment_info(
+        pymnt_inf_id = wsjrdp2027.pg_insert_direct_debit_payment_info(
             cur,
             payment_initiation_id=pain_id,
             sepa_dd_config=sepa_dd_config,
+            creditor_id=wsjrdp2027.CREDITOR_ID,
         )
         _LOGGER.info("direct debit payment info id: %s", pymnt_inf_id)
 

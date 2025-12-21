@@ -6,8 +6,6 @@ import logging as _logging
 import typing as _typing
 from collections import abc as _collections_abc
 
-from . import _payment_role
-
 
 if _typing.TYPE_CHECKING:
     import pathlib as _pathlib
@@ -15,7 +13,7 @@ if _typing.TYPE_CHECKING:
     import pandas as _pandas
     import psycopg as _psycopg
 
-    from . import _people_query, _sepa_direct_debit
+    from . import _people_query
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -152,6 +150,40 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "person_dict",
 ]
 
+PRE_NOTIFICATION_COLUMNS = [
+    "id",
+    "payment_initiation_id",
+    "direct_debit_payment_info_id",
+    "subject_id",
+    "subject_type",
+    "author_id",
+    "author_type",
+    "try_skip",
+    "payment_status",
+    "email_from",
+    "email_to",
+    "email_cc",
+    "email_bcc",
+    "email_reply_to",
+    "dbtr_name",
+    "dbtr_iban",
+    "dbtr_bic",
+    "dbtr_address",
+    "amount_currency",
+    "amount_cents",
+    "debit_sequence_type",
+    "collection_date",
+    "mandate_id",
+    "mandate_date",
+    "description",
+    "endtoend_id",
+    "creditor_id",
+    "cdtr_name",
+    "cdtr_iban",
+    "cdtr_bic",
+    "cdtr_address",
+]
+
 
 def _dd_description_from_row(row) -> str:
     """Compute the direct debit description.
@@ -250,7 +282,7 @@ def enrich_people_dataframe_for_payments(
             lambda rsn: "ok" if not rsn else "skipped"
         )
         df["accounting_entry_id"] = None  # accounting_entries.id
-        df["accounting_author_id"] = 65  # TODO: maybe (2 - Peter or 65 - Daffi)
+        df["accounting_author_id"] = 1  # TODO: maybe (2 - Peter or 65 - Daffi)
         df["accounting_value_date"] = df["collection_date"]  # best guess we can do
         df["accounting_booking_at"] = booking_at
         df["accounting_description"] = df.apply(
@@ -362,267 +394,64 @@ def load_accounting_balance_in_cent(conn: _psycopg.Connection, id: int | str) ->
     return rows[0][0]
 
 
-def insert_accounting_entry(
-    cursor,
-    subject_id: int | str,
-    author_id: int | str,
-    amount: int,
-    description: str,
-    created_at: _datetime.date | str | None = None,
-    payment_initiation_id: int | None = None,
-    direct_debit_payment_info_id: int | None = None,
-    direct_debit_pre_notification_id: int | None = None,
-    end_to_end_identifier: str | None = None,
-    mandate_id: str | None = None,
-    mandate_date: _datetime.date | str | None = None,
-    debit_sequence_type: str | None = None,
-    value_date: _datetime.date | str | None = None,
-) -> int:
-    import datetime
-
-    from . import _pg, _util
-
-    if created_at is None:
-        created_at = datetime.datetime.now().date()
-    else:
-        created_at = _util.to_date_or_none(created_at)
-
-    cols_vals = [
-        ("subject_type", "Person"),
-        ("subject_id", int(subject_id)),
-        ("author_type", "Person"),
-        ("author_id", int(author_id)),
-        ("amount_currency", "EUR"),
-        ("amount_cents", int(amount)),
-        ("description", description),
-        ("created_at", created_at),
-        ("payment_initiation_id", to_int_or_none(payment_initiation_id)),
-        ("direct_debit_payment_info_id", to_int_or_none(direct_debit_payment_info_id)),
-        (
-            "direct_debit_pre_notification_id",
-            to_int_or_none(direct_debit_pre_notification_id),
-        ),
-        ("end_to_end_identifier", end_to_end_identifier),
-        ("mandate_id", mandate_id),
-        ("mandate_date", _util.to_date_or_none(mandate_date)),
-        ("debit_sequence_type", debit_sequence_type),
-        ("value_date", _util.to_date_or_none(value_date)),
-    ]
-    query = _pg.col_val_pairs_to_insert_sql_query("accounting_entries", cols_vals, "id")
-    _LOGGER.debug("[ACC] execute %s", query.as_string(context=cursor))
-    cursor.execute(query)
-    return cursor.fetchone()[0]
-
-
 def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
     # Convert booking_at to a Python datetime.datetime object and if
     # it is naive add the local timezone. Otherwise we might end up
     # with a timezone difference when inserting the date into the
     # database.
+    from . import _pg
+
     booking_at = row["accounting_booking_at"]
     booking_at = booking_at.to_pydatetime()
     if not booking_at.tzinfo:
         booking_at = booking_at.astimezone()
-    return insert_accounting_entry(
-        cursor,
-        subject_id=row["id"],
-        author_id=row["accounting_author_id"],
-        amount=int(row.get("open_amount_cents", 0)),
-        description=row["accounting_description"],
-        created_at=booking_at,
-        payment_initiation_id=row.get("sepa_dd_payment_initiation_id"),
-        direct_debit_payment_info_id=row.get("sepa_dd_direct_debit_payment_info_id"),
-        direct_debit_pre_notification_id=row.get("sepa_dd_pre_notification_id"),
-        end_to_end_identifier=row.get("sepa_dd_endtoend_id"),
-        debit_sequence_type=row.get("sepa_dd_sequence_type"),
-        mandate_id=row.get("sepa_mandate_id"),
-        mandate_date=row.get("sepa_mandate_date"),
-        value_date=row.get("collection_date"),
-    )
 
-
-def insert_payment_initiation(
-    cursor: _psycopg.Cursor,
-    *,
-    created_at: _datetime.datetime | str = "NOW",
-    updated_at: _datetime.datetime | str | None = None,
-    status: str = "planned",
-    sepa_schema: str = "pain.008.001.02",
-    message_identification: str | None = None,
-    number_of_transactions: int | None = None,
-    control_sum: int | None = None,
-    initiating_party_name: str | None = None,
-    initiating_party_iban: str | None = None,
-    initiating_party_bic: str | None = None,
-    sepa_dd_config: _sepa_direct_debit.SepaDirectDebitConfig | None = None,
-) -> int:
-    from . import _pg, _util
-
-    if sepa_dd_config:
-        if not initiating_party_name:
-            initiating_party_name = sepa_dd_config.get("name")
-        if not initiating_party_iban:
-            initiating_party_iban = sepa_dd_config.get("IBAN")
-        if not initiating_party_bic:
-            initiating_party_bic = sepa_dd_config.get("BIC")
-
-    cols_vals = [
-        ("created_at", _util.to_datetime_or_none(created_at)),
-        ("updated_at", _util.to_datetime_or_none(updated_at)),
-        ("status", status),
-        ("sepa_schema", sepa_schema),
-        ("message_identification", message_identification),
-        ("number_of_transactions", number_of_transactions),
-        ("control_sum", control_sum),
-        ("initiating_party_name", initiating_party_name),
-        ("initiating_party_iban", initiating_party_iban),
-        ("initiating_party_bic", initiating_party_bic),
-    ]
-    query = _pg.col_val_pairs_to_insert_sql_query(
-        "wsjrdp_payment_initiations", cols_vals, "id"
-    )
-    _LOGGER.debug("execute %s", query.as_string(context=cursor))
-    cursor.execute(query)
-    return cursor.fetchone()[0]  # type: ignore
-
-
-def insert_direct_debit_payment_info(
-    cursor: _psycopg.Cursor,
-    *,
-    created_at: _datetime.datetime | str | None = "NOW",
-    updated_at: _datetime.datetime | str | None = None,
-    payment_initiation_id: int | None = None,
-    payment_information_identification: str | None = None,
-    batch_booking: bool = True,
-    number_of_transactions: int | None = None,
-    control_sum: int | None = None,
-    payment_type_instrument: str = "CORE",
-    sequence_type: str = "OOFF",
-    requested_collection_date: _datetime.date | str = "TODAY",
-    cdtr_name: str | None = None,
-    cdtr_iban: str | None = None,
-    cdtr_bic: str | None = None,
-    creditor_id: str | None = None,
-    sepa_dd_config: _sepa_direct_debit.SepaDirectDebitConfig | None = None,
-) -> int:
-    import wsjrdp2027
-
-    from . import _pg, _util
-
-    creditor_id = creditor_id or wsjrdp2027.CREDITOR_ID
-
-    if sepa_dd_config:
-        if not cdtr_name:
-            cdtr_name = sepa_dd_config.get("name")
-        if not cdtr_iban:
-            cdtr_iban = sepa_dd_config.get("IBAN")
-        if not cdtr_bic:
-            cdtr_bic = sepa_dd_config.get("BIC")
-
-    cols_vals = [
-        ("created_at", _util.to_datetime_or_none(created_at)),
-        ("updated_at", _util.to_datetime_or_none(updated_at)),
-        ("payment_initiation_id", to_int_or_none(payment_initiation_id)),
-        ("payment_information_identification", payment_information_identification),
-        ("batch_booking", batch_booking),
-        ("number_of_transactions", number_of_transactions),
-        ("control_sum", control_sum),
-        ("payment_type_instrument", payment_type_instrument),
-        ("sequence_type", sequence_type),
-        ("requested_collection_date", _util.to_date_or_none(requested_collection_date)),
-        ("cdtr_name", cdtr_name),
-        ("cdtr_iban", cdtr_iban),
-        ("cdtr_bic", cdtr_bic),
-        ("creditor_id", creditor_id),
-    ]
-    query = _pg.col_val_pairs_to_insert_sql_query(
-        "wsjrdp_direct_debit_payment_infos", cols_vals, "id"
-    )
-    _LOGGER.debug("execute %s", query.as_string(context=cursor))
-    cursor.execute(query)
-    return cursor.fetchone()[0]  # type: ignore
-
-
-def insert_direct_debit_pre_notification(
-    cursor: _psycopg.Cursor,
-    *,
-    created_at: _datetime.datetime | str | None = "NOW",
-    updated_at: _datetime.datetime | str | None = None,
-    payment_initiation_id: int | None = None,
-    direct_debit_payment_info_id: int | None = None,
-    subject_id: int | None = None,
-    subject_type: str | None = "Person",
-    author_id: int | None = None,
-    author_type: str | None = "Person",
-    try_skip: bool | None = None,
-    payment_status: str = "pre_notified",
-    email_from: str = "anmeldung@worldscoutjamboree.de",
-    email_to: _collections_abc.Iterable[str] | str | None = None,
-    email_cc: _collections_abc.Iterable[str] | str | None = None,
-    email_bcc: _collections_abc.Iterable[str] | str | None = None,
-    email_reply_to: _collections_abc.Iterable[str] | str | None = None,
-    dbtr_name: str,
-    dbtr_iban: str,
-    dbtr_bic: str | None = None,
-    dbtr_address: str | None = None,
-    amount_currency: str = "EUR",
-    amount_cents: int,
-    sequence_type: str = "OOFF",
-    collection_date: _datetime.date | str | None = None,
-    mandate_id: str | None = None,
-    mandate_date: _datetime.date | str | None = None,
-    description: str | None = None,
-    endtoend_id: str | None = None,
-    payment_role: str | _payment_role.PaymentRole | None = None,
-    early_payer: bool | None = None,
-    creditor_id: str | None = None,
-) -> int:
-    import wsjrdp2027
-
-    from . import _pg, _util
-
-    creditor_id = creditor_id or wsjrdp2027.CREDITOR_ID
-
-    if isinstance(payment_role, _payment_role.PaymentRole):
-        payment_role = payment_role.get_db_payment_role(early_payer=early_payer)
-
-    cols_vals = [
-        ("created_at", _util.to_datetime_or_none(created_at)),
-        ("updated_at", _util.to_datetime_or_none(updated_at)),
-        ("payment_initiation_id", to_int_or_none(payment_initiation_id)),
-        ("direct_debit_payment_info_id", to_int_or_none(direct_debit_payment_info_id)),
-        ("subject_id", subject_id),
-        ("subject_type", subject_type),
-        ("author_id", author_id),
-        ("author_type", author_type),
-        ("try_skip", try_skip),
-        ("payment_status", payment_status),
-        ("email_from", email_from or None),
-        ("email_to", _util.to_str_list_or_none(email_to)),
-        ("email_cc", _util.to_str_list_or_none(email_cc)),
-        ("email_bcc", _util.to_str_list_or_none(email_bcc)),
-        ("email_reply_to", _util.to_str_list_or_none(email_reply_to)),
-        ("dbtr_name", dbtr_name),
-        ("dbtr_iban", dbtr_iban),
-        ("dbtr_bic", dbtr_bic),
-        ("dbtr_address", dbtr_address),
-        ("amount_currency", amount_currency),
-        ("amount_cents", amount_cents),
-        ("sequence_type", sequence_type),
-        ("collection_date", _util.to_date_or_none(collection_date)),
-        ("mandate_id", mandate_id),
-        ("mandate_date", _util.to_date_or_none(mandate_date)),
-        ("description", description),
-        ("endtoend_id", endtoend_id),
-        ("payment_role", payment_role),
-        ("creditor_id", creditor_id),
-    ]
-    query = _pg.col_val_pairs_to_insert_sql_query(
-        "wsjrdp_direct_debit_pre_notifications", cols_vals, "id"
-    )
-    _LOGGER.debug("execute %s", query.as_string(context=cursor))
-    cursor.execute(query)
-    return cursor.fetchone()[0]  # type: ignore
+    pn_id = row.get("pn_id")
+    if pn_id is not None:
+        return _pg.pg_insert_accounting_entry(
+            cursor,
+            subject_id=row["id"],
+            author_id=row["pn_author_id"],
+            author_type=row["pn_author_type"],
+            amount_cents=int(row.get("pn_amount_cents", 0)),
+            description=row["pn_description"],
+            created_at=booking_at,
+            payment_initiation_id=row.get("pn_payment_initiation_id"),
+            direct_debit_payment_info_id=row.get("pn_direct_debit_payment_info_id"),
+            direct_debit_pre_notification_id=pn_id,
+            endtoend_id=row.get("pn_endtoend_id"),
+            debit_sequence_type=row.get("pn_debit_sequence_type"),
+            mandate_id=row.get("pn_mandate_id"),
+            mandate_date=row.get("pn_mandate_date"),
+            value_date=row.get("pn_collection_date"),
+            dbtr_name=row.get("pn_dbtr_name"),
+            dbtr_iban=row.get("pn_dbtr_iban"),
+            dbtr_bic=row.get("pn_dbtr_bic"),
+            dbtr_address=row.get("pn_dbtr_address"),
+            cdtr_name=row.get("pn_cdtr_name"),
+            cdtr_iban=row.get("pn_cdtr_iban"),
+            cdtr_bic=row.get("pn_cdtr_bic"),
+            cdtr_address=row.get("pn_cdtr_address"),
+        )
+    else:
+        return _pg.pg_insert_accounting_entry(
+            cursor,
+            subject_id=row["id"],
+            author_id=row["accounting_author_id"],
+            amount_cents=int(row.get("open_amount_cents", 0)),
+            description=row["accounting_description"],
+            created_at=booking_at,
+            payment_initiation_id=row.get("sepa_dd_payment_initiation_id"),
+            direct_debit_payment_info_id=row.get(
+                "sepa_dd_direct_debit_payment_info_id"
+            ),
+            direct_debit_pre_notification_id=row.get("sepa_dd_pre_notification_id"),
+            endtoend_id=row.get("sepa_dd_endtoend_id"),
+            debit_sequence_type=row.get("sepa_dd_sequence_type"),
+            mandate_id=row.get("sepa_mandate_id"),
+            mandate_date=row.get("sepa_mandate_date"),
+            value_date=row.get("collection_date"),
+        )
 
 
 def insert_direct_debit_pre_notification_from_row(
@@ -635,9 +464,9 @@ def insert_direct_debit_pre_notification_from_row(
     direct_debit_payment_info_id: int | None = None,
     creditor_id: str | None = None,
 ) -> int:
-    from . import _util
+    from . import _pg, _util
 
-    return insert_direct_debit_pre_notification(
+    return _pg.pg_insert_direct_debit_pre_notification(
         cursor,
         created_at=created_at,
         updated_at=updated_at,
@@ -658,7 +487,7 @@ def insert_direct_debit_pre_notification_from_row(
         dbtr_address=row["sepa_address"],
         amount_currency="EUR",
         amount_cents=row["open_amount_cents"],
-        sequence_type=row["sepa_dd_sequence_type"],
+        debit_sequence_type=row["sepa_dd_sequence_type"],
         collection_date=row["collection_date"],
         mandate_id=row["sepa_mandate_id"],
         mandate_date=_util.to_date_or_none(row["sepa_mandate_date"]),
@@ -673,6 +502,8 @@ def insert_direct_debit_pre_notification_from_row(
 def write_payment_dataframe_to_db(
     conn: _psycopg.Connection, df: _pandas.DataFrame
 ) -> None:
+    from . import _pg
+
     with conn.cursor() as cursor:
         idx: int
         for idx, row in df.iterrows():  # type: ignore
@@ -684,6 +515,32 @@ def write_payment_dataframe_to_db(
                     row.get("payment_status_reason", "??"),
                 )
                 continue
+            if (pn_id := row.get("pn_id")) is not None:
+                pn_payment_status: str | None = row.get("pn_payment_status")
+                if pn_payment_status != "pre_notified":
+                    _LOGGER.debug(
+                        "[ACC] Skip pre-notification due to payment_status: people.id=%s pn.id=%s pn.payment_status=%s",
+                        row.get("id"),
+                        pn_id,
+                        pn_payment_status,
+                    )
+                    continue
+                elif row.get("pn_try_skip"):
+                    _pg.pg_update_direct_debit_pre_notification(
+                        cursor, id=pn_id, updates={"payment_status": "skipped"}
+                    )
+                    _LOGGER.debug(
+                        "[ACC] Skip pre-notification due to try_skip=True: people.id=%s pn.id=%s pn.payment_status=%s",
+                        row.get("id"),
+                        pn_id,
+                        pn_payment_status,
+                    )
+                    continue
+                else:
+                    _pg.pg_update_direct_debit_pre_notification(
+                        cursor, id=pn_id, updates={"payment_status": "xml_generated"}
+                    )
+
             accounting_entry_id = insert_accounting_entry_from_row(cursor, row)
             _LOGGER.info(
                 "[ACC] subject_id=%s sepa_name=%r %r %s print_at=%s open_amount_cents=%s -> id=%s",
@@ -771,42 +628,13 @@ class _PreNotificationInfo:
             sorted(all_pn_ids),
         )
 
-        pn_df = raw_pn_df[raw_pn_df["try_skip"] == False]
-        keep_pn_ids = set(pn_df["id"])
-
-        _LOGGER.info(
-            "not skipped pre notification id's (%s):\n  | keep_pn_ids = %s",
-            len(keep_pn_ids),
-            sorted(keep_pn_ids),
-        )
-        skipped_pn_df = raw_pn_df[~raw_pn_df["id"].isin(keep_pn_ids)]
-
-        if len(skipped_pn_df):
-            for _, row in skipped_pn_df.iterrows():
-                _LOGGER.info(
-                    """skipped pre notification (do not collect) for %s %s (pre notification id: %s):
-      try_skip: %s
-      payment_status: %s
-      row:
-    %s""",
-                    row["subject_id"],
-                    row["full_name"],
-                    row["id"],
-                    row["try_skip"],
-                    row["payment_status"],
-                    textwrap.indent(row.to_string(), "    | "),
-                )
-
-            _LOGGER.info(
-                "skipped pre notifications:\n%s",
-                textwrap.indent(str(skipped_pn_df), "  | "),
-            )
-        else:
-            _LOGGER.info("No pre notifications have been skipped")
+        pn_df = raw_pn_df
 
         ids = list(pn_df["subject_id"])
         collection_dates = set(pn_df["collection_date"])
-        assert len(collection_dates) == 1
+        assert len(collection_dates) == 1, (
+            f"Can handle only one collection_date, found {sorted(collection_dates)}"
+        )
         collection_date = list(collection_dates)[0]
         endtoend_ids = {k: v["endtoend_id"] for k, v in id_to_pn_row.items()}
 
@@ -838,8 +666,10 @@ def load_payment_dataframe_from_payment_initiation(
     raw_query = """
 SELECT
   wsjrdp_direct_debit_pre_notifications.id,
-  direct_debit_payment_info_id,
+  wsjrdp_direct_debit_pre_notifications.payment_initiation_id,
+  wsjrdp_direct_debit_pre_notifications.direct_debit_payment_info_id,
   subject_id,
+  subject_type,
   author_id,
   author_type,
   COALESCE(try_skip, FALSE) AS try_skip,
@@ -855,14 +685,20 @@ SELECT
   dbtr_address,
   amount_currency,
   amount_cents,
-  sequence_type,
+  debit_sequence_type,
   collection_date,
   mandate_id,
   mandate_date,
   description,
   endtoend_id,
+  creditor_id,
+  cdtr_name,
+  cdtr_iban,
+  cdtr_bic,
+  cdtr_address,
   people.first_name,
-  people.last_name
+  people.last_name,
+  COALESCE(people.sepa_status, 'ok') as new_sepa_status
 FROM wsjrdp_direct_debit_pre_notifications
 LEFT OUTER JOIN people
   ON people.id = wsjrdp_direct_debit_pre_notifications.subject_id
@@ -916,15 +752,25 @@ WHERE
         df["pre_notified_amount"] = df["id"].map(
             lambda person_id: pninf.id_to_pn_row[person_id]["amount_cents"]
         )
+        for key in PRE_NOTIFICATION_COLUMNS:
+            df[f"pn_{key}"] = df["id"].map(
+                lambda person_id: pninf.id_to_pn_row[person_id][key]
+            )
 
-        amount_changed_df = df[df["open_amount_cents"] != df["pre_notified_amount"]]
+        amount_changed_df = df[df["open_amount_cents"] != df["pn_amount_cents"]]
         if report_amount_differences:
             if len(amount_changed_df):
                 for _, row in amount_changed_df.iterrows():
                     _LOGGER.info(
-                        "amount different between pre notification and current computation for %s %s:\n%s",
+                        "amount different between pre notification and current computation:\n"
+                        "    %s %s\n"
+                        "    pre-notified amount_cents: %s\n"
+                        "    open_amount_cents: %s\n"
+                        "%s",
                         row["id"],
                         row["full_name"],
+                        row.get("pn_amount_cents"),
+                        row.get("open_amount_cents"),
                         textwrap.indent(row.to_string(), "  | "),
                     )
             else:
@@ -937,6 +783,7 @@ WHERE
             "sepa_dd_direct_debit_payment_info_id",
             "sepa_dd_pre_notification_id",
             "pre_notified_amount",
+            *(f"pn_{k}" for k in PRE_NOTIFICATION_COLUMNS),
         ]
         columns = list(df.columns) + [
             col for col in new_cols if col not in set(df.columns)

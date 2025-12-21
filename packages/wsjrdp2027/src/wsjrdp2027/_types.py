@@ -4,11 +4,20 @@ import typing as _typing
 
 
 __all__ = [
-    "NULL",
-    "NOT_NULL",
-    "MissingType",
     "MISSING",
+    "MissingType",
+    "NOT_NULL",
+    "NULL",
+    "SepaDirectDebitConfig",
 ]
+
+
+class SepaDirectDebitConfig(_typing.TypedDict, total=False):
+    name: str
+    IBAN: str
+    BIC: str
+    creditor_id: str
+    currency: str
 
 
 class NullOrNotType:

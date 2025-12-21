@@ -7,6 +7,8 @@ import typing as _typing
 
 import sepaxml as _sepaxml
 
+from . import _types
+
 
 if _typing.TYPE_CHECKING:
     import pandas as _pandas
@@ -18,15 +20,7 @@ _LOGGER = _logging.getLogger(__name__)
 CREDITOR_ID = "DE81WSJ00002017275"
 
 
-class SepaDirectDebitConfig(_typing.TypedDict, total=False):
-    name: str
-    IBAN: str
-    BIC: str
-    creditor_id: str
-    currency: str
-
-
-WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG: SepaDirectDebitConfig = {
+WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG: _types.SepaDirectDebitConfig = {
     "name": "Ring deutscher Pfadfinder*innenverbände e.V.",
     "IBAN": "DE34520900000077228802",
     "BIC": "GENODE51KS1",
@@ -34,7 +28,7 @@ WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG: SepaDirectDebitConfig = {
     "currency": "EUR",
 }
 
-WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG: SepaDirectDebitConfig = {
+WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG: _types.SepaDirectDebitConfig = {
     "name": "Ring deutscher Pfadfinder*innenverbände e.V.",
     "IBAN": "DE13370601932001939044",
     "BIC": "GENODED1PAX",
@@ -60,7 +54,7 @@ class SepaDirectDebit:
     _num_payments: int
 
     def __init__(
-        self, config: SepaDirectDebitConfig, *, schema: str = "pain.008.001.02"
+        self, config: _types.SepaDirectDebitConfig, *, schema: str = "pain.008.001.02"
     ) -> None:
         raw_config: dict = config.copy()  # type: ignore
         raw_config.setdefault("currency", "EUR")
@@ -152,7 +146,7 @@ def write_accounting_dataframe_to_sepa_dd(
     df: _pandas.DataFrame,
     path: str | _pathlib.Path,
     *,
-    config: SepaDirectDebitConfig,
+    config: _types.SepaDirectDebitConfig,
     pedantic: bool = True,
 ) -> int:
     dd = SepaDirectDebit(config)
