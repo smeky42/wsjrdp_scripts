@@ -13,10 +13,7 @@ from ._mail_client import MailClient as MailClient
 from ._payment import (
     DB_PEOPLE_ALL_SEPA_STATUS as DB_PEOPLE_ALL_SEPA_STATUS,
     DB_PEOPLE_ALL_STATUS as DB_PEOPLE_ALL_STATUS,
-    insert_direct_debit_payment_info as insert_direct_debit_payment_info,
-    insert_direct_debit_pre_notification as insert_direct_debit_pre_notification,
     insert_direct_debit_pre_notification_from_row as insert_direct_debit_pre_notification_from_row,
-    insert_payment_initiation as insert_payment_initiation,
     load_accounting_balance_in_cent as load_accounting_balance_in_cent,
     load_payment_dataframe as load_payment_dataframe,
     load_payment_dataframe_from_payment_initiation as load_payment_dataframe_from_payment_initiation,
@@ -30,15 +27,22 @@ from ._people import (
     write_people_dataframe_to_xlsx as write_people_dataframe_to_xlsx,
 )
 from ._people_query import PeopleQuery as PeopleQuery, PeopleWhere as PeopleWhere
-from ._pg import pg_add_person_tag as pg_add_person_tag
+from ._pg import (
+    pg_add_person_tag as pg_add_person_tag,
+    pg_insert_direct_debit_payment_info as pg_insert_direct_debit_payment_info,
+    pg_insert_direct_debit_pre_notification as pg_insert_direct_debit_pre_notification,
+    pg_insert_payment_initiation as pg_insert_payment_initiation,
+)
 from ._sepa_direct_debit import (
     CREDITOR_ID as CREDITOR_ID,
     WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG as WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG,
     WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG as WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG,
     SepaDirectDebit as SepaDirectDebit,
-    SepaDirectDebitConfig as SepaDirectDebitConfig,
     SepaDirectDebitPayment as SepaDirectDebitPayment,
     write_accounting_dataframe_to_sepa_dd as write_accounting_dataframe_to_sepa_dd,
+)
+from ._types import (
+    SepaDirectDebitConfig as SepaDirectDebitConfig,
 )
 from ._typst import (
     get_typst_font_paths as get_typst_font_paths,
@@ -96,10 +100,10 @@ __all__ = [
     "format_iban",
     "get_default_email_policy",
     "get_typst_font_paths",
-    "insert_direct_debit_payment_info",
-    "insert_direct_debit_pre_notification",
+    "pg_insert_direct_debit_payment_info",
+    "pg_insert_direct_debit_pre_notification",
     "insert_direct_debit_pre_notification_from_row",
-    "insert_payment_initiation",
+    "pg_insert_payment_initiation",
     "load_accounting_balance_in_cent",
     "load_payment_dataframe",
     "load_payment_dataframe_from_payment_initiation",

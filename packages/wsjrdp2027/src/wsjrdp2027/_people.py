@@ -127,6 +127,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "amount_unpaid_cents",  # insgesamt offen
     "amount_due_cents",  # fällig gesamt (at collection_date)
     "open_amount_cents",  # Betrag der offen ist (at collection_date)
+    "additional_info",
     "payment_status_reason",
     "payment_status",
     "person_dict",
@@ -662,7 +663,8 @@ SELECT
   people.accounting_entries_amounts_cents,
   COALESCE(people.sepa_status, 'ok') AS sepa_status,
   people.sepa_name, people.sepa_address, people.sepa_mail, people.sepa_iban, people.sepa_bic,
-  COALESCE(people.early_payer, FALSE) AS early_payer{extra_cols_clause}
+  COALESCE(people.early_payer, FALSE) AS early_payer,
+  people.additional_info{extra_cols_clause}
 FROM people
 {join_clause}
 {where_clause}

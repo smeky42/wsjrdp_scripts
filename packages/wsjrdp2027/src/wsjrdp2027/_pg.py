@@ -1,18 +1,20 @@
 from __future__ import annotations
 
+import collections.abc as _collections_abc
 import logging as _logging
 import textwrap as _textwrap
 import typing as _typing
 
-from . import _person_pg
+from . import _person_pg, _types
 
 
 if _typing.TYPE_CHECKING:
-    import collections.abc as _collections_abc
     import datetime as _datetime
 
     import psycopg as _psycopg
     import psycopg.sql as _psycopg_sql
+
+    from . import _payment_role
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -92,8 +94,8 @@ def col_val_pairs_to_insert_do_nothing_sql_query(
 ) -> _psycopg_sql.Composed:
     r"""Return a composed INSERT query.
 
-    >>> col_val_pairs_to_insert_sql_query("tags", [("name", "Tag")]).as_string()
-    'INSERT INTO "tags" ("name") VALUES (\'Tag\') RETURNING "id"'
+    >>> col_val_pairs_to_insert_do_nothing_sql_query("tags", [("name", "Tag")]).as_string()
+    'WITH t AS (INSERT INTO "tags" ("name") VALUES (\'Tag\') ON CONFLICT DO NOTHING RETURNING "id")\nSELECT * FROM t\nUNION\nSELECT "id" FROM "tags" WHERE "name" = \'Tag\''
     """
     from psycopg.sql import SQL, Identifier, Literal
 
@@ -141,6 +143,15 @@ def _execute_query_fetchone(cursor: _psycopg.Cursor, query):
     return result
 
 
+def _execute_query_fetch_id(cursor: _psycopg.Cursor, query) -> int:
+    result = _execute_query_fetchone(cursor, query)
+    if result is None:
+        raise RuntimeError("Query did not return any result")
+    if len(result) < 1:
+        raise RuntimeError(f"Query result is empty: result={result}")
+    return result[0]
+
+
 def _execute_query_fetchall(
     cursor: _psycopg.Cursor[_typing.Any], query, *, show_result: bool = False
 ):
@@ -161,7 +172,7 @@ def _execute_query_fetchall(
 def _upsert_tag(cursor: _psycopg.Cursor, /, tag: str) -> int:
     """Upserts tag with name *name* and returns the id of the row."""
     query = col_val_pairs_to_insert_do_nothing_sql_query("tags", [("name", tag)])
-    return _execute_query_fetchone(cursor, query)[0]
+    return _execute_query_fetch_id(cursor, query)
 
 
 def _find_tagging_id(
@@ -219,7 +230,7 @@ def _upsert_tagging(
             ("created_at", _util.to_datetime(created_at)),
         ],
     )
-    return _execute_query_fetchone(cursor, query)[0]
+    return _execute_query_fetch_id(cursor, query)
 
 
 def pg_add_person_tag(cursor: _psycopg.Cursor, /, person_id: int, tag: str) -> int:
@@ -349,26 +360,80 @@ def pg_fetch_role_dicts_for_person_ids(
     return d
 
 
-def pg_update_person(
-    cursor: _psycopg.Cursor, /, *, id: int, updates: _collections_abc.Iterable
-) -> None:
+_UpdatesType = (
+    _collections_abc.Iterable[_collections_abc.Iterable]
+    | _collections_abc.Mapping[str, _typing.Any]
+)
+
+
+def _normalize_updates(updates: _UpdatesType, /) -> list[tuple[str, _typing.Any]]:
+    if isinstance(updates, _collections_abc.Mapping):
+        return [(k, v) for k, v in updates.items()]  # type: ignore
+    else:
+        return [tuple(x) for x in updates]  # type: ignore
+
+
+def _pg_update_table(
+    cursor: _psycopg.Cursor,
+    /,
+    *,
+    table_name: str | _psycopg_sql.Identifier,
+    id: int,
+    updates: _UpdatesType,
+    id_col: str | _psycopg_sql.Identifier = "id",
+) -> list:
     from psycopg.sql import SQL, Identifier, Literal
 
-    updates = list(updates)
+    updates = _normalize_updates(updates)
+    if isinstance(table_name, str):
+        table_name = Identifier(table_name)
+    if isinstance(id_col, str):
+        id_col = Identifier(id_col)
+
     if not updates:
-        _LOGGER.debug('Skip executing UPDATE "people" ... as no updates were given')
-        return
+        _LOGGER.debug(
+            "Skip executing UPDATE %s ... as no updates were given", table_name
+        )
+        return []
 
     sql_updates = SQL(", ").join(
         SQL("{key} = {val}").format(key=Identifier(key), val=Literal(val))
         for key, val in updates
     )
-    result = _execute_query_fetchone(
+    result = _execute_query_fetchall(
         cursor,
         SQL(
-            'UPDATE "people" SET {sql_updates} WHERE "id" = {id} RETURNING "id"'
-        ).format(sql_updates=sql_updates, id=Literal(id)),
+            "UPDATE {table_name} SET {sql_updates} WHERE {id_col} = {id} RETURNING {id_col}"
+        ).format(
+            table_name=table_name,
+            sql_updates=sql_updates,
+            id_col=id_col,
+            id=Literal(id),
+        ),
     )
+    return result
+
+
+def pg_update_person(
+    cursor: _psycopg.Cursor, /, *, id: int, updates: _UpdatesType
+) -> int | None:
+    result = _pg_update_table(
+        cursor, id=id, updates=updates, table_name="people", id_col="id"
+    )
+    return result[0][0] if result else None
+
+
+def pg_update_direct_debit_pre_notification(
+    cursor: _psycopg.Cursor, /, *, id: int, updates: _UpdatesType
+) -> int | None:
+    result = _pg_update_table(
+        cursor,
+        id=id,
+        updates=updates,
+        table_name="wsjrdp_direct_debit_pre_notifications",
+        id_col="id",
+    )
+    return result[0][0] if result else None
 
 
 def pg_insert_version(
@@ -414,7 +479,7 @@ def pg_insert_version(
     insert_query = col_val_pairs_to_insert_sql_query(
         "versions", colval_pairs=colval_pairs, returning="id"
     )
-    return _execute_query_fetchone(cursor, insert_query)[0]
+    return _execute_query_fetch_id(cursor, insert_query)
 
 
 def pg_from_roles_select_id_and_type_for_person_and_group_id(
@@ -462,7 +527,8 @@ def pg_find_role_type(
         ).format(person_id=person_id, group_id=group_id, today=today),
         limit=1,
     )
-    return _execute_query_fetchone(cursor, select_query)[0]
+    result = _execute_query_fetchone(cursor, select_query)
+    return result[0] if result else None
 
 
 def pg_update_role_set_end_on_for_ids(
@@ -535,7 +601,7 @@ def pg_insert_role(
     insert_query = col_val_pairs_to_insert_sql_query(
         "roles", colval_pairs=colval_pairs, returning="id"
     )
-    return _execute_query_fetchone(cursor, insert_query)[0]
+    return _execute_query_fetch_id(cursor, insert_query)
 
 
 def pg_insert_note(
@@ -565,4 +631,257 @@ def pg_insert_note(
     insert_query = col_val_pairs_to_insert_sql_query(
         "notes", colval_pairs=colval_pairs, returning="id"
     )
-    return _execute_query_fetchone(cursor, insert_query)[0]
+    return _execute_query_fetch_id(cursor, insert_query)
+
+
+def pg_insert_direct_debit_pre_notification(
+    cursor: _psycopg.Cursor,
+    *,
+    created_at: _datetime.datetime | str | None = "NOW",
+    updated_at: _datetime.datetime | str | None = None,
+    payment_initiation_id: int | None = None,
+    direct_debit_payment_info_id: int | None = None,
+    subject_id: int | None = None,
+    subject_type: str | None = "Person",
+    author_id: int | None = None,
+    author_type: str | None = "Person",
+    try_skip: bool | None = None,
+    payment_status: str = "pre_notified",
+    email_from: str = "anmeldung@worldscoutjamboree.de",
+    email_to: _collections_abc.Iterable[str] | str | None = None,
+    email_cc: _collections_abc.Iterable[str] | str | None = None,
+    email_bcc: _collections_abc.Iterable[str] | str | None = None,
+    email_reply_to: _collections_abc.Iterable[str] | str | None = None,
+    dbtr_name: str,
+    dbtr_iban: str,
+    dbtr_bic: str | None = None,
+    dbtr_address: str | None = None,
+    amount_currency: str = "EUR",
+    amount_cents: int,
+    debit_sequence_type: str = "OOFF",
+    collection_date: _datetime.date | str | None = None,
+    mandate_id: str | None = None,
+    mandate_date: _datetime.date | str | None = None,
+    description: str | None = None,
+    endtoend_id: str | None = None,
+    payment_role: str | _payment_role.PaymentRole | None = None,
+    early_payer: bool | None = None,
+    creditor_id: str | None = None,
+) -> int:
+    import wsjrdp2027
+
+    from . import _payment_role, _pg, _util
+
+    creditor_id = creditor_id or wsjrdp2027.CREDITOR_ID
+
+    if isinstance(payment_role, _payment_role.PaymentRole):
+        payment_role = payment_role.get_db_payment_role(early_payer=early_payer)
+
+    cols_vals = [
+        ("created_at", _util.to_datetime_or_none(created_at)),
+        ("updated_at", _util.to_datetime_or_none(updated_at)),
+        ("payment_initiation_id", _util.to_int_or_none(payment_initiation_id)),
+        (
+            "direct_debit_payment_info_id",
+            _util.to_int_or_none(direct_debit_payment_info_id),
+        ),
+        ("subject_id", subject_id),
+        ("subject_type", subject_type),
+        ("author_id", author_id),
+        ("author_type", author_type),
+        ("try_skip", bool(try_skip)),
+        ("payment_status", payment_status),
+        ("email_from", email_from or None),
+        ("email_to", _util.to_str_list_or_none(email_to)),
+        ("email_cc", _util.to_str_list_or_none(email_cc)),
+        ("email_bcc", _util.to_str_list_or_none(email_bcc)),
+        ("email_reply_to", _util.to_str_list_or_none(email_reply_to)),
+        ("dbtr_name", dbtr_name),
+        ("dbtr_iban", dbtr_iban),
+        ("dbtr_bic", dbtr_bic),
+        ("dbtr_address", dbtr_address),
+        ("amount_currency", amount_currency),
+        ("amount_cents", amount_cents),
+        ("debit_sequence_type", debit_sequence_type),
+        ("collection_date", _util.to_date_or_none(collection_date)),
+        ("mandate_id", mandate_id),
+        ("mandate_date", _util.to_date_or_none(mandate_date)),
+        ("description", description),
+        ("endtoend_id", endtoend_id),
+        ("payment_role", payment_role),
+        ("creditor_id", creditor_id),
+    ]
+    query = _pg.col_val_pairs_to_insert_sql_query(
+        "wsjrdp_direct_debit_pre_notifications", cols_vals, "id"
+    )
+    return _execute_query_fetch_id(cursor, query)
+
+
+def pg_insert_payment_initiation(
+    cursor: _psycopg.Cursor,
+    *,
+    created_at: _datetime.datetime | str = "NOW",
+    updated_at: _datetime.datetime | str | None = None,
+    status: str = "planned",
+    sepa_schema: str = "pain.008.001.02",
+    message_identification: str | None = None,
+    number_of_transactions: int | None = None,
+    control_sum_cents: int | None = None,
+    initiating_party_name: str | None = None,
+    initiating_party_iban: str | None = None,
+    initiating_party_bic: str | None = None,
+    sepa_dd_config: _types.SepaDirectDebitConfig | None = None,
+) -> int:
+    from . import _pg, _util
+
+    if sepa_dd_config:
+        if not initiating_party_name:
+            initiating_party_name = sepa_dd_config.get("name")
+        if not initiating_party_iban:
+            initiating_party_iban = sepa_dd_config.get("IBAN")
+        if not initiating_party_bic:
+            initiating_party_bic = sepa_dd_config.get("BIC")
+
+    cols_vals = [
+        ("created_at", _util.to_datetime_or_none(created_at)),
+        ("updated_at", _util.to_datetime_or_none(updated_at)),
+        ("status", status),
+        ("sepa_schema", sepa_schema),
+        ("message_identification", message_identification),
+        ("number_of_transactions", number_of_transactions),
+        ("control_sum_cents", control_sum_cents),
+        ("initiating_party_name", initiating_party_name),
+        ("initiating_party_iban", initiating_party_iban),
+        ("initiating_party_bic", initiating_party_bic),
+    ]
+    query = _pg.col_val_pairs_to_insert_sql_query(
+        "wsjrdp_payment_initiations", cols_vals, "id"
+    )
+    return _execute_query_fetch_id(cursor, query)
+
+
+def pg_insert_direct_debit_payment_info(
+    cursor: _psycopg.Cursor,
+    *,
+    created_at: _datetime.datetime | str | None = "NOW",
+    updated_at: _datetime.datetime | str | None = None,
+    payment_initiation_id: int | None = None,
+    payment_information_identification: str | None = None,
+    batch_booking: bool = True,
+    number_of_transactions: int | None = None,
+    control_sum_cents: int | None = None,
+    payment_type_instrument: str = "CORE",
+    debit_sequence_type: str = "OOFF",
+    requested_collection_date: _datetime.date | str = "TODAY",
+    cdtr_name: str | None = None,
+    cdtr_iban: str | None = None,
+    cdtr_bic: str | None = None,
+    creditor_id: str | None = None,
+    sepa_dd_config: _types.SepaDirectDebitConfig | None = None,
+) -> int:
+    from . import _pg, _util
+
+    if sepa_dd_config:
+        if not cdtr_name:
+            cdtr_name = sepa_dd_config.get("name")
+        if not cdtr_iban:
+            cdtr_iban = sepa_dd_config.get("IBAN")
+        if not cdtr_bic:
+            cdtr_bic = sepa_dd_config.get("BIC")
+        if not creditor_id:
+            creditor_id = sepa_dd_config.get("creditor_id")
+
+    if not creditor_id:
+        raise ValueError("Missing creditor_id (also not present in sepa_dd_config")
+
+    cols_vals = [
+        ("created_at", _util.to_datetime_or_none(created_at)),
+        ("updated_at", _util.to_datetime_or_none(updated_at)),
+        ("payment_initiation_id", _util.to_int_or_none(payment_initiation_id)),
+        ("payment_information_identification", payment_information_identification),
+        ("batch_booking", batch_booking),
+        ("number_of_transactions", number_of_transactions),
+        ("control_sum_cents", control_sum_cents),
+        ("payment_type_instrument", payment_type_instrument),
+        ("debit_sequence_type", debit_sequence_type),
+        ("requested_collection_date", _util.to_date_or_none(requested_collection_date)),
+        ("cdtr_name", cdtr_name),
+        ("cdtr_iban", cdtr_iban),
+        ("cdtr_bic", cdtr_bic),
+        ("creditor_id", creditor_id),
+    ]
+    query = _pg.col_val_pairs_to_insert_sql_query(
+        "wsjrdp_direct_debit_payment_infos", cols_vals, "id"
+    )
+    return _execute_query_fetch_id(cursor, query)
+
+
+def pg_insert_accounting_entry(
+    cursor,
+    subject_id: int | str,
+    author_id: int | str,
+    amount_cents: int,
+    description: str,
+    subject_type: str = "Person",
+    author_type: str = "Person",
+    created_at: _datetime.datetime | str | None = None,
+    updated_at: _datetime.datetime | str | None = None,
+    payment_initiation_id: int | None = None,
+    direct_debit_payment_info_id: int | None = None,
+    direct_debit_pre_notification_id: int | None = None,
+    endtoend_id: str | None = None,
+    mandate_id: str | None = None,
+    mandate_date: _datetime.date | str | None = None,
+    debit_sequence_type: str | None = None,
+    value_date: _datetime.date | str | None = None,
+    new_sepa_status: str | None = None,
+    cdtr_name: str | None = None,
+    cdtr_iban: str | None = None,
+    cdtr_bic: str | None = None,
+    cdtr_address: str | None = None,
+    dbtr_name: str | None = None,
+    dbtr_iban: str | None = None,
+    dbtr_bic: str | None = None,
+    dbtr_address: str | None = None,
+) -> int:
+    from . import _pg, _util
+
+    created_at = _util.to_datetime(created_at)
+    updated_at = _util.to_datetime_or_none(updated_at)
+
+    cols_vals = [
+        ("created_at", created_at),
+        ("updated_at", updated_at),
+        ("subject_type", subject_type),
+        ("subject_id", int(subject_id)),
+        ("author_type", author_type),
+        ("author_id", int(author_id)),
+        ("amount_currency", "EUR"),
+        ("amount_cents", int(amount_cents)),
+        ("description", description),
+        ("payment_initiation_id", _util.to_int_or_none(payment_initiation_id)),
+        (
+            "direct_debit_payment_info_id",
+            _util.to_int_or_none(direct_debit_payment_info_id),
+        ),
+        (
+            "direct_debit_pre_notification_id",
+            _util.to_int_or_none(direct_debit_pre_notification_id),
+        ),
+        ("endtoend_id", endtoend_id),
+        ("mandate_id", mandate_id),
+        ("mandate_date", _util.to_date_or_none(mandate_date)),
+        ("debit_sequence_type", debit_sequence_type),
+        ("value_date", _util.to_date_or_none(value_date)),
+        ("new_sepa_status", new_sepa_status),
+        ("cdtr_name", cdtr_name),
+        ("cdtr_iban", cdtr_iban),
+        ("cdtr_bic", cdtr_bic),
+        ("cdtr_address", cdtr_address),
+        ("dbtr_name", dbtr_name),
+        ("dbtr_iban", dbtr_iban),
+        ("dbtr_bic", dbtr_bic),
+        ("dbtr_address", dbtr_address),
+    ]
+    query = _pg.col_val_pairs_to_insert_sql_query("accounting_entries", cols_vals, "id")
+    return _execute_query_fetch_id(cursor, query)
