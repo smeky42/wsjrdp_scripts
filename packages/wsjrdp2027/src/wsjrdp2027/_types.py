@@ -18,6 +18,7 @@ class SepaDirectDebitConfig(_typing.TypedDict, total=False):
     BIC: str
     creditor_id: str
     currency: str
+    address_as_single_line: str
 
 
 class NullOrNotType:

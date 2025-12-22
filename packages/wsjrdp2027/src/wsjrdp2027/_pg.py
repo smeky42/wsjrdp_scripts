@@ -646,7 +646,7 @@ def pg_insert_direct_debit_pre_notification(
     author_id: int | None = None,
     author_type: str | None = "Person",
     try_skip: bool | None = None,
-    payment_status: str = "pre_notified",
+    payment_status: str | None = None,
     email_from: str = "anmeldung@worldscoutjamboree.de",
     email_to: _collections_abc.Iterable[str] | str | None = None,
     email_cc: _collections_abc.Iterable[str] | str | None = None,
@@ -658,21 +658,45 @@ def pg_insert_direct_debit_pre_notification(
     dbtr_address: str | None = None,
     amount_currency: str = "EUR",
     amount_cents: int,
+    pre_notified_amount_cents: int | None = None,
     debit_sequence_type: str = "OOFF",
     collection_date: _datetime.date | str | None = None,
     mandate_id: str | None = None,
     mandate_date: _datetime.date | str | None = None,
     description: str | None = None,
+    comment: str | None = None,
     endtoend_id: str | None = None,
     payment_role: str | _payment_role.PaymentRole | None = None,
     early_payer: bool | None = None,
+    cdtr_name: str | None = None,
+    cdtr_iban: str | None = None,
+    cdtr_bic: str | None = None,
+    cdtr_address: str | None = None,
+    additional_info: dict | None = None,
     creditor_id: str | None = None,
+    sepa_dd_config: _types.SepaDirectDebitConfig | None = None,
 ) -> int:
-    import wsjrdp2027
-
     from . import _payment_role, _pg, _util
 
-    creditor_id = creditor_id or wsjrdp2027.CREDITOR_ID
+    if sepa_dd_config:
+        if not cdtr_name:
+            cdtr_name = sepa_dd_config.get("name")
+        if not cdtr_iban:
+            cdtr_iban = sepa_dd_config.get("IBAN")
+        if not cdtr_bic:
+            cdtr_bic = sepa_dd_config.get("BIC")
+        if not cdtr_address:
+            cdtr_address = sepa_dd_config.get("address_as_single_line")
+        if not creditor_id:
+            creditor_id = sepa_dd_config.get("creditor_id")
+
+    if not creditor_id:
+        raise ValueError("Missing creditor_id (also not present in sepa_dd_config")
+
+    if pre_notified_amount_cents is None:
+        pre_notified_amount_cents = amount_cents
+    if payment_status is None:
+        payment_status = "pre_notified"
 
     if isinstance(payment_role, _payment_role.PaymentRole):
         payment_role = payment_role.get_db_payment_role(early_payer=early_payer)
@@ -702,15 +726,23 @@ def pg_insert_direct_debit_pre_notification(
         ("dbtr_address", dbtr_address),
         ("amount_currency", amount_currency),
         ("amount_cents", amount_cents),
+        ("pre_notified_amount_cents", pre_notified_amount_cents),
         ("debit_sequence_type", debit_sequence_type),
         ("collection_date", _util.to_date_or_none(collection_date)),
         ("mandate_id", mandate_id),
         ("mandate_date", _util.to_date_or_none(mandate_date)),
         ("description", description),
+        ("comment", comment or ""),
         ("endtoend_id", endtoend_id),
         ("payment_role", payment_role),
+        ("cdtr_name", cdtr_name),
+        ("cdtr_iban", cdtr_iban),
+        ("cdtr_bic", cdtr_bic),
+        ("cdtr_address", cdtr_address),
         ("creditor_id", creditor_id),
     ]
+    if additional_info:
+        cols_vals.append(("additional_info", additional_info))
     query = _pg.col_val_pairs_to_insert_sql_query(
         "wsjrdp_direct_debit_pre_notifications", cols_vals, "id"
     )

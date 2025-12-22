@@ -150,6 +150,7 @@ def _insert_pre_notifications_into_db(
                 payment_initiation_id=pain_id,
                 direct_debit_payment_info_id=pymnt_inf_id,
                 creditor_id=wsjrdp2027.CREDITOR_ID,
+                sepa_dd_config=sepa_dd_config,
             )
             pre_notification_ids.append(pre_note_id)
     return {

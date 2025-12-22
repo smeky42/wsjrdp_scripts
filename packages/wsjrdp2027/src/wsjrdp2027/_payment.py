@@ -13,7 +13,7 @@ if _typing.TYPE_CHECKING:
     import pandas as _pandas
     import psycopg as _psycopg
 
-    from . import _people_query
+    from . import _people_query, _types
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -464,6 +464,8 @@ def insert_direct_debit_pre_notification_from_row(
     payment_initiation_id: int | None = None,
     direct_debit_payment_info_id: int | None = None,
     creditor_id: str | None = None,
+    payment_status: str | None = None,
+    sepa_dd_config: _types.SepaDirectDebitConfig | None = None,
 ) -> int:
     from . import _pg, _util
 
@@ -477,6 +479,7 @@ def insert_direct_debit_pre_notification_from_row(
         subject_type="Person",
         author_id=row["accounting_author_id"],
         author_type="Person",
+        payment_status=payment_status,
         email_from=row["sepa_mailing_from"],
         email_to=row["sepa_mailing_to"],
         email_cc=row["sepa_mailing_cc"],
@@ -497,6 +500,7 @@ def insert_direct_debit_pre_notification_from_row(
         payment_role=row["payment_role"],
         early_payer=row["early_payer"],
         creditor_id=(creditor_id or None),
+        sepa_dd_config=sepa_dd_config,
     )
 
 

@@ -26,6 +26,7 @@ WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG: _types.SepaDirectDebitConfig = {
     "BIC": "GENODE51KS1",
     "creditor_id": CREDITOR_ID,
     "currency": "EUR",
+    "address_as_single_line": "Chausseestraße 128/129, 10115 Berlin",
 }
 
 WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG: _types.SepaDirectDebitConfig = {
@@ -34,6 +35,7 @@ WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG: _types.SepaDirectDebitConfig = {
     "BIC": "GENODED1PAX",
     "creditor_id": CREDITOR_ID,
     "currency": "EUR",
+    "address_as_single_line": "Chausseestraße 128/129, 10115 Berlin",
 }
 
 
@@ -57,6 +59,7 @@ class SepaDirectDebit:
         self, config: _types.SepaDirectDebitConfig, *, schema: str = "pain.008.001.02"
     ) -> None:
         raw_config: dict = config.copy()  # type: ignore
+        raw_config.pop("address_as_single_line", None)  # not to be seen by sepaxml
         raw_config.setdefault("currency", "EUR")
         raw_config.setdefault("batch", True)
         for key in ["name"]:
