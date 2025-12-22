@@ -48,7 +48,7 @@ aufgrund von technischen Schwierigkeiten bei unserer Bank verzögert sich der f�
 Du nimmst mit folgenden Daten an diesem verzögerten Lastschrifteinzug teil:
 
 Teilnehmer*in: {row["full_name"]}
-Betrag: {wsjrdp2027.format_cents_as_eur_de(row["pre_notified_amount"])}
+Betrag: {wsjrdp2027.format_cents_as_eur_de(row["pre_notified_amount_cents"])}
 
 Kontoinhaber*in: {row["sepa_name"]}
 IBAN: {row["sepa_iban"]}

@@ -140,7 +140,7 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "installments_cents_sum",
     "custom_installments_comment",
     "custom_installments_issue",
-    "pre_notified_amount",
+    "pre_notified_amount_cents",
     "amount_paid_cents",
     "amount_unpaid_cents",
     "amount_due_cents",
@@ -171,6 +171,7 @@ PRE_NOTIFICATION_COLUMNS = [
     "dbtr_address",
     "amount_currency",
     "amount_cents",
+    "pre_notified_amount_cents",
     "debit_sequence_type",
     "collection_date",
     "mandate_id",
@@ -685,6 +686,7 @@ SELECT
   dbtr_address,
   amount_currency,
   amount_cents,
+  pre_notified_amount_cents,
   debit_sequence_type,
   collection_date,
   mandate_id,
@@ -749,7 +751,7 @@ WHERE
         df["sepa_dd_pre_notification_id"] = df["id"].map(
             lambda person_id: pninf.id_to_pn_row[person_id]["id"]
         )
-        df["pre_notified_amount"] = df["id"].map(
+        df["pre_notified_amount_cents"] = df["id"].map(
             lambda person_id: pninf.id_to_pn_row[person_id]["amount_cents"]
         )
         for key in PRE_NOTIFICATION_COLUMNS:
@@ -782,7 +784,7 @@ WHERE
             "sepa_dd_payment_initiation_id",
             "sepa_dd_direct_debit_payment_info_id",
             "sepa_dd_pre_notification_id",
-            "pre_notified_amount",
+            "pre_notified_amount_cents",
             *(f"pn_{k}" for k in PRE_NOTIFICATION_COLUMNS),
         ]
         columns = list(df.columns) + [
