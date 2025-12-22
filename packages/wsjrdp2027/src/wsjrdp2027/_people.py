@@ -122,7 +122,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "installments_cents_sum",
     "custom_installments_comment",
     "custom_installments_issue",
-    "pre_notified_amount",
+    "pre_notified_amount_cents",
     "amount_paid_cents",  # bereits bezahlt
     "amount_unpaid_cents",  # insgesamt offen
     "amount_due_cents",  # fällig gesamt (at collection_date)

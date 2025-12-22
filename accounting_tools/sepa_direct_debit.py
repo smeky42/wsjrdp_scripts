@@ -117,7 +117,7 @@ def main(argv=None):
         textwrap.indent(str(df_not_ok), "  | "),
     )
     _LOGGER.info(
-        "  SUM(open_amount_cents): %s",
+        "  Skipped payments: SUM(open_amount_cents): %s",
         wsjrdp2027.format_cents_as_eur_de(df_not_ok["open_amount_cents"].sum()),
     )
 
@@ -129,7 +129,7 @@ def main(argv=None):
         textwrap.indent(str(df_ok), "  | "),
     )
     _LOGGER.info(
-        "  SUM(open_amount_cents): %s",
+        "  Payments: SUM(open_amount_cents): %s",
         wsjrdp2027.format_cents_as_eur_de(df_ok["open_amount_cents"].sum()),
     )
     _LOGGER.info("")
