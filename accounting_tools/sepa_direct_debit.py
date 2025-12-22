@@ -50,7 +50,6 @@ def main(argv=None):
     out_base = ctx.make_out_path("sepa_direct_debit_{{ filename_suffix }}")
     log_filename = out_base.with_suffix(".log")
     xml_filename = out_base.with_suffix(".xml")
-    html_filename = out_base.with_suffix(".html")
     xlsx_filename = out_base.with_suffix(".xlsx")
 
     ctx.configure_log_file(log_filename)
@@ -103,7 +102,6 @@ def main(argv=None):
             _LOGGER.info("SKIP ACCOUNTING (--no-accounting given)")
             _LOGGER.info("")
 
-        wsjrdp2027.write_payment_dataframe_to_html(df, html_filename)
         wsjrdp2027.write_payment_dataframe_to_xlsx(df, xlsx_filename)
 
     _LOGGER.info("finish writing output")
