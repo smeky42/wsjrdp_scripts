@@ -1,0 +1,35 @@
+query:
+  include_sepa_mail_in_mailing_to: false
+  where:
+    role: UL
+    status: ['confirmed']
+    primary_group_id: 2
+    exclude_tag: ['Warteliste']
+  email_only_where:
+    id: [2]  # Test-Account
+from_addr: unit-management@worldscoutjamboree.de
+email_from: info@worldscoutjamboree.de
+email_subject: "Einladung UL Kickoff 11.01.2026 - 15:00 Uhr bis 19:00 - Jamboree 2027 - {{ row.short_full_name }} (id {{ row.id }})"
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  Jetzt geht es endlich los und das große Abenteuer Jamboree startet. Vor ein paar Tagen haben wir dir bereits deine offizielle Bestätigung zur Teilnahme geschickt und nun laufen wir bereits mit großen Schritten auf die Vorbereitungsphase zu. Damit ihr als Unit Leader mit allen nötigen Informationen versorgt werdet wollen wir dich hiermit zu einer ersten Info-Veranstaltung, dem UL-Kickoff, einladen.
+
+  Dieser wird am 11.01.2026 von 15:00 Uhr bis 19:00 Uhr in einem Online-Meeting stattfinden.
+
+  Wir wollen diesen Termin nutzen, um dich und euer UL-Team an die Hand zu nehmen und euch zu erklären, was bisher passiert ist und was in den nächsten zwei Jahren auf euch zukommt. Hier werdet ihr also viele Infos aus den verschiedenen Teams unseres Kontingents erhalten, die euch helfen sollen, eure Unit optimal auf das Jamboree vorzubereiten.
+
+  Den Link zum Online-Meeting und alle weiteren Infos wirst du im Unit-Hub finden: 
+  https://unithub.worldscoutjamboree.de/
+
+
+  Außerdem wollen wir dich darauf hinweisen, dass du zum Start des neuen Jahres auch endlich erfährst, wer gemeinsam mit dir in deiner Unit sein wird.  Falls du bereits vorher Anfragen von Youth Participants oder Eltern bekommen solltest, kannst du sie gerne darauf hinweisen, dass auch sie im neuen Jahr erfahren werden, mit wem sie nach Polen fahren. 
+
+
+  Wir freuen uns schon riesig, dass es endlich losgeht
+
+  dein Unit-Support Team
+
+  (Bernie, David, Hannah, Ki, Philipp, Valle)

@@ -76,3 +76,13 @@ Siehe auch https://github.com/hitobito/development/blob/master/docker-compose.ym
 ### Hitobito
 
 * URL: [`http://localhost:3000`](http://localhost:3000)
+
+
+### Send Mail
+```bash
+# Test mit hitobito dev auf http://localhost:1080/
+uv run tools/mailing_from_yml.py tools/$DATUM__$NAME.yml
+
+# Produktiv mit Mailserver
+WSJRDP_SCRIPTS_CONFIG=config-prod.yml uv run tools/mailing_from_yml.py tools/$DATUM__$NAME.yml
+```
