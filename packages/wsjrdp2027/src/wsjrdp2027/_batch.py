@@ -7,8 +7,10 @@ import datetime as _datetime
 import logging as _logging
 import pathlib as _pathlib
 import typing as _typing
+import re
 
 from . import _people_query, _types, _util
+from html import unescape
 
 
 if _typing.TYPE_CHECKING:
@@ -247,6 +249,7 @@ class BatchConfig:
     from_addr: str | None = None
     signature: str = ""
     content: str | None = None
+    html_content: str | None = None
     name: str = "mailing"
     summary: str = "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}{% if msg %}; To: {{ msg.to }}; Cc: {{ msg.cc }}{% endif %}"
     action_arguments: dict = _dataclasses.field(default_factory=lambda: {})
@@ -391,6 +394,7 @@ class BatchConfig:
             "extra_email_cc": self.extra_email_cc,
             "extra_email_bcc": self.extra_email_bcc,
             "content": self.content,
+            "html_content": self.html_content,
             "signature": self.signature,
         }
         d = {k: v for k, v in d.items() if v is not None}
@@ -641,6 +645,7 @@ class BatchConfig:
         msg = email_message_from_row(
             row_dict,
             content=self.content,
+            html_content=self.html_content,
             signature=self.signature,
             email_subject=self.email_subject,
             email_from=self.email_from or row["mailing_from"],
@@ -681,11 +686,21 @@ def _row_to_row_dict(row: _pandas.Series) -> dict[str, _typing.Any]:
     row_dict = {str(key): _maybe_to_none(key, val) for key, val in row.items()}
     return row_dict
 
+def strip_html_tags(html_content):
+    html_content = re.sub('<br\s*/?>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub('</p>', '\n', html_content, flags=re.IGNORECASE)
+    text_without_tags = re.sub('<[^<]+?>', '', html_content)
+    clean_text = unescape(text_without_tags)
+    clean_lines = [line.strip() for line in clean_text.splitlines()]
+    clean_text = '\n'.join(line for line in clean_lines if line)
+    
+    return clean_text
 
 def email_message_from_row(
     row: _pandas.Series | dict[str, _typing.Any],
     *,
     content: str | None,
+    html_content: str | None,
     signature: str | None = None,
     email_subject: str,
     email_from: str = "anmeldung@worldscoutjamboree.de",
@@ -742,7 +757,12 @@ def email_message_from_row(
     msg_date = email.utils.format_datetime(email_date)
 
     email_subject = render_template(email_subject)
+
+    if not content:
+       content = strip_html_tags(html_content)
+
     content = render_template(content)
+
     if signature:
         signature = render_template(signature).lstrip()
         if not signature.startswith("-- \n"):
@@ -766,6 +786,11 @@ def email_message_from_row(
     msg["Date"] = msg_date
     msg["Message-ID"] = message_id
     msg.set_content(content)
+
+    if html_content:
+        html_content = render_template(html_content)
+        msg.add_alternative(html_content, subtype="html")
+    
     return msg
 
 

@@ -1,0 +1,25 @@
+query:
+  include_sepa_mail_in_mailing_to: false
+  where:
+    id: 2
+    status: ['confirmed']
+    primary_group_id: 1
+    exclude_tag: ['Warteliste']
+  email_only_where:
+    id: [2]  # Test-Account
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: info@worldscoutjamboree.de
+email_subject: "Test HTML Email - Jamboree 2027 - {{ row.short_full_name }} (id {{ row.id }})"
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: ""
+html_content: |
+  <html>
+    <body>
+      <p>Hallo {{ row.greeting_name }},</p>
+      <p>das ist ein <strong>HTML</strong> Test mit Bild:</p>
+      <img src="https://www.worldscoutjamboree.de/app/uploads/2025/03/wsjrdp-logo-2027-240px.png" alt="Testbild" />
+      <p>Der Content wird automatisch generiert für Textmails</p>
+      <p>Viele Grüße<br/>Dein Jamboree Team</p>
+    </body>
+  </html>
