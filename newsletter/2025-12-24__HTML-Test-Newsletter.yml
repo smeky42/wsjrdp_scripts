@@ -1,0 +1,14 @@
+query:
+  include_sepa_mail_in_mailing_to: false
+  where:
+    status: ['confirmed']
+    primary_group_id: 1
+    tag: ['eHoC']
+    exclude_tag: ['Warteliste']
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: info@worldscoutjamboree.de
+email_subject: "Weihnachtsgruß vom CMT - Jamboree 2027 - {{ row.short_full_name }} (id {{ row.id }})"
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: ""
+html_content: "./newsletter/2025-12-24__HTML-Test-Newsletter.html"
