@@ -687,6 +687,7 @@ def _row_to_row_dict(row: _pandas.Series) -> dict[str, _typing.Any]:
     return row_dict
 
 def strip_html_tags(html_content):
+    html_content = re.sub('<style.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
     html_content = re.sub('<br\s*/?>', '\n', html_content, flags=re.IGNORECASE)
     html_content = re.sub('</p>', '\n', html_content, flags=re.IGNORECASE)
     text_without_tags = re.sub('<[^<]+?>', '', html_content)
@@ -757,6 +758,18 @@ def email_message_from_row(
     msg_date = email.utils.format_datetime(email_date)
 
     email_subject = render_template(email_subject)
+
+    if html_content.endswith('.html'):
+        try:
+            with open(html_content, 'r', encoding='utf-8') as file:
+                html_content = file.read()
+            html_content
+        except FileNotFoundError:
+            print("File not found. Please check the file path:" + html_content)
+            return None
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return None
 
     if not content:
        content = strip_html_tags(html_content)
