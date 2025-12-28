@@ -525,6 +525,21 @@ class PeopleQuery:
         self.collection_date = _util.to_date_or_none(collection_date)
         self.include_sepa_mail_in_mailing_to = include_sepa_mail_in_mailing_to
 
+    @classmethod
+    def from_dict(cls, d: PeopleQueryDict | None, /) -> _typing.Self:
+        return cls(**(d or {}))
+
+    @classmethod
+    def normalize(cls, obj: _PeopleQueryLike | None, /) -> PeopleQuery:
+        if obj is None:
+            return cls()
+        if isinstance(obj, PeopleQuery):
+            return obj
+        elif isinstance(obj, dict):
+            return cls.from_dict(obj)  # type: ignore
+        else:
+            raise TypeError(f"Unsupported argument type: {type(obj).__qualname__!r}")
+
     @property
     def today(self) -> _datetime.date:
         return self.now.date()
@@ -551,6 +566,15 @@ class PeopleQuery:
             if key not in kwargs:
                 kwargs[key] = val
         return self.__class__(**kwargs)
+
+    def get_where_condition(self) -> str:
+        if self.where:
+            return self.where.as_where_condition()
+        else:
+            return "TRUE"
+
+
+_PeopleQueryLike = PeopleQuery | dict
 
 
 _T = _typing.TypeVar("_T")

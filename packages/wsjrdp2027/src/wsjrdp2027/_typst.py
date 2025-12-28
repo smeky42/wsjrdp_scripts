@@ -10,7 +10,7 @@ if _typing.TYPE_CHECKING:
     import typst as _typst
 
 
-_SELFDIR = _pathlib.Path(__file__).parent
+_SELFDIR = _pathlib.Path(__file__).parent.resolve()
 
 _LOGGER = _logging.getLogger(__name__)
 
