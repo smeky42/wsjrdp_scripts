@@ -33,8 +33,10 @@ __all__ = [
     "format_cents_as_eur_de",
     "get_default_email_policy",
     "in_expr",
+    "log_exception_decorator",
     "merge_mail_addresses",
     "render_template",
+    "slurp",
     "to_date_or_none",
     "to_datetime",
     "to_datetime_or_none",
@@ -43,7 +45,6 @@ __all__ = [
     "to_log_level",
     "to_str_list_or_none",
     "to_yaml_str",
-    "log_exception_decorator",
 ]
 
 _T = _typing.TypeVar("_T")
@@ -633,6 +634,13 @@ def coalesce_missing(*args: _T | _types.MissingType) -> _T | None:
             return arg
     else:
         return None
+
+
+def slurp(
+    path: _pathlib.Path | str, encoding: str = "utf-8", newline: str | None = None
+) -> str:
+    with open(path, encoding=encoding, newline=newline) as f:
+        return f.read()
 
 
 def dedup_iter(iterable):

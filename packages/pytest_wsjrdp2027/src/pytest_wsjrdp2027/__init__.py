@@ -13,7 +13,15 @@ _ROOT_DIR = (_SELFDIR / ".." / ".." / ".." / "..").resolve()
 
 
 def uv_run(
-    args, stderr=_subprocess.STDOUT, env=None, check=True, env_update=None, **kwargs
+    args,
+    stderr=_subprocess.STDOUT,
+    env=None,
+    check=True,
+    env_update=None,
+    out_dir_override=None,
+    cwd=None,
+    ctx=None,
+    **kwargs,
 ):
     if env is None:
         env = _os.environ.copy()
@@ -24,14 +32,19 @@ def uv_run(
     )
     if env_update is not None:
         env.update(env_update)
+    if ctx is not None:
+        if out_dir_override is None:
+            out_dir_override = str(ctx.out_dir)
+    if out_dir_override:
+        env["WSJRDP_SCRIPTS_OUTPUT_DIR__OVERRIDE"] = str(out_dir_override)
     if isinstance(args, str):
         args = f"uv run {args}"
         cmd_string = args
     else:
-        args = ["uv", "run", *args]
+        args = ["uv", "run", *(str(a) for a in args)]
         cmd_string = " ".join(_shlex.quote(a) for a in args)
     _LOGGER.info("Run %s", cmd_string)
-    return _subprocess.run(args, **kwargs, stderr=stderr, env=env, check=check)
+    return _subprocess.run(args, **kwargs, stderr=stderr, env=env, check=check, cwd=cwd)
 
 
 def restore_integration_tests_db():

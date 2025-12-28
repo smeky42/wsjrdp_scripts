@@ -7,10 +7,8 @@ import datetime as _datetime
 import logging as _logging
 import pathlib as _pathlib
 import typing as _typing
-import re
 
 from . import _people_query, _types, _util
-from html import unescape
 
 
 if _typing.TYPE_CHECKING:
@@ -75,7 +73,7 @@ class PreparedEmailMessage:
 
 @_dataclasses.dataclass(kw_only=True)
 class PreparedBatch:
-    name: str = "mailing"
+    name: str = "batch"
     df: _pandas.DataFrame
     unfiltered_df: _pandas.DataFrame | None = None
     messages: tuple[PreparedEmailMessage, ...] = ()
@@ -101,7 +99,7 @@ class PreparedBatch:
         elif self.out_dir:
             return self.out_dir
         else:
-            return _pathlib.Path("data") / "mailings"
+            return _pathlib.Path("data") / "batch"
 
     def write_data(
         self, *, out_dir: _pathlib.Path | None = None, zip_eml: bool | None = None
@@ -236,57 +234,134 @@ class PreparedBatch:
 
 @_dataclasses.dataclass(kw_only=True)
 class BatchConfig:
-    query: _people_query.PeopleQuery = _dataclasses.field(
-        default_factory=lambda: _people_query.PeopleQuery()
-    )
-    where: _dataclasses.InitVar[_people_query.PeopleWhere | dict | None] = None
+    query: _people_query.PeopleQuery
     email_subject: str = ""
     email_from: str = ""
-    email_reply_to: str = ""
+    email_reply_to: list[str] | None = None
     extra_email_to: list[str] | None = None
     extra_email_cc: list[str] | None = None
     extra_email_bcc: list[str] | None = None
     from_addr: str | None = None
     signature: str = ""
     content: str | None = None
+    content_file: _pathlib.Path | None = None
     html_content: str | None = None
-    name: str = "mailing"
+    html_content_file: _pathlib.Path | None = None
+    name: str = "batch"
     summary: str = "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}{% if msg %}; To: {{ msg.to }}; Cc: {{ msg.cc }}{% endif %}"
-    action_arguments: dict = _dataclasses.field(default_factory=lambda: {})
-    updates: dict = _dataclasses.field(default_factory=lambda: {})
+    action_arguments: dict
+    updates: dict
     dry_run: bool = False
-    skip_email: bool = None  # type: ignore
+    skip_email: bool
     skip_db_updates: bool | None = None
     raw_yaml: bytes | None = None
+    base_dir: _pathlib.Path | None = None
+    _effective_base_dir: _pathlib.Path
 
-    def __post_init__(
-        self, where: _people_query.PeopleWhere | dict | None = None
+    def __init__(
+        self,
+        /,
+        *,
+        query: _people_query.PeopleQuery | dict | None = None,
+        where: _people_query.PeopleWhere | dict | str | None = None,
+        email_subject: str | None = None,
+        from_addr: str | None = None,
+        email_from: str | None = None,
+        email_reply_to: str | None = None,
+        extra_email_to: _collections_abc.Iterable[str] | str | None = None,
+        extra_email_cc: _collections_abc.Iterable[str] | str | None = None,
+        extra_email_bcc: _collections_abc.Iterable[str] | str | None = None,
+        signature: str | None = None,
+        content: str | None = None,
+        content_file: _pathlib.Path | str | None = None,
+        html_content: str | None = None,
+        html_content_file: _pathlib.Path | str | None = None,
+        name: str | None = None,
+        summary: str | None = None,
+        action_arguments: dict | None = None,
+        updates: dict | None = None,
+        dry_run: bool | None = None,
+        skip_email: bool | None = None,
+        skip_db_updates: bool | None = None,
+        raw_yaml: bytes | None = None,
+        base_dir: _pathlib.Path | None = None,
+        effective_base_dir: _pathlib.Path | None = None,
     ) -> None:
         import email.utils
 
         from . import _util
 
-        if where is not None:
-            if self.query.where:
-                raise RuntimeError("Only one of 'where' and 'query.where' is allowed")
-            if isinstance(where, dict):
-                where = _people_query.PeopleWhere.from_dict(where)
-            self.query.where = where
+        if effective_base_dir:
+            self._effective_base_dir = _pathlib.Path(effective_base_dir).resolve()
+            self.base_dir = _pathlib.Path(base_dir) if base_dir else None
+        elif base_dir:
+            self.base_dir = _pathlib.Path(base_dir)
+            self._effective_base_dir = self.base_dir.resolve()
+        else:
+            self._effective_base_dir = _pathlib.Path.cwd()
+            self.base_dir = None
 
-        if self.raw_yaml is None:
-            self.raw_yaml = self.__to_yaml__().encode("utf-8")
-        if self.email_from and not self.from_addr:
-            from_addr = email.utils.parseaddr(self.email_from)[1]
-            object.__setattr__(self, "from_addr", from_addr)
-        elif self.from_addr:
-            from_addr = email.utils.parseaddr(self.from_addr)[1]
-            object.__setattr__(self, "from_addr", from_addr)
+        def normalize_path(p: _pathlib.Path | str) -> _pathlib.Path:
+            p = _pathlib.Path(p)
+            if p.is_absolute():
+                return p
+            else:
+                return (self._effective_base_dir / p).relative_to(
+                    self._effective_base_dir, walk_up=True
+                )
 
-        if self.content is None and self.skip_email is None:
+        self.name = name or "batch"
+        self.email_subject = email_subject or ""
+        self.query = _normalize_query_where(query, where, logger=None)
+        if from_addr:
+            from_addr = email.utils.parseaddr(from_addr)[1]
+            self.from_addr = from_addr
+        else:
+            self.from_addr = "anmeldung@worldscoutjamboree.de"
+        self.email_from = email_from or self.from_addr
+        self.email_reply_to = _util.to_str_list_or_none(email_reply_to)
+        self.extra_email_to = _util.to_str_list_or_none(extra_email_to)
+        self.extra_email_cc = _util.to_str_list_or_none(extra_email_cc)
+        self.extra_email_bcc = _util.to_str_list_or_none(extra_email_bcc)
+        self.signature = signature or ""
+        self.content = content or None
+        self.html_content = html_content or None
+        if content and content_file:
+            raise RuntimeError("Only one of 'content' and 'content_file' allowed")
+        if html_content and html_content_file:
+            raise RuntimeError(
+                "Only one of 'html_content' and 'html_content_file' allowed"
+            )
+        if content_file:
+            self.content_file = normalize_path(content_file)
+            self.content = self._slurp(content_file)
+        else:
+            self.content_file = None
+        if html_content_file:
+            self.html_content_file = normalize_path(html_content_file)
+            self.html_content = self._slurp(self.html_content_file)
+        elif html_content and html_content.endswith(".html"):
+            self.html_content_file = normalize_path(html_content)
+            self.html_content = self._slurp(self.html_content_file)
+        else:
+            self.html_content_file = None
+
+        self.summary = (
+            summary
+            or "{{ row.payment_role.short_role_name }} {{ row.id_and_name }}; status: {{ row.status }}{% if msg %}; To: {{ msg.to }}; Cc: {{ msg.cc }}{% endif %}"
+        )
+        self.action_arguments = action_arguments if action_arguments is not None else {}
+        self.dry_run = dry_run if dry_run is not None else False
+        self.skip_db_updates = skip_db_updates if skip_db_updates is not None else False
+
+        if self.content is None and self.html_content is None and skip_email is None:
             self.skip_email = True
-        elif self.skip_email is None:
+        elif skip_email is None:
             self.skip_email = False
-        updates = self.updates
+        else:
+            self.skip_email = skip_email
+
+        updates = updates.copy() if updates else {}
         for key in ["add_tags", "new_primary_group_role_types"]:
             if key not in updates:
                 continue
@@ -295,6 +370,112 @@ class BatchConfig:
                 updates.pop(key, None)
             else:
                 updates[key] = val
+        self.updates = updates
+
+        if raw_yaml is None:
+            self.raw_yaml = self.__to_yaml__().encode("utf-8")
+        else:
+            self.raw_yaml = raw_yaml
+
+    @classmethod
+    def from_dict(
+        cls,
+        config: _collections_abc.Mapping | None = None,
+        /,
+        *,
+        name: str | None = None,
+        query: _people_query.PeopleQuery | dict | None = None,
+        where: _people_query.PeopleWhere | dict | str | None = None,
+        dry_run: bool | None = None,
+        skip_email: bool | None = None,
+        skip_db_updates: bool | None = None,
+        path: _pathlib.Path | str | None = None,
+        effective_base_dir: _pathlib.Path | str | None = None,
+        raw_yaml: bytes | str | None = None,
+    ) -> _typing.Self:
+        config = dict(config.items()) if config else {}
+        path = _pathlib.Path(path) if path else None
+
+        _INVALID_KEYS = ["raw_yaml", "effective_base_dir"]
+        try:
+            invalid_keys = sorted(k for k in _INVALID_KEYS if k in config)
+            if invalid_keys:
+                raise ValueError(
+                    f"Parameter(s) {', '.join(repr(k) for k in invalid_keys)} not allowed in {path}"
+                )
+        except Exception as exc:
+            _LOGGER.exception("Failed to read %s: %s", str(path), str(exc))
+            raise
+
+        missing = object()
+        try:
+            query = _normalize_query_where_or_none(query, where, logger=None)
+            if query:
+                config["query"] = query
+            if name:
+                config["name"] = name
+            elif not config.get("name") and path and path.stem:
+                config["name"] = path.stem
+            if raw_yaml:
+                if isinstance(raw_yaml, bytes):
+                    config["raw_yaml"] = raw_yaml
+                else:
+                    config["raw_yaml"] = raw_yaml.encode("utf-8")
+            if effective_base_dir:
+                effective_base_dir = _pathlib.Path(effective_base_dir).resolve()
+            elif "base_dir" in config:
+                effective_base_dir = _pathlib.Path(config["base_dir"]).resolve()
+            elif path:
+                effective_base_dir = path.parent
+            else:
+                effective_base_dir = None
+            if dry_run is not None:
+                config["dry_run"] = dry_run
+            if skip_email is not None:
+                config["skip_email"] = skip_email
+            if skip_db_updates is not None:
+                config["skip_db_updated"] = skip_db_updates
+            self = cls(**config, effective_base_dir=effective_base_dir)
+            return self
+        except Exception as exc:
+            _LOGGER.exception("Failed to parse yaml %s: %s", path, str(exc))
+            raise
+
+    @classmethod
+    def from_yaml_string(
+        cls,
+        raw_yaml: bytes | str,
+        /,
+        *,
+        name: str | None = None,
+        query: _people_query.PeopleQuery | dict | None = None,
+        where: _people_query.PeopleWhere | dict | str | None = None,
+        dry_run: bool | None = None,
+        skip_email: bool | None = None,
+        skip_db_updates: bool | None = None,
+        path: _pathlib.Path | str | None = None,
+        effective_base_dir: _pathlib.Path | str | None = None,
+    ) -> _typing.Self:
+        import yaml as _yaml
+
+        try:
+            config = _yaml.load(raw_yaml, Loader=_yaml.FullLoader)
+        except Exception as exc:
+            _LOGGER.exception("Failed to read %s: %s", str(path), str(exc))
+            raise
+
+        return cls.from_dict(
+            config,
+            name=name,
+            query=query,
+            where=where,
+            dry_run=dry_run,
+            skip_email=skip_email,
+            skip_db_updates=skip_db_updates,
+            path=path,
+            effective_base_dir=effective_base_dir,
+            raw_yaml=raw_yaml,
+        )
 
     @classmethod
     def from_yaml(
@@ -303,49 +484,33 @@ class BatchConfig:
         /,
         *,
         name: str | None = None,
-        query: _people_query.PeopleQuery | None = None,
-        where: _people_query.PeopleWhere | None = None,
+        query: _people_query.PeopleQuery | dict | None = None,
+        where: _people_query.PeopleWhere | dict | str | None = None,
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
+        effective_base_dir: _pathlib.Path | str | None = None,
     ) -> _typing.Self:
-        import yaml as _yaml
-
-        from . import _util
-
-        if where:
-            if query:
-                raise RuntimeError(
-                    "Arguments 'query' and 'where' are mutually exclusive"
-                )
-            else:
-                query = _people_query.PeopleQuery(where=where)
-
         path = _pathlib.Path(path)
+        query = _normalize_query_where_or_none(query, where)
+        _LOGGER.info("Read batch config %s", str(path))
+        try:
+            with open(path, "r", encoding="utf-8", newline="\n") as f:
+                raw_yaml = f.read()
+        except Exception as exc:
+            _LOGGER.exception("Failed to read %s: %s", str(path), str(exc))
+            raise
 
-        with open(path, "r", encoding="utf-8") as f:
-            config = _yaml.load(f, Loader=_yaml.FullLoader)
-        with open(path, "rb") as f:
-            config["raw_yaml"] = f.read()
-
-        _LOGGER.info("Read mailing config %s", path)
-        missing = object()
-        if (v := config.get("query", missing)) is not missing:
-            config["query"] = _people_query.PeopleQuery(**v)
-        if "name" not in config and path.stem:
-            config["name"] = path.stem
-        for k in ["extra_email_to", "extra_email_cc", "extra_email_bcc"]:
-            if (extra := config.pop(k, None)) is not None:
-                config[k] = _util.to_str_list_or_none(extra)
-        self = cls(**config)
-        self = self.replace(
+        return cls.from_yaml_string(
+            raw_yaml,
             name=name,
             query=query,
             dry_run=dry_run,
             skip_email=skip_email,
             skip_db_updates=skip_db_updates,
+            path=path,
+            effective_base_dir=effective_base_dir,
         )
-        return self
 
     def copy(self) -> _typing.Self:
         import copy
@@ -393,13 +558,31 @@ class BatchConfig:
             "extra_email_to": self.extra_email_to,
             "extra_email_cc": self.extra_email_cc,
             "extra_email_bcc": self.extra_email_bcc,
-            "content": self.content,
-            "html_content": self.html_content,
+            "content": (None if self.content_file else self.content),
+            "html_content": (None if self.html_content_file else self.html_content),
             "signature": self.signature,
+            **{
+                k: str(v)
+                for k in ["base_dir", "content_file", "html_content_file"]
+                if (v := getattr(self, k, None))
+            },
         }
         d = {k: v for k, v in d.items() if v is not None}
 
         return _util.to_yaml_str(d)
+
+    def _slurp(
+        self,
+        path: _pathlib.Path | str,
+        /,
+        *,
+        encoding: str = "utf-8",
+        newline: str = "\n",
+    ) -> str:
+        """Slurp *path* and return string."""
+        real_path = self._effective_base_dir / _pathlib.Path(path)
+        with open(real_path, encoding=encoding, newline=newline) as f:
+            return f.read()
 
     def update_raw_yaml(self, raw_yaml: bytes | str | None = None) -> None:
         if raw_yaml is None:
@@ -658,6 +841,7 @@ class BatchConfig:
             policy=policy,
             msgid_idstring=msgid_idstring,
             msgid_domain=msgid_domain,
+            context={"query": self},
         )
         prepared = PreparedEmailMessage(
             mailing_name=self.name,
@@ -686,24 +870,37 @@ def _row_to_row_dict(row: _pandas.Series) -> dict[str, _typing.Any]:
     row_dict = {str(key): _maybe_to_none(key, val) for key, val in row.items()}
     return row_dict
 
-def strip_html_tags(html_content):
-    html_content = re.sub('<style.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
-    html_content = re.sub('<br\s*/?>', '\n', html_content, flags=re.IGNORECASE)
-    html_content = re.sub('</p>', '\n', html_content, flags=re.IGNORECASE)
-    text_without_tags = re.sub('<[^<]+?>', '', html_content)
+
+def _strip_html_tags_builtin(html_content: str) -> str:
+    import re
+    from html import unescape
+
+    html_content = re.sub(
+        "<style.*?</style>", "", html_content, flags=re.DOTALL | re.IGNORECASE
+    )
+    html_content = re.sub("<br\\s*/?>", "\n", html_content, flags=re.IGNORECASE)
+    html_content = re.sub("</p>", "\n", html_content, flags=re.IGNORECASE)
+    text_without_tags = re.sub("<[^<]+?>", "", html_content)
     clean_text = unescape(text_without_tags)
     clean_lines = [line.strip() for line in clean_text.splitlines()]
-    clean_text = '\n'.join(line for line in clean_lines if line)
-    
+    clean_text = "\n".join(line for line in clean_lines if line)
+
     return clean_text
+
+
+def _strip_html_tags_html2text(html_content: str) -> str:
+    import html2text
+
+    return html2text.html2text(html_content)
+
 
 def email_message_from_row(
     row: _pandas.Series | dict[str, _typing.Any],
     *,
-    content: str | None,
+    email_subject: str,
+    content: str | None = None,
     html_content: str | None,
     signature: str | None = None,
-    email_subject: str,
     email_from: str = "anmeldung@worldscoutjamboree.de",
     email_to: str | _collections_abc.Iterable[str] | None = None,
     email_cc: str | _collections_abc.Iterable[str] | None = None,
@@ -714,6 +911,7 @@ def email_message_from_row(
     message_id: str | None = None,
     msgid_idstring: str | None = None,
     msgid_domain: str | None = None,
+    context: dict | None = None,
 ) -> _email_message.EmailMessage | None:
     import email.message
     import email.utils
@@ -725,8 +923,9 @@ def email_message_from_row(
     SIGNATURES = {
         k: v for k, v in wsjrdp2027.__dict__.items() if k.startswith("EMAIL_SIGNATURE_")
     }
+    context = context or {}
 
-    if content is None:
+    if content is None and html_content is None:
         return None
 
     email_to = _util.to_str_list_or_none(email_to)
@@ -735,7 +934,8 @@ def email_message_from_row(
     email_reply_to = _util.to_str_list_or_none(email_reply_to)
 
     def render_template(template):
-        context = {
+        local_context = context.copy()
+        local_context |= {
             "row": row,
             "email_from": email_from,
             "email_to": email_to,
@@ -745,7 +945,7 @@ def email_message_from_row(
             **SIGNATURES,
         }
         return _util.render_template(
-            template, context, trim_blocks=True, lstrip_blocks=True
+            template, local_context, trim_blocks=True, lstrip_blocks=True
         )
 
     if message_id is None:
@@ -758,29 +958,6 @@ def email_message_from_row(
     msg_date = email.utils.format_datetime(email_date)
 
     email_subject = render_template(email_subject)
-
-    if html_content.endswith('.html'):
-        try:
-            with open(html_content, 'r', encoding='utf-8') as file:
-                html_content = file.read()
-            html_content
-        except FileNotFoundError:
-            print("File not found. Please check the file path:" + html_content)
-            return None
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            return None
-
-    if not content:
-       content = strip_html_tags(html_content)
-
-    content = render_template(content)
-
-    if signature:
-        signature = render_template(signature).lstrip()
-        if not signature.startswith("-- \n"):
-            signature = "-- \n" + signature
-        content = content.rstrip() + "\n\n" + signature
 
     if policy is None:
         policy = _util.get_default_email_policy()
@@ -798,12 +975,24 @@ def email_message_from_row(
         msg["Reply-To"] = _util.to_str_list_or_none(email_reply_to)
     msg["Date"] = msg_date
     msg["Message-ID"] = message_id
+
+    if not content:
+        if html_content:
+            content = _strip_html_tags_html2text(html_content)
+        else:
+            return None
+    content = render_template(content)
+    if signature:
+        signature = render_template(signature).lstrip()
+        if not signature.startswith("-- \n"):
+            signature = "-- \n" + signature
+        content = content.rstrip() + "\n\n" + signature
     msg.set_content(content)
 
     if html_content:
         html_content = render_template(html_content)
         msg.add_alternative(html_content, subtype="html")
-    
+
     return msg
 
 
@@ -836,3 +1025,39 @@ def write_data_and_send_mailing(
         dry_run=dry_run,
     ) as mail_client:
         mailing.send(mail_client)
+
+
+def _normalize_query_where_or_none(
+    query: _people_query.PeopleQuery | dict | None = None,
+    where: _people_query.PeopleWhere | dict | str | None = None,
+    *,
+    logger: _logging.Logger | _logging.LoggerAdapter | None = None,
+) -> _people_query.PeopleQuery | None:
+    if query:
+        query = _people_query.PeopleQuery.normalize(query)
+        if where:
+            if query and query.where:
+                err_msg = "Arguments 'where' and 'query.where' are mutually exclusive"
+                if logger:
+                    logger.error(err_msg)
+                raise RuntimeError(err_msg)
+            else:
+                where = _people_query.PeopleWhere.normalize(where)
+                return query.replace(where=where)
+        else:
+            return query
+    else:
+        if where:
+            return _people_query.PeopleQuery(where=where)
+        else:
+            return None
+
+
+def _normalize_query_where(
+    query: _people_query.PeopleQuery | dict | None = None,
+    where: _people_query.PeopleWhere | dict | str | None = None,
+    *,
+    logger: _logging.Logger | _logging.LoggerAdapter | None = None,
+) -> _people_query.PeopleQuery:
+    query = _normalize_query_where_or_none(query, where, logger=logger)
+    return query if query is not None else _people_query.PeopleQuery()

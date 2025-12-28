@@ -1,5 +1,7 @@
+import datetime as _datetime
+
 import pytest
-from wsjrdp2027 import PeopleWhere
+from wsjrdp2027 import PeopleQuery, PeopleWhere
 
 
 def _yaml_str_to_dict(yaml_str: str) -> dict:
@@ -299,3 +301,36 @@ class Test_PeopleWhere__to_dict:
         assert where_dict == expected_where_dict
         assert where.exclude_note
         assert where.exclude_note.op == self.__extract_op(expected, "<>")
+
+
+@pytest.mark.time_machine(
+    _datetime.datetime(2025, 8, 15, 12, 0, tzinfo=_datetime.timezone.utc), tick=False
+)
+class Test_PeopleQuery:
+    @pytest.mark.parametrize(
+        "obj,expected_factory",
+        [
+            (None, lambda: PeopleQuery()),
+            ({}, lambda: PeopleQuery()),
+            (
+                {"where": "people.id in (3, 4, 5)"},
+                lambda: PeopleQuery(
+                    where=PeopleWhere(raw_sql="people.id in (3, 4, 5)")
+                ),
+            ),
+        ],
+    )
+    def test_normalize_ok(self, obj, expected_factory):
+        expected = expected_factory()
+        query = PeopleQuery.normalize(obj)
+        assert query == expected
+
+    @pytest.mark.parametrize(
+        "obj,expected_exc,matching",
+        [
+            ({"xyz": None}, TypeError, "unexpected keyword argument 'xyz'"),
+        ],
+    )
+    def test_normalize_fail(self, obj, expected_exc, matching):
+        with pytest.raises(expected_exc, match=matching):
+            PeopleQuery.normalize(obj)

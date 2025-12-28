@@ -1,0 +1,7 @@
+query:
+  where:
+    id: 2
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: info@worldscoutjamboree.de
+email_subject: "Test HTML Email - Jamboree 2027 - {{ row.short_full_name }} (id {{ row.id }})"
+html_content_file: email.html
