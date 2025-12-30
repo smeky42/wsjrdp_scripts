@@ -3,37 +3,39 @@ updates:
   add_note: "Pre-Notification für SEPA Einzug {{ row.collection_date | month_year_de }} verschickt"
 query:
   where:
-    sepa_status: 'ok'
-    status: ['confirmed']
+    sepa_status: ['ok', 'missing']
+    status: 'confirmed'
     role: ['CMT', 'UL', 'YP', 'IST']
     exclude_primary_group_id: [5, 6, 7, 45]
   include_sepa_mail_in_mailing_to: true
+  email_only_where:
+    id: [482]
 from_addr: "anmeldung@worldscoutjamboree.de"
-email_from: "anmeldung@worldscoutjamboree.de"
+email_from: "info@worldscoutjamboree.de"
 email_reply_to: "info@worldscoutjamboree.de"
-email_subject: "WSJ 2027 - {{ row.short_full_name }} (id {{ row.id }}) - Ankündigung SEPA Lastschrifteinzug ab {{ row.collection_date | date_de }}"
-signature: "{{ EMAIL_SIGNATURE_ORG }}"
+email_subject: "WSJ 2027 Ankündigung SEPA Lastschrifteinzug {{ row.collection_date | date_de }} - {{ row.payment_role.short_role_name }} {{ row.id_and_name }}"
+signature: "{{ EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION }}"
 content: |
+  {% if row.sepa_name == row.full_name or row.sepa_name == row.short_full_name %}
+  Hallo {{ row.greeting_name }},
+  {% else %}
   Hallo {{ row.sepa_name }}, Hallo {{ row.greeting_name }},
+  {% endif %}
 
-  wir werden den nächsten SEPA Lastschrifteinzug ab dem {{ row.collection_date | date_de }} durchführen.
+  wir planen den nächsten SEPA Lastschrifteinzug am {{ row.collection_date | date_de }} durchzuführen.
 
   Du nimmst mit folgenden Daten an diesem Lastschrifteinzug teil:
 
-  Teilnehmer*in: {{ row.full_name }}
-  Betrag: {{ row.open_amount_cents | format_cents_as_eur_de }}
+      Teilnehmer*in: {{ row.full_name }}
+      Betrag: {{ row.open_amount_cents | format_cents_as_eur_de }}
+      Kontoinhaber*in: {{ row.sepa_name }}
+      IBAN: {{ row.sepa_iban | format_iban }}
+      {% if (row.sepa_bank_name is defined) and (row.sepa_bank_name) %}    Bank: {{ row.sepa_bank_name }}
+      {% endif %}
+      Mandatsreferenz: {{ row.sepa_mandate_id }}
+      Verwendungszweck: {{ row.sepa_dd_description }}
 
-  Kontoinhaber*in: {{ row.sepa_name }}
-  IBAN: {{ row.sepa_iban | format_iban }}
-  {% if (row.sepa_bank_name is defined) and (row.sepa_bank_name) %}Bank: {{ row.sepa_bank_name }}
-  {% endif %}
-  Mandatsreferenz: {{ row.sepa_mandate_id }}
-  Verwendungszweck: {{ row.sepa_dd_description }}
-  Kundenreferenz: {{ row.sepa_dd_endtoend_id }}
-
-
-  Falls du Fragen hast, schau auf unserer Homepage https://worldscoutjamboree.de/ vorbei oder wende dich an info@worldscoutjamboree.de.
 
   Dein WSJ-Orga-Team
-
   Daffi und Peter
+# html_content_file: create_and_send_pre_notifications.html

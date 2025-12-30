@@ -126,7 +126,7 @@ class PreparedBatch:
         )
         _LOGGER.info("  wrote df xlsx %s", xlsx_path)
 
-        if self.unfiltered_df is not None:
+        if self.unfiltered_df is not None and self.unfiltered_df is not self.df:
             _people.write_people_dataframe_to_xlsx(
                 self.unfiltered_df, unfiltered_xlsx_path, log_level=_logging.DEBUG
             )
@@ -679,7 +679,7 @@ class BatchConfig:
                     log_resulting_data_frame=False,
                 )
                 if not df2.empty:
-                    df2["skip_db_updates"] = True
+                    self.__mark_df_for_skip_db_updates(df2)
                     df = _pandas.concat(
                         [df, df2], axis=0, ignore_index=True, sort=False
                     )
@@ -690,6 +690,14 @@ class BatchConfig:
             )
 
         return df
+
+    @staticmethod
+    def __mark_df_for_skip_db_updates(df: _pandas.DataFrame) -> None:
+        from ._payment import _skip_payment
+
+        df["skip_db_updates"] = True
+        for idx, row in df.iterrows():
+            _skip_payment(df, idx, "skip_db_updates is True")
 
     @_util.log_exception_decorator
     def query_people_and_prepare_batch(

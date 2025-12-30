@@ -49,6 +49,7 @@ from ._typst import (
     typst_compile as typst_compile,
 )
 from ._util import (
+    nan_to_none as nan_to_none,
     configure_file_logging as configure_file_logging,
     console_confirm as console_confirm,
     create_dir as create_dir,
@@ -78,6 +79,7 @@ __all__ = [
     "EMAIL_SIGNATURE_CMT",
     "EMAIL_SIGNATURE_HOC",
     "EMAIL_SIGNATURE_ORG",
+    "EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION",
     "WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG",
     "WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG",
     #
@@ -109,6 +111,7 @@ __all__ = [
     "load_payment_dataframe_from_payment_initiation",
     "load_people_dataframe",
     "merge_mail_addresses",
+    "nan_to_none",
     "pg_add_person_tag",
     "render_template",
     "sepa_mandate_id_from_hitobito_id",
@@ -186,6 +189,19 @@ Chausseestr. 128/129
 """
 )
 
+EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION = (
+    "\n-- "
+    + """
+Falls du Fragen hast, schau auf unserer Homepage https://worldscoutjamboree.de vorbei oder wende dich an info@worldscoutjamboree.de.
+
+German Contingent | Kontyngent Niemiecki
+World Scout Jamboree 2027 Poland
+
+Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
+Chausseestr. 128/129
+10115 Berlin
+"""
+)
 
 DEFAULT_MSGID_DOMAIN = "worldscoutjamboree.de"
 DEFAULT_MSGID_IDSTRING = "wsjrsp2027"
