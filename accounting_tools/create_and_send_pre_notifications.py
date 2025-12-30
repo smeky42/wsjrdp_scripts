@@ -117,6 +117,7 @@ def _insert_pre_notifications_into_db(
     skip_db_updates: bool | None = None,
 ) -> dict:
     skip_reasons = []
+    skipped_ids = set()
     if dry_run:
         skip_reasons.append("dry_run is True")
     if skip_db_updates:
@@ -132,64 +133,152 @@ def _insert_pre_notifications_into_db(
             sepa_dd_config=sepa_dd_config,
         )
         _LOGGER.info("payment initiation id: %s", pain_id)
-        pymnt_inf_id = wsjrdp2027.pg_insert_direct_debit_payment_info(
-            cur,
-            payment_initiation_id=pain_id,
-            sepa_dd_config=sepa_dd_config,
-            creditor_id=wsjrdp2027.CREDITOR_ID,
-        )
-        _LOGGER.info("direct debit payment info id: %s", pymnt_inf_id)
+        # pymnt_inf_id = wsjrdp2027.pg_insert_direct_debit_payment_info(
+        #     cur,
+        #     payment_initiation_id=pain_id,
+        #     sepa_dd_config=sepa_dd_config,
+        #     creditor_id=wsjrdp2027.CREDITOR_ID,
+        # )
+        # _LOGGER.info("direct debit payment info id: %s", pymnt_inf_id)
 
         pre_notification_ids = []
         sum_open_amount_cents = 0
         for _, row in df.iterrows():
+            if wsjrdp2027.nan_to_none(row.get("skip_db_updates")):
+                skipped_ids.add(id)
+                _LOGGER.info(
+                    "  Skip %s (due to row['skip_db_updates'])", row["id_and_name"]
+                )
+                continue
             sum_open_amount_cents += row["open_amount_cents"]
             pre_note_id = wsjrdp2027.insert_direct_debit_pre_notification_from_row(
                 cur,
                 row=row,
                 payment_initiation_id=pain_id,
-                direct_debit_payment_info_id=pymnt_inf_id,
+                # direct_debit_payment_info_id=pymnt_inf_id,
                 creditor_id=wsjrdp2027.CREDITOR_ID,
                 sepa_dd_config=sepa_dd_config,
             )
             pre_notification_ids.append(pre_note_id)
     return {
         "payment_initiation_id": pain_id,
-        "direct_debit_payment_info_id": pymnt_inf_id,
+        # "direct_debit_payment_info_id": pymnt_inf_id,
         "direct_debit_pre_notification_ids": pre_notification_ids,
         "sum_open_amount_cents": sum_open_amount_cents,
+        "skipped_ids": sorted(skipped_ids),
     }
 
 
-def handle_df(df: pd.DataFrame) -> pd.DataFrame:
+def _report_df(df: pd.DataFrame, /, *, title: str, condition: str) -> None:
+    long_title = f"{title} ({condition})" if condition else title
+    _LOGGER.info("")
+    _LOGGER.info("==== %s", long_title)
+    _LOGGER.info("  Number of %s: %s", title, len(df))
+    _LOGGER.info("  DataFrame:\n%s", textwrap.indent(str(df), "  | "))
+    for _, row in df.iterrows():
+        _LOGGER.debug(
+            "    %5d %s / %s / %s",
+            row["id"],
+            row["short_full_name"],
+            row["payment_status"],
+            row["payment_status_reason"],
+        )
+    sum_cents = int(df["open_amount_cents"].sum())
+    _LOGGER.info(
+        "  %s: SUM(open_amount_cents): %s",
+        long_title,
+        wsjrdp2027.format_cents_as_eur_de(sum_cents),
+    )
+
+
+def _report_df_unusual(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> None:
+    def to_eur(cents: int) -> str:
+        return wsjrdp2027.format_cents_as_eur_de(cents, zero_cents=",--")
+
+    def cut_to(s:str, l:int) -> str:
+        if len(s) > l:
+            return s[:(l-3)] + "..."
+        else:
+            return s
+
+    if df.empty:
+        return
+    _LOGGER.info("==== Unusual payments")
+    _LOGGER.info("  Number of unusual payments: %s", len(df))
+    _LOGGER.info("")
+    _LOGGER.info(
+        "%4s%5s %20s |%11s |%11s |%11s |%11s |%s",
+        "role",
+        "id",
+        "short_full_name",
+        "sepa_status",
+        "paid",
+        "due",
+        "open",
+        "due this month",
+    )
+    for _, row in df.iterrows():
+        _LOGGER.info(
+            "%4s%5s %20s |%11s |%11s |%11s |%11s |%11s",
+            row["payment_role"].short_role_name,
+            row["id"],
+            cut_to(row["short_full_name"], 20),
+            row["sepa_status"],
+            to_eur(row["amount_paid_cents"]),
+            to_eur(row["amount_due_cents"]),
+            to_eur(row["open_amount_cents"]),
+            to_eur(row["amount_due_in_collection_date_month_cents"]),
+        )
+    _LOGGER.info("")
+    sum_cents = int(df["open_amount_cents"].sum())
+    _LOGGER.info(
+        "  Unusual payments: SUM(open_amount_cents) = %s",
+        wsjrdp2027.format_cents_as_eur_de(sum_cents),
+    )
+    unusual_xlsx_path = ctx.make_out_path("pre_notification_unusual.xlsx")
+    wsjrdp2027.write_people_dataframe_to_xlsx(
+        df, unusual_xlsx_path, log_level=logging.DEBUG
+    )
+    _LOGGER.info("  wrote df_unusual xlsx %s", unusual_xlsx_path)
+    ctx.require_approval_to_run_in_prod("Unusual payment amounts are OK?")
+
+
+def handle_df(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> pd.DataFrame:
+    import pandas as _pandas
+
     _LOGGER.info("")
     _LOGGER.info("==== Overall payments: %s", len(df))
     _LOGGER.info("")
-    df_ok = df[df["payment_status"] == "ok"].copy()
-    df_not_ok = df[df["payment_status"] != "ok"].copy()
-    if len(df_not_ok):
-        _LOGGER.info("")
-        _LOGGER.info("==== Skipped payments (payment_status != 'ok')")
-        _LOGGER.info("  Number of skipped payments: %s", len(df_not_ok))
-        _LOGGER.info(
-            "  Skipped payments DataFrame (payment_status != 'ok'):\n%s",
-            textwrap.indent(str(df_not_ok), "  | "),
+    df_no_updates = df[df["skip_db_updates"] == True].copy()
+    df_updates = df[df["skip_db_updates"] == False]
+    if not len(df) == len(df_no_updates) + len(df_updates):
+        _LOGGER.error("len(df) = %s", len(df))
+        _LOGGER.error("len(df_no_updates) = %s", len(df_no_updates))
+        _LOGGER.error("len(df_updates) = %s", len(df_updates))
+        raise RuntimeError("skip_db_updates not set everywhere to True or False!")
+    if len(df_no_updates):
+        _report_df(
+            df_no_updates, title="Skipped payments", condition="skip_db_updates is True"
         )
-        for _, row in df_not_ok.iterrows():
-            _LOGGER.debug(
-                "    %5d %s / %s / %s",
-                row["id"],
-                row["short_full_name"],
-                row["payment_status"],
-                row["payment_status_reason"],
-            )
+    df_ok = df_updates[df_updates["payment_status"] == "ok"].copy()
+    df_not_ok = df_updates[df_updates["payment_status"] != "ok"].copy()
+    if len(df_not_ok):
         sum_not_ok = int(df_not_ok["open_amount_cents"].sum())
-        _LOGGER.info(
-            "  NOT OK payments: SUM(open_amount_cents): %s",
-            wsjrdp2027.format_cents_as_eur_de(sum_not_ok),
+        _report_df(
+            df_not_ok, title="Skipped payments", condition="payment_status != 'ok'"
         )
     else:
         sum_not_ok = 0
+
+    df_skipped = _pandas.concat(
+        [df_no_updates, df_not_ok], axis=0, ignore_index=True, sort=False
+    )
+    if not df_skipped.empty:
+        skipped_xlsx_path = ctx.make_out_path("pre_notification_skipped.xlsx")
+        wsjrdp2027.write_people_dataframe_to_xlsx(
+            df_skipped, skipped_xlsx_path, log_level=logging.DEBUG
+        )
+        _LOGGER.info("  wrote df_skipped xlsx %s", skipped_xlsx_path)
 
     _LOGGER.info("")
     _LOGGER.info("==== Payments (payment_status == 'ok')")
@@ -198,7 +287,6 @@ def handle_df(df: pd.DataFrame) -> pd.DataFrame:
         "  Payments DataFrame (payment_status == 'ok'):\n%s",
         textwrap.indent(str(df_ok), "  | "),
     )
-
     sum_ok = int(df_ok["open_amount_cents"].sum())
     _LOGGER.info(
         "  OK payments: SUM(open_amount_cents): %s",
@@ -213,6 +301,12 @@ def handle_df(df: pd.DataFrame) -> pd.DataFrame:
         _LOGGER.warning("")
         _LOGGER.warning("No amount to transfer.")
         _LOGGER.warning("")
+
+    df_unusual = df_ok[
+        df_ok["open_amount_cents"] != df_ok["amount_due_in_collection_date_month_cents"]
+    ]
+    if not df_unusual.empty:
+        _report_df_unusual(ctx, df_unusual)
 
     payment_finished_ids = (
         frozenset(wsjrdp2027.EARLY_PAYER_AUGUST_IDS_SUPERSET)
@@ -263,7 +357,10 @@ def main(argv=None):
 
     assert batch_config.query.collection_date is not None
 
-    prepared_batch = ctx.load_people_and_prepare_batch(batch_config, df_cb=handle_df)
+    prepared_batch = ctx.load_people_and_prepare_batch(
+        batch_config,
+        df_cb=lambda df: handle_df(ctx, df),
+    )
     prepared_batch.write_data(zip_eml=ctx.parsed_args.zip_eml)
     df_ok = prepared_batch.df
     wsjrdp2027.write_accounting_dataframe_to_sepa_dd(

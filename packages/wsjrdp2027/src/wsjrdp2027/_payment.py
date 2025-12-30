@@ -198,26 +198,51 @@ def _dd_description_from_row(row) -> str:
            a - z          a b c d e f g h i j k l m n o p q r s t u v w x y z
            A - Z          A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
            0 - 9          0 1 2 3 4 5 6 7 8 9
-           Sonderzeichen  /  ? : ( ) . , ' + -
+           Sonderzeichen  / ? : ( ) . , ' + -
            Leerzeichen    Space
     """
     from . import _util
 
-    prefix = "WSJ 2027"
     payment_role = row.get("payment_role")
     installments_dict = row.get("installments_cents_dict") or {}
     collection_date: _datetime.date | None = row.get("collection_date")
     if not payment_role or not installments_dict or not collection_date:
         return ""
-    prefix = f"{prefix} {payment_role.short_role_name}"
-    name_and_id = f"{row['short_full_name']} (id {row['id']})"
+
+    role_short_name = payment_role.short_role_name if payment_role else None
+    subject_ident = " ".join(
+        str(x) for x in [role_short_name, row["id"], row["short_full_name"]] if x
+    )
+
+    purpose = "WSJ 2027"
+
     if row["early_payer"] or len(installments_dict) < 2:
-        return f"{prefix} Beitrag {name_and_id}"
+        purpose += " Beitrag"
     else:
         collection_ym = _util.to_year_month(collection_date)
         installment_num = len([ym for ym in installments_dict if ym <= collection_ym])
-        # TODO: Check if amount is larger than usual
-        return f"{installment_num}. Rate {_util.to_month_year_de(collection_ym)} {prefix} {name_and_id}"
+        purpose += f" {installment_num}. Rate {_util.to_month_year_de(collection_ym)}"
+
+    def cents_to_eur(cents) -> str:
+        return _util.format_cents_as_eur_de(
+            cents,
+            zero_cents="",
+            format="#,##0.00 ¤¤",
+            currency="EUR",
+        )
+
+    open_amount_cents = row["open_amount_cents"]
+    this_month_cents = row["amount_due_in_collection_date_month_cents"]
+    if open_amount_cents != this_month_cents:
+        this_month_eur = cents_to_eur(this_month_cents)
+        purpose += f" ({this_month_eur})"
+        difference_eur = cents_to_eur(abs(open_amount_cents - this_month_cents))
+        if open_amount_cents < this_month_cents:
+            purpose += f", davon bereits {difference_eur} bezahlt"
+        elif open_amount_cents > this_month_cents:
+            purpose += f" + Zahlungsrückstand ({difference_eur})"
+
+    return f"{subject_ident} / {purpose}"
 
 
 def _dd_endtoend_id_from_row(row, *, endtoend_ids: dict[int, str] | None = None) -> str:

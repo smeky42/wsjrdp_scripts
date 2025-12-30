@@ -461,12 +461,21 @@ def compute_age(birthday: _datetime.date, today: _datetime.date) -> int:
     return (today.year - birthday.year) - (0 if birthday_passed else 1)
 
 
-def format_cents_as_eur_de(cents: int, zero_cents: str = ",—") -> str:
+def format_cents_as_eur_de(
+    cents: int,
+    *,
+    zero_cents: str = ",—",
+    format: str | None = None,
+    currency: str = "EUR",
+) -> str:
     from babel.numbers import format_currency
 
-    return format_currency(int(round(cents)) / 100, "EUR", locale="de_DE").replace(
-        ",00", zero_cents
-    )
+    return format_currency(
+        int(round(cents)) / 100,
+        format=format,
+        currency=currency,
+        locale="de_DE",
+    ).replace(",00", zero_cents)
 
 
 def render_template(
@@ -563,11 +572,32 @@ _MONTH_NAME_DE = {
     12: "Dezember",
 }
 
+_MONTH_SHORT_NAME_DE = {
+    1: "Jan",
+    2: "Feb",
+    3: "Mär",
+    4: "Apr",
+    5: "Mai",
+    6: "Jun",
+    7: "Jul",
+    8: "Aug",
+    9: "Sep",
+    10: "Okt",
+    11: "Nov",
+    12: "Dez",
+}
+
 
 def to_month_de(month: _datetime.datetime | _datetime.date | str | int):
     if not isinstance(month, int):
         month = to_date(month).month
     return _MONTH_NAME_DE[month]
+
+
+def to_short_month_de(month: _datetime.datetime | _datetime.date | str | int):
+    if not isinstance(month, int):
+        month = to_date(month).month
+    return _MONTH_SHORT_NAME_DE[month]
 
 
 def to_year_month(
@@ -583,9 +613,23 @@ def to_year_month(
 
 def to_month_year_de(
     year_month: _datetime.datetime | _datetime.date | str | tuple | list,
-):
+) -> str:
     year, month = to_year_month(year_month)
-    return f"{_MONTH_NAME_DE[month]} {year}"
+    return f"{to_month_de(month)} {year}"
+
+
+def to_short_month_year_de(
+    year_month: _datetime.datetime | _datetime.date | str | tuple | list,
+) -> str:
+    """Return a short German month year.
+
+    >>> to_short_month_year_de("2026-01-05")
+    'Jan 26'
+    """
+    year, month = to_year_month(year_month)
+    short_month_de = to_short_month_de(month)
+    short_year = str(year)[2:]
+    return f"{short_month_de} {short_year}"
 
 
 def _raise_runtime_error(s):

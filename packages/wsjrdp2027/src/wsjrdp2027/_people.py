@@ -332,6 +332,22 @@ def _compute_amount_due_cents(row) -> int:
         )
 
 
+def _compute_amount_due_in_collection_date_month_centsamount_due_cent(row) -> int:
+    from . import _util
+
+    installments_cents = _util.nan_to_none(row["installments_cents_dict"])
+    collection_date: _datetime.date | None = _util.nan_to_none(row["collection_date"])
+    if installments_cents is None or collection_date is None:
+        return 0
+    else:
+        collection_date_ym = _util.to_year_month(collection_date)
+        return sum(
+            cents
+            for ym, cents in installments_cents.items()
+            if ym == collection_date_ym
+        )
+
+
 def _compute_open_amount_cents(row: _pandas.Series) -> int:
     return max(row["amount_due_cents"] - row["amount_paid_cents"], 0)
 
@@ -539,6 +555,9 @@ def _enrich_people_dataframe(
     df["amount_paid_cents"] = df["accounting_entries_amounts_cents"].map(sum)
     df["amount_unpaid_cents"] = df.apply(lambda r: max(r["total_fee_cents"] - r["amount_paid_cents"], 0), axis=1)  # fmt: skip
     df["amount_due_cents"] = df.apply(_compute_amount_due_cents, axis=1)
+    df["amount_due_in_collection_date_month_cents"] = df.apply(
+        _compute_amount_due_in_collection_date_month_centsamount_due_cent, axis=1
+    )
     df["open_amount_cents"] = df.apply(_compute_open_amount_cents, axis=1)
 
     df["sepa_dd_sequence_type"] = df.apply(_sepa_dd_sequence_type_from_row, axis=1)

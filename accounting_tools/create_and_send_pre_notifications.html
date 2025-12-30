@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>German Contingent Newsletter WSJ 2027</title>
+  <style>
+   body {
+     font-family: system-ui, Montserrat, Tahoma, Arial, serif, sans-serif;
+     margin: 0;
+     padding: 0;
+     font-size: 16px;
+     line-height: 1.25;
+   }
+   p:first-of-type {
+     margin-top: 0;
+   }
+   p:last-of-type {
+     margin-bottom: 0;
+   }
+   .title {
+     font-size: 28px;
+     align-items: center;
+     font-weight: lighter;
+   }
+   .subtitle {
+     font-size: 16px;
+     align-items: center;
+     margin-top: 5px;
+   }
+   .logo {
+     margin-bottom: 10px;
+   }
+   .container {
+     max-width: 700px;
+     margin: 0 auto;
+     /* background-color: #c5c7c4; */
+     /* border-radius: 8px; */
+     overflow: hidden;
+   }
+   .debit-info {
+     /* padding-left: 30px; */
+     background-color: #c5c7c4;
+     border-radius: 8px;
+     margin: 10px;
+     padding: 10px;
+   }
+   .debit-info dt {
+     display: inline;
+     font-weight: lighter;
+   }
+   .debit-info dt:after {
+     content: ":";
+   }
+   .debit-info dd {
+     display: inline;
+     margin-left: 4px;
+   }
+   .debit-info dd:after {
+     content: "\a";
+     white-space: pre;
+   }
+   .header {
+     padding: 20px;
+   }
+   .footer {
+     background-color: #af2534;
+     color: #ffffff;
+     padding: 20px;
+     /* text-align: center; */
+   }
+   .header img {
+     max-width: 200px;
+   }
+   .content {
+     padding: 20px;
+   }
+   .slogan {
+     /* font-size: 24px; */
+     margin: 10px 0;
+     color: #be1e2d;
+     font-weight: lighter;
+   }
+   .footer {
+     font-size: 12px;
+     font-weight: lighter;
+   }
+   .footer a {
+     color: #ffffff;
+     text-decoration: none;
+   }
+   @media (width <= 400px) {
+     body { font-size: 14px; }
+     .header, .content, .footer {
+       padding: 8px;
+     }
+     .debit-info { margin: 0; }
+   }
+   @media (400px < width <= 700px) {
+     .header, .content, .footer {
+       padding: 15px;
+     }
+     .debit-info { margin: 0; }
+     .slogan {
+       /* font-size: 20px; */
+     }
+   }
+/*
+   @media (prefers-color-scheme: dark) {
+     body {
+       background-color: #1c1c1e;
+       color: #ffffff;
+     }
+     .footer, .header {
+       background-color: #af2534;
+       color: #ffffff;
+     }
+   }
+*/
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div style="border: 1px; border-color: blue;">
+        <canvas id="canvas-logo-rot" width='174' height='102' style="border: 1px; border-style:solid;border-color:green;"></canvas>
+      </div>
+      <div class="logo"><img src="https://www.worldscoutjamboree.de/app/uploads/2025/12/logo-weiss.png" alt="Logo"></div>
+      <div class="title">
+        Ankündigung SEPA Lastschrifteinzug ab {{ row.collection_date | date_de }}<br/>
+        {{ row.payment_role.short_role_name }} {{ row.id }} {{ row.short_full_name }}
+      </div>
+    </div>
+    <div class="content">
+      <div class="slogan">Hallo {{ row.sepa_name }}, Hallo {{ row.greeting_name }},</div>
+      <p>
+        wir werden den nächsten SEPA Lastschrifteinzug ab dem {{ row.collection_date | date_de }} durchführen.
+      </p>
+      <p>
+        Du nimmst mit folgenden Daten an diesem Lastschrifteinzug teil:
+      </p>
+      <dl class="debit-info">
+        <dt>Teilnehmer*in</dt>
+        <dd>{{ row.full_name }}</dd>
+        <dt>Betrag</dt>
+        <dd>{{ row.open_amount_cents | format_cents_as_eur_de }}</dd>
+        <dt>Kontoinhaber*in</dt> <dd>{{ row.sepa_name }}</dd>
+        <dt>IBAN</dt> <dd>{{ row.sepa_iban | format_iban }}</dd>
+        {% if (row.sepa_bank_name is defined) and (row.sepa_bank_name) %}
+        <dt>Bank</dt> <dd>{{ row.sepa_bank_name }}</dd>
+        {% endif %}
+        <dt>Mandatsreferenz</dt> <dd>{{ row.sepa_mandate_id }}</dd>
+        <dt>Verwendungszweck</dt> <dd>{{ row.sepa_dd_description }}</dd>
+      </dl>
+      <p>
+        Dein WSJ-Orga-Team<br/>
+        Daffi und Peter
+      </p>
+    </div>
+  </div>
+  <div class="footer">
+    <div class="container">
+    <p>
+      Falls du Fragen hast, schau auf unserer Homepage <a href="https://worldscoutjamboree.de">worldscoutjamboree.de</a> vorbei oder wende dich an
+      <a href="mailto:info@worldscoutjamboree.de">info@worldscoutjamboree.de</a>.
+    </p>
+    <p>
+      German Contingent | Kontyngent Niemiecki<br/>
+      World Scout Jamboree 2027 Poland
+    </p>
+    <p>
+      Ring deutscher Pfadfinder*innenverbände e.V. (rdp)<br/>
+      Chausseestr. 128/129<br/>
+      10115 Berlin
+    </p>
+    </div>
+  </div>
+  <script>
+   var canvas = document.getElementById("canvas-logo-rot");
+   var ctx = canvas.getContext("2d");
+   // Get the DPR and size of the canvas
+   const dpr = window.devicePixelRatio;
+   const rect = canvas.getBoundingClientRect();
+
+   // Set the "actual" size of the canvas
+   canvas.width = rect.width * dpr;
+   canvas.height = rect.height * dpr;
+
+   // Scale the context to ensure correct drawing operations
+   ctx.scale(dpr, dpr);
+
+   // Set the "drawn" size of the canvas
+   canvas.style.width = `${rect.width}px`;
+   canvas.style.height = `${rect.height}px`;
+
+   // #g83
+   ctx.save();
+   ctx.transform(1.000000, 0.000000, 0.000000, 1.000000, -1653, -50);
+
+     // #path76
+     ctx.beginPath();
+     ctx.fillStyle = 'rgb(190, 29, 46)';
+     ctx.moveTo(1722.070000, 100.400000);
+     ctx.lineTo(1720.590000, 100.400000);
+     ctx.lineTo(1720.590000, 75.220000);
+     ctx.lineTo(1721.300000, 75.190000);
+     ctx.bezierCurveTo(1721.810000, 75.170000, 1772.690000, 72.590000, 1778.850000, 53.740000);
+     ctx.lineTo(1780.260000, 54.200000);
+     ctx.bezierCurveTo(1777.520000, 62.570000, 1766.740000, 68.900000, 1748.210000, 73.000000);
+     ctx.bezierCurveTo(1736.360000, 75.620000, 1724.980000, 76.450000, 1722.080000, 76.620000);
+     ctx.lineTo(1722.080000, 100.390000);
+     ctx.closePath();
+     ctx.fill();
+	
+     // #path77
+     ctx.beginPath();
+     ctx.fillStyle = 'rgb(190, 29, 46)';
+     ctx.moveTo(1823.890000, 125.080000);
+     ctx.lineTo(1822.410000, 125.080000);
+     ctx.lineTo(1822.410000, 76.640000);
+     ctx.bezierCurveTo(1819.510000, 76.460000, 1808.120000, 75.640000, 1796.280000, 73.020000);
+     ctx.bezierCurveTo(1777.750000, 68.920000, 1766.970000, 62.590000, 1764.230000, 54.220000);
+     ctx.lineTo(1765.640000, 53.760000);
+     ctx.bezierCurveTo(1771.800000, 72.600000, 1822.680000, 75.180000, 1823.190000, 75.210000);
+     ctx.lineTo(1823.900000, 75.240000);
+     ctx.lineTo(1823.900000, 125.090000);
+     ctx.closePath();
+     ctx.fill();
+     
+     // #g79
+     
+     // #path78
+     ctx.beginPath();
+     ctx.fillStyle = 'rgb(190, 29, 46)';
+     ctx.moveTo(1658.900000, 125.080000);
+     ctx.lineTo(1657.420000, 125.080000);
+     ctx.lineTo(1657.420000, 99.920000);
+     ctx.lineTo(1658.110000, 99.870000);
+     ctx.bezierCurveTo(1658.460000, 99.850000, 1692.670000, 97.270000, 1696.820000, 78.490000);
+     ctx.lineTo(1698.270000, 78.810000);
+     ctx.bezierCurveTo(1696.440000, 87.070000, 1688.900000, 93.590000, 1676.460000, 97.660000);
+     ctx.bezierCurveTo(1668.670000, 100.210000, 1661.160000, 101.070000, 1658.900000, 101.280000);
+     ctx.lineTo(1658.900000, 125.070000);
+     ctx.closePath();
+     ctx.fill();
+     
+     // #path79
+     ctx.beginPath();
+     ctx.fillStyle = 'rgb(190, 29, 46)';
+     ctx.moveTo(1727.770000, 125.080000);
+     ctx.lineTo(1726.290000, 125.080000);
+     ctx.lineTo(1726.290000, 101.290000);
+     ctx.bezierCurveTo(1724.020000, 101.080000, 1716.520000, 100.220000, 1708.730000, 97.670000);
+     ctx.bezierCurveTo(1696.290000, 93.600000, 1688.750000, 87.080000, 1686.920000, 78.820000);
+     ctx.lineTo(1688.370000, 78.500000);
+     ctx.bezierCurveTo(1692.520000, 97.280000, 1726.740000, 99.850000, 1727.080000, 99.880000);
+     ctx.lineTo(1727.770000, 99.930000);
+     ctx.lineTo(1727.770000, 125.090000);
+     ctx.closePath();
+     ctx.fill();
+     
+     // #path80
+     ctx.beginPath();
+     ctx.fillStyle = 'rgb(190, 29, 46)';
+     ctx.moveTo(1692.070000, 145.170000);
+     ctx.bezierCurveTo(1686.920000, 145.170000, 1682.200000, 143.330000, 1678.530000, 140.270000);
+     ctx.lineTo(1680.530000, 138.270000);
+     ctx.lineTo(1693.200000, 138.270000);
+     ctx.lineTo(1693.200000, 134.420000);
+     ctx.lineTo(1684.380000, 134.420000);
+     ctx.lineTo(1687.100000, 131.700000);
+     ctx.lineTo(1688.230000, 131.700000);
+     ctx.lineTo(1699.770000, 131.700000);
+     ctx.lineTo(1699.770000, 127.850000);
+     ctx.lineTo(1690.950000, 127.850000);
+     ctx.lineTo(1701.690000, 117.110000);
+     ctx.lineTo(1701.690000, 125.930000);
+     ctx.lineTo(1705.540000, 125.930000);
+     ctx.lineTo(1705.540000, 114.390000);
+     ctx.lineTo(1705.540000, 110.540000);
+     ctx.lineTo(1701.690000, 110.540000);
+     ctx.lineTo(1690.150000, 110.540000);
+     ctx.lineTo(1690.150000, 114.390000);
+     ctx.lineTo(1698.970000, 114.390000);
+     ctx.lineTo(1688.230000, 125.130000);
+     ctx.lineTo(1688.230000, 116.310000);
+     ctx.lineTo(1684.380000, 116.310000);
+     ctx.lineTo(1684.380000, 127.850000);
+     ctx.lineTo(1684.380000, 127.850000);
+     ctx.lineTo(1684.380000, 128.980000);
+     ctx.lineTo(1681.660000, 131.700000);
+     ctx.lineTo(1681.660000, 122.860000);
+     ctx.lineTo(1677.810000, 122.860000);
+     ctx.lineTo(1677.810000, 135.550000);
+     ctx.lineTo(1675.810000, 137.550000);
+     ctx.bezierCurveTo(1672.750000, 133.880000, 1670.910000, 129.160000, 1670.910000, 124.010000);
+     ctx.bezierCurveTo(1670.910000, 112.330000, 1680.380000, 102.860000, 1692.060000, 102.860000);
+     ctx.bezierCurveTo(1703.740000, 102.860000, 1713.210000, 112.330000, 1713.210000, 124.010000);
+     ctx.bezierCurveTo(1713.210000, 135.690000, 1703.740000, 145.160000, 1692.060000, 145.160000);
+     ctx.moveTo(1692.070000, 98.990000);
+     ctx.bezierCurveTo(1678.270000, 98.990000, 1667.050000, 110.210000, 1667.050000, 124.010000);
+     ctx.bezierCurveTo(1667.050000, 137.810000, 1678.270000, 149.030000, 1692.070000, 149.030000);
+     ctx.bezierCurveTo(1705.870000, 149.030000, 1717.090000, 137.810000, 1717.090000, 124.010000);
+     ctx.bezierCurveTo(1717.090000, 110.210000, 1705.870000, 98.990000, 1692.070000, 98.990000);
+     ctx.fill();
+     
+     // #g82
+     
+     // #rect80
+     ctx.beginPath();
+     ctx.fillStyle = 'rgb(190, 29, 46)';
+     ctx.rect(1766.580000, 146.140000, 11.360000, 2.810000);
+     ctx.fill();
+     
+     // #path81
+     ctx.beginPath();
+     ctx.fillStyle = 'rgb(190, 29, 46)';
+     ctx.moveTo(1804.570000, 109.640000);
+     ctx.lineTo(1796.500000, 100.730000);
+     ctx.lineTo(1788.960000, 109.980000);
+     ctx.lineTo(1790.520000, 111.960000);
+     ctx.lineTo(1796.590000, 104.500000);
+     ctx.lineTo(1802.760000, 111.300000);
+     ctx.bezierCurveTo(1808.230000, 117.090000, 1808.270000, 122.850000, 1802.880000, 128.920000);
+     ctx.lineTo(1798.710000, 133.680000);
+     ctx.bezierCurveTo(1796.160000, 136.660000, 1793.140000, 137.210000, 1789.510000, 135.340000);
+     ctx.lineTo(1796.160000, 127.680000);
+     ctx.lineTo(1795.590000, 126.890000);
+     ctx.bezierCurveTo(1793.680000, 124.260000, 1791.600000, 122.860000, 1789.390000, 122.730000);
+     ctx.bezierCurveTo(1787.380000, 122.620000, 1785.390000, 123.570000, 1783.620000, 125.500000);
+     ctx.lineTo(1776.970000, 132.850000);
+     ctx.lineTo(1773.980000, 130.210000);
+     ctx.lineTo(1779.740000, 123.330000);
+     ctx.bezierCurveTo(1780.280000, 122.720000, 1787.110000, 114.730000, 1780.830000, 106.390000);
+     ctx.lineTo(1772.270000, 96.690000);
+     ctx.lineTo(1763.770000, 106.320000);
+     ctx.lineTo(1763.710000, 106.390000);
+     ctx.bezierCurveTo(1757.420000, 114.730000, 1764.260000, 122.720000, 1764.800000, 123.330000);
+     ctx.lineTo(1770.560000, 130.210000);
+     ctx.lineTo(1767.570000, 132.850000);
+     ctx.lineTo(1760.920000, 125.500000);
+     ctx.bezierCurveTo(1759.160000, 123.570000, 1757.170000, 122.610000, 1755.150000, 122.730000);
+     ctx.bezierCurveTo(1752.940000, 122.860000, 1750.860000, 124.250000, 1748.950000, 126.890000);
+     ctx.lineTo(1748.380000, 127.680000);
+     ctx.lineTo(1755.030000, 135.340000);
+     ctx.bezierCurveTo(1751.400000, 137.210000, 1748.380000, 136.660000, 1745.820000, 133.670000);
+     ctx.lineTo(1741.650000, 128.910000);
+     ctx.bezierCurveTo(1736.260000, 122.850000, 1736.300000, 117.090000, 1741.790000, 111.280000);
+     ctx.lineTo(1747.940000, 104.500000);
+     ctx.lineTo(1754.010000, 111.960000);
+     ctx.lineTo(1755.570000, 109.980000);
+     ctx.lineTo(1748.030000, 100.730000);
+     ctx.lineTo(1739.970000, 109.620000);
+     ctx.bezierCurveTo(1733.640000, 116.320000, 1733.580000, 123.560000, 1739.790000, 130.550000);
+     ctx.lineTo(1743.940000, 135.290000);
+     ctx.bezierCurveTo(1746.500000, 138.280000, 1750.940000, 140.950000, 1757.580000, 136.710000);
+     ctx.lineTo(1758.780000, 135.940000);
+     ctx.lineTo(1751.520000, 127.580000);
+     ctx.bezierCurveTo(1752.780000, 126.070000, 1754.040000, 125.280000, 1755.270000, 125.200000);
+     ctx.bezierCurveTo(1756.840000, 125.100000, 1758.210000, 126.220000, 1759.080000, 127.170000);
+     ctx.lineTo(1767.360000, 136.320000);
+     ctx.lineTo(1772.250000, 131.990000);
+     ctx.lineTo(1777.140000, 136.320000);
+     ctx.lineTo(1785.420000, 127.170000);
+     ctx.bezierCurveTo(1786.290000, 126.220000, 1787.650000, 125.120000, 1789.230000, 125.200000);
+     ctx.bezierCurveTo(1790.470000, 125.270000, 1791.730000, 126.070000, 1792.980000, 127.580000);
+     ctx.lineTo(1785.720000, 135.940000);
+     ctx.lineTo(1786.920000, 136.710000);
+     ctx.bezierCurveTo(1789.400000, 138.290000, 1791.570000, 138.910000, 1793.460000, 138.910000);
+     ctx.bezierCurveTo(1796.620000, 138.910000, 1798.960000, 137.160000, 1800.560000, 135.300000);
+     ctx.lineTo(1804.720000, 130.560000);
+     ctx.bezierCurveTo(1810.940000, 123.560000, 1810.880000, 116.320000, 1804.570000, 109.640000);
+     ctx.closePath();
+     ctx.moveTo(1766.660000, 121.740000);
+     ctx.lineTo(1766.620000, 121.690000);
+     ctx.bezierCurveTo(1766.360000, 121.420000, 1760.410000, 114.900000, 1765.640000, 107.910000);
+     ctx.lineTo(1772.260000, 100.410000);
+     ctx.lineTo(1778.880000, 107.910000);
+     ctx.bezierCurveTo(1784.080000, 114.860000, 1778.150000, 121.410000, 1777.900000, 121.690000);
+     ctx.lineTo(1772.260000, 128.430000);
+     ctx.lineTo(1766.670000, 121.740000);
+     ctx.closePath();
+     ctx.fill();
+     
+     // #path82
+     ctx.beginPath();
+     ctx.fillStyle = 'rgb(190, 29, 46)';
+     ctx.moveTo(1786.790000, 102.660000);
+     ctx.lineTo(1784.920000, 104.870000);
+     ctx.lineTo(1786.480000, 106.840000);
+     ctx.lineTo(1788.700000, 104.210000);
+     ctx.bezierCurveTo(1791.130000, 101.120000, 1792.630000, 95.950000, 1785.970000, 88.860000);
+     ctx.lineTo(1772.250000, 73.670000);
+     ctx.lineTo(1758.550000, 88.840000);
+     ctx.bezierCurveTo(1751.880000, 95.940000, 1753.380000, 101.120000, 1755.830000, 104.240000);
+     ctx.lineTo(1758.020000, 106.830000);
+     ctx.lineTo(1759.580000, 104.860000);
+     ctx.lineTo(1757.740000, 102.680000);
+     ctx.bezierCurveTo(1755.070000, 99.290000, 1755.950000, 95.200000, 1760.360000, 90.500000);
+     ctx.lineTo(1772.250000, 77.340000);
+     ctx.lineTo(1784.160000, 90.520000);
+     ctx.bezierCurveTo(1788.550000, 95.200000, 1789.430000, 99.290000, 1786.790000, 102.650000);
+     ctx.closePath();
+     ctx.fill();
+     ctx.restore();
+
+    </script>
+</body>
+</html>
