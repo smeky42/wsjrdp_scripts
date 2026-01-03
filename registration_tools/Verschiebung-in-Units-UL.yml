@@ -1,0 +1,50 @@
+updates:
+  new_primary_group_id: 2
+  add_tags: ['Verschiebung-in-Unit-Mail']
+query:
+  where:
+    role: UL
+    status: ['confirmed']
+    primary_group_id: 2
+    unit_code: '000000'
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: unit-management@worldscoutjamboree.de
+email_subject: "Du bist jetzt Teil einer Unit zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+email_reply_to: unit-management@worldscoutjamboree.de
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir hoffen, du hattest einen guten Start in das neue Jahr. Mit dieser Mail wollen wir dir und deinem UL-Team mitteilen, wer alles in deiner Unit sein wird.
+
+  Wir bitten euch, dass ihr einen Blick auf eure Unit-Zusammenstellung werft und uns auf Unstimmigkeiten aufmerksam macht. Die vollständige Liste aller YPs eurer Unit findet ihr im Anmeldetool.
+
+  https://anmeldung.worldscoutjamboree.de/groups/{{ row.new_primary_group_id }}/people?returning=true
+
+  Du hast jetzt im Anmeldesystem Zugriff auf deine komplette Unit.
+  Nutze diesen vor allem erst einmal zum Überprüfen, nicht zum Ändern.
+  Was du dort alles machen kannst und wie das geht erfährst du am UL-Kickoff.
+
+  Damit deine Unit mit dir und du mit deiner Unit in Kontakt treten kannst, haben wir dir eine Mailadresse eingerichtet.
+  Wie diese funktioniert findest du unter unithub.worldscoutjamboree.de/ TODO 
+
+  Bitte logge dich (via WSJ Login - Single Sign On) in der nächsten Woche hin und wieder dort ein und überprüfe ob es schon fragen aus deiner Unit an euch gibt.
+
+  https://mail.worldscoutjamboree.de
+
+  Nutzer: $KUERZEL
+  Passwort: $PASSWORT
+  Mailadresse: $VORNAME.NACHNAME@worldscoutjamboree.de
+
+  Dies ist auch der Zugang zu den weiteren Tools die wir euch bereitstellen. Dazu aber mehr am UL-Kickoff.
+  Falls es jetzt schon technische Probleme oder Fragen gibt schreib uns gerne an helpdesk@worldscoutjamboree.de .
+
+  Jetzt kann es richtig losgehen und wir freuen uns dich schon bald bei unserem UL-Kickoff am 11.01.2026 kennenzulernen. Dort werdet ihr alle weiteren Infos zum Start in die Vorbereitungsphase bekommen.
+
+
+  Gut Pfad und bis bald
+
+  Dein Unit Management Team
+
+
