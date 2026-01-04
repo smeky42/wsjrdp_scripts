@@ -421,6 +421,15 @@ wheels = [
 ]
 
 [[package]]
+name = "iso4217"
+version = "1.14.20250512"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/29/db0854475507162050c6245be61f37c7216d4157c09ec808ed13cc003d27/iso4217-1.14.20250512.tar.gz", hash = "sha256:f036bd5460f1d371f2df253e90be5032930c8f76512f3a02ecfa5ad1e9fb164b", size = 12622, upload-time = "2025-06-22T01:28:04.377Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/6f/8e1d65453c7099f863d4785d8d3370192d4bcaffc26ad2bf0542c0fbd7f3/iso4217-1.14.20250512-py2.py3-none-any.whl", hash = "sha256:f23974b5b6eb264709f6d764703d5c03f168807305077cb76d7cdfcca87d7d76", size = 10862, upload-time = "2025-06-22T01:28:03.309Z" },
+]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1147,6 +1156,18 @@ wheels = [
 ]
 
 [[package]]
+name = "saxonche"
+version = "12.9.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b1/72/b05dadc4ed39f9c885caf06201cc0fd7ac9770a94bb1fae3914f984f358f/saxonche-12.9.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:3b45146770f6459e10c70911fd28e8741fcd2cde07b53639f2008f98d5b15067", size = 34466475, upload-time = "2025-09-15T19:46:58.667Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/1f/41ea0292a6a0b8566dd71aec43d98e9d3696d40e3aff59b1e9bee46ebeb5/saxonche-12.9.0-cp314-cp314-macosx_11_0_x86_64.whl", hash = "sha256:cb5934037737fb7972f53e9408165f187c4ecea5ef213fcdbc21b786f467a784", size = 35764575, upload-time = "2025-09-15T19:47:04.234Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/5d/d50c1ec25408481540547de7978b6261bef984ee7db9717f567d461a7d42/saxonche-12.9.0-cp314-cp314-manylinux_2_24_aarch64.whl", hash = "sha256:a1a79b6e713aeb94cc30815253bde96c6dfabe8ea6f214969ed0e4ae60980f68", size = 37321468, upload-time = "2025-09-15T19:47:13.347Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/da/0b2dd193ee6d659c4f4d4e6b0754292609483383669202c4bc11b2422b27/saxonche-12.9.0-cp314-cp314-manylinux_2_24_x86_64.whl", hash = "sha256:b6ad3f907a87111772b887b117542b4fd030253c236b1bb71902972cefcf55da", size = 38244978, upload-time = "2025-09-15T19:47:19.806Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/ee/9b3f1d492278bdc27d76e9c890300d03bef385eaa610353e970750a01812/saxonche-12.9.0-cp314-cp314-win_amd64.whl", hash = "sha256:5961f5ff8f83eebc635c5b6730e2ed0e0346437540f1cb39062b08dc273b3f94", size = 35900485, upload-time = "2025-09-15T19:47:25.963Z" },
+]
+
+[[package]]
 name = "schwifty"
 version = "2025.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1621,12 +1642,14 @@ source = { editable = "packages/wsjrdp2027" }
 dependencies = [
     { name = "html2text" },
     { name = "humanfriendly" },
+    { name = "iso4217" },
     { name = "jinja2" },
     { name = "lxml" },
     { name = "pandas" },
     { name = "paramiko" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pyyaml" },
+    { name = "saxonche" },
     { name = "schwifty" },
     { name = "sepaxml" },
     { name = "sshtunnel" },
@@ -1651,12 +1674,14 @@ type-checking = [
 requires-dist = [
     { name = "html2text", specifier = ">=2025.4.15" },
     { name = "humanfriendly", specifier = ">=10.0" },
+    { name = "iso4217", specifier = ">=1.14.20250512" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "lxml" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "paramiko", specifier = "<4" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.2" },
     { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "saxonche", specifier = ">=12.9.0" },
     { name = "schwifty", specifier = ">=2025.9.0" },
     { name = "sepaxml", specifier = ">=2.7.0" },
     { name = "sshtunnel", specifier = ">=0.4.0" },

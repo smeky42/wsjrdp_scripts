@@ -195,11 +195,11 @@ def _report_df_unusual(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> None:
     def to_eur(cents: int) -> str:
         return wsjrdp2027.format_cents_as_eur_de(cents, zero_cents=",--")
 
-    def cut_to(s:str, l:int) -> str:
-        if len(s) > l:
-            return s[:(l-3)] + "..."
+    def cut_to(string: str, length: int) -> str:
+        if len(string) > length:
+            return string[: (length - 3)] + "..."
         else:
-            return s
+            return string
 
     if df.empty:
         return
