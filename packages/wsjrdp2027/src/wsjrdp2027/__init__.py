@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import typing as _typing
+
 from ._batch import (
     BatchConfig as BatchConfig,
     PreparedBatch as PreparedBatch,
@@ -29,8 +31,10 @@ from ._people import (
 from ._people_query import PeopleQuery as PeopleQuery, PeopleWhere as PeopleWhere
 from ._pg import (
     pg_add_person_tag as pg_add_person_tag,
+    pg_insert_camt_transaction_from_tx as pg_insert_camt_transaction_from_tx,
     pg_insert_direct_debit_payment_info as pg_insert_direct_debit_payment_info,
     pg_insert_direct_debit_pre_notification as pg_insert_direct_debit_pre_notification,
+    pg_insert_fin_account as pg_insert_fin_account,
     pg_insert_payment_initiation as pg_insert_payment_initiation,
 )
 from ._sepa_direct_debit import (
@@ -49,7 +53,6 @@ from ._typst import (
     typst_compile as typst_compile,
 )
 from ._util import (
-    nan_to_none as nan_to_none,
     configure_file_logging as configure_file_logging,
     console_confirm as console_confirm,
     create_dir as create_dir,
@@ -57,6 +60,7 @@ from ._util import (
     format_iban as format_iban,
     get_default_email_policy as get_default_email_policy,
     merge_mail_addresses as merge_mail_addresses,
+    nan_to_none as nan_to_none,
     render_template as render_template,
     sepa_mandate_id_from_hitobito_id as sepa_mandate_id_from_hitobito_id,
     to_date as to_date,
@@ -68,6 +72,10 @@ from ._util import (
     to_yaml_str as to_yaml_str,
     write_dataframe_to_xlsx as write_dataframe_to_xlsx,
 )
+
+
+if _typing.TYPE_CHECKING:
+    from ._camt import CamtMessage as CamtMessage
 
 
 __all__ = [
@@ -84,6 +92,7 @@ __all__ = [
     "WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG",
     #
     "BatchConfig",
+    "CamtMessage",
     "MailClient",
     "PaymentRole",
     "PeopleQuery",
@@ -102,10 +111,7 @@ __all__ = [
     "format_iban",
     "get_default_email_policy",
     "get_typst_font_paths",
-    "pg_insert_direct_debit_payment_info",
-    "pg_insert_direct_debit_pre_notification",
     "insert_direct_debit_pre_notification_from_row",
-    "pg_insert_payment_initiation",
     "load_accounting_balance_in_cent",
     "load_payment_dataframe",
     "load_payment_dataframe_from_payment_initiation",
@@ -113,6 +119,11 @@ __all__ = [
     "merge_mail_addresses",
     "nan_to_none",
     "pg_add_person_tag",
+    "pg_insert_camt_transaction_from_tx",
+    "pg_insert_direct_debit_payment_info",
+    "pg_insert_direct_debit_pre_notification",
+    "pg_insert_fin_account",
+    "pg_insert_payment_initiation",
     "render_template",
     "sepa_mandate_id_from_hitobito_id",
     "to_date",
@@ -227,3 +238,20 @@ EARLY_PAYER_AUGUST_IDS_SUPERSET = [
 
 This set was fixed before sending the Pre-Notification.
 """
+
+
+__ALIASES__ = {
+    "CamtMessage": (f"._camt", "CamtMessage"),
+}
+
+
+def __getattr__(name):
+    import importlib
+
+    mod_name, qualname = __ALIASES__.get(name, (None, None))
+    if not mod_name or not qualname:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    mod = importlib.import_module(mod_name, package=__name__)
+    obj = getattr(mod, qualname)
+    globals()[qualname] = obj
+    return obj

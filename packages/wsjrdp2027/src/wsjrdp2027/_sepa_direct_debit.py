@@ -22,8 +22,8 @@ CREDITOR_ID = "DE81WSJ00002017275"
 
 WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG: _types.SepaDirectDebitConfig = {
     "name": "Ring deutscher Pfadfinder*innenverbände e.V.",
-    "IBAN": "DE34520900000077228802",
-    "BIC": "GENODE51KS1",
+    "IBAN": "DE70830654080005498201",
+    "BIC": "GENODEF1SLR",
     "creditor_id": CREDITOR_ID,
     "currency": "EUR",
     "address_as_single_line": "Chausseestraße 128/129, 10115 Berlin",

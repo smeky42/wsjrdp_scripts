@@ -14,10 +14,20 @@ if _typing.TYPE_CHECKING:
     import psycopg as _psycopg
     import psycopg.sql as _psycopg_sql
 
-    from . import _payment_role
+    from . import _camt, _payment_role
 
 
 _LOGGER = _logging.getLogger(__name__)
+
+
+def pg_literal(obj):
+    from psycopg.sql import Literal
+    from psycopg.types.json import Jsonb
+
+    if isinstance(obj, dict):
+        return Jsonb(obj)
+    else:
+        return Literal(obj)
 
 
 def create_select_query(
@@ -60,13 +70,13 @@ def col_val_pairs_to_insert_sql_query(
     >>> col_val_pairs_to_insert_sql_query("tags", [("name", "Tag")]).as_string()
     'INSERT INTO "tags" ("name") VALUES (\'Tag\') RETURNING "id"'
     """
-    from psycopg.sql import SQL, Composed, Identifier, Literal
+    from psycopg.sql import SQL, Composed, Identifier
 
     if isinstance(table_name, str):
         table_name = Identifier(table_name)
 
     cols = [*(Identifier(col_val[0]) for col_val in colval_pairs)]
-    vals = [*(Literal(col_val[1]) for col_val in colval_pairs)]
+    vals = [*(pg_literal(col_val[1]) for col_val in colval_pairs)]
     sql_cols = SQL(", ").join(cols)
     sql_vals = SQL(", ").join(vals)
     query = SQL("INSERT INTO {table_name} ({sql_cols}) VALUES ({sql_vals})").format(
@@ -97,7 +107,7 @@ def col_val_pairs_to_insert_do_nothing_sql_query(
     >>> col_val_pairs_to_insert_do_nothing_sql_query("tags", [("name", "Tag")]).as_string()
     'WITH t AS (INSERT INTO "tags" ("name") VALUES (\'Tag\') ON CONFLICT DO NOTHING RETURNING "id")\nSELECT * FROM t\nUNION\nSELECT "id" FROM "tags" WHERE "name" = \'Tag\''
     """
-    from psycopg.sql import SQL, Identifier, Literal
+    from psycopg.sql import SQL, Identifier
 
     if isinstance(table_name, str):
         table_name = Identifier(table_name)
@@ -108,7 +118,7 @@ def col_val_pairs_to_insert_do_nothing_sql_query(
 
     def sql_cmp(k, v):
         key = Identifier(k)
-        val = Literal(v)
+        val = pg_literal(v)
         if v is None:
             return SQL("{key} IS {val}").format(key=key, val=val)
         else:
@@ -131,11 +141,41 @@ SELECT {returning} FROM {table_name} WHERE {where_clause}""").format(
     return query
 
 
-def _execute_query_fetchone(cursor: _psycopg.Cursor, query):
-    query_str = _textwrap.indent(query.as_string(context=cursor), "  | ")
+def col_val_pairs_to_insert_or_upsert_query(
+    table_name: str | _psycopg_sql.Identifier,
+    matching_colval_pairs,
+    other_colval_pairs=None,
+    *,
+    returning: str | _psycopg_sql.Identifier = "id",
+    on_conflict: _psycopg_sql.Composed | _psycopg_sql.SQL | str | None = None,
+    upsert: bool | None = None,
+) -> _psycopg_sql.Composed:
+    if upsert is None:
+        upsert = False
+    if upsert:
+        return col_val_pairs_to_insert_do_nothing_sql_query(
+            table_name,
+            matching_colval_pairs=matching_colval_pairs,
+            other_colval_pairs=other_colval_pairs,
+            returning=returning,
+        )
+    else:
+        all_colval_pairs = list(matching_colval_pairs) + list(other_colval_pairs or [])
+        return col_val_pairs_to_insert_sql_query(
+            table_name,
+            colval_pairs=all_colval_pairs,
+            returning=returning,
+            on_conflict=on_conflict,
+        )
+
+
+def _execute_query_fetchone(
+    cursor_or_connection: _psycopg.Cursor | _psycopg.Connection, /, query
+):
+    query_str = _textwrap.indent(query.as_string(context=cursor_or_connection), "  | ")
     try:
-        cursor.execute(query)
-        result = cursor.fetchone()
+        result_cursor = cursor_or_connection.execute(query)
+        result = result_cursor.fetchone()
     except Exception:
         _LOGGER.error("failed to execute\n%s", query_str)
         raise
@@ -876,7 +916,7 @@ def pg_insert_accounting_entry(
     dbtr_bic: str | None = None,
     dbtr_address: str | None = None,
 ) -> int:
-    from . import _pg, _util
+    from . import _util
 
     created_at = _util.to_datetime(created_at)
     updated_at = _util.to_datetime_or_none(updated_at)
@@ -915,5 +955,382 @@ def pg_insert_accounting_entry(
         ("dbtr_bic", dbtr_bic),
         ("dbtr_address", dbtr_address),
     ]
-    query = _pg.col_val_pairs_to_insert_sql_query("accounting_entries", cols_vals, "id")
+    query = col_val_pairs_to_insert_sql_query("accounting_entries", cols_vals, "id")
     return _execute_query_fetch_id(cursor, query)
+
+
+def pg_insert_camt_transaction(
+    cursor,
+    *,
+    camt_type: str,
+    account_identification: str,
+    account_servicer_reference: str,
+    credit_debit_indication: str,
+    amount_cents: int,
+    amount_currency: str,
+    value_date: _datetime.date | str,
+    description: str | None = None,
+    # message
+    message_identification: str | None = None,
+    message_creation_date_time: _datetime.datetime | str | None = None,
+    # Rpt
+    report_identification: str | None = None,
+    report_electronic_sequence_number: int | None = None,
+    report_legal_sequence_number: int | None = None,
+    report_page_number: int | None = None,
+    report_creation_date_time: _datetime.datetime | str | None = None,
+    # Ntry
+    status: str | None = None,
+    additional_entry_info: str | None = None,
+    booking_date: _datetime.date | str | None = None,
+    number_of_transactions: int | None = None,
+    # TxDtls
+    transaction_details_index: int | None = None,
+    comment: str | None = None,
+    references: dict | None = None,
+    endtoend_id: str | None = None,
+    mandate_id: str | None = None,
+    bank_transaction_code: str | None = None,
+    bank_transaction_code_dk: str | None = None,
+    return_reason: str | None = None,
+    cdtr_name: str | None = None,
+    cdtr_iban: str | None = None,
+    cdtr_bic: str | None = None,
+    cdtr_address: str | None = None,
+    dbtr_name: str | None = None,
+    dbtr_iban: str | None = None,
+    dbtr_bic: str | None = None,
+    dbtr_address: str | None = None,
+    # metadata
+    created_at: _datetime.datetime | str | None = None,
+    updated_at: _datetime.datetime | str | None = None,
+    deleted_at: _datetime.datetime | str | None = None,
+    entry_id: int | None = None,
+    replaced_by_id: int | None = None,
+    replaces_id: int | None = None,
+    reversed_by_id: int | None = None,
+    reverses_id: int | None = None,
+    partially_reverses_id: int | None = None,
+    subject_id: int | None = None,
+    subject_type: str | None = None,
+    fin_account_id: int | None = None,
+    payment_initiation_id: int | None = None,
+    partially_reverses_payment_initiation_id: int | None = None,
+    direct_debit_payment_info_id: int | None = None,
+    accounting_entry_id: int | None = None,
+    camt52_entry_id: int | None = None,
+    camt53_entry_id: int | None = None,
+    ntry: dict | None = None,
+    tx_dtls: dict | None = None,
+    additional_info: dict | None = None,
+    upsert: bool | None = None,
+) -> int:
+    from . import _util
+
+    matching_colval_pairs = [
+        ("camt_type", camt_type),
+        ("account_identification", account_identification),
+        ("account_servicer_reference", account_servicer_reference),
+        ("transaction_details_index", transaction_details_index or 0),
+    ]
+    other_colval_pairs = [
+        # Mandatory
+        ("credit_debit_indication", credit_debit_indication),
+        ("amount_cents", amount_cents),
+        ("amount_currency", amount_currency or "EUR"),
+        ("value_date", _util.to_date(value_date)),
+        ("description", description),
+        # message
+        ("message_identification", message_identification),
+        (
+            "message_creation_date_time",
+            _util.to_datetime_or_none(message_creation_date_time),
+        ),
+        # Rpt / Stmt / ...
+        ("report_identification", report_identification),
+        ("report_electronic_sequence_number", report_electronic_sequence_number),
+        ("report_legal_sequence_number", report_legal_sequence_number),
+        ("report_page_number", report_page_number),
+        (
+            "report_creation_date_time",
+            _util.to_datetime_or_none(report_creation_date_time),
+        ),
+        # Ntry
+        ("status", status or "NULL"),
+        ("additional_entry_info", additional_entry_info),
+        ("booking_date", _util.to_date_or_none(booking_date)),
+        ("number_of_transactions", number_of_transactions or 1),
+        # TxDtls
+        ("comment", comment or ""),
+        ("references", references),
+        ("endtoend_id", endtoend_id),
+        ("mandate_id", mandate_id),
+        ("bank_transaction_code", bank_transaction_code),
+        ("bank_transaction_code_dk", bank_transaction_code_dk),
+        ("return_reason", return_reason),
+        ("cdtr_name", cdtr_name),
+        ("cdtr_iban", cdtr_iban),
+        ("cdtr_bic", cdtr_bic),
+        ("cdtr_address", cdtr_address),
+        ("dbtr_name", dbtr_name),
+        ("dbtr_iban", dbtr_iban),
+        ("dbtr_bic", dbtr_bic),
+        ("dbtr_address", dbtr_address),
+        # metadata
+        ("created_at", _util.to_datetime(created_at)),
+        ("updated_at", _util.to_datetime_or_none(updated_at)),
+        ("deleted_at", _util.to_datetime_or_none(deleted_at)),
+        ("entry_id", entry_id),
+        ("replaced_by_id", replaced_by_id),
+        ("replaces_id", replaces_id),
+        ("reversed_by_id", reversed_by_id),
+        ("reverses_id", reverses_id),
+        ("partially_reverses_id", partially_reverses_id),
+        ("subject_id", subject_id),
+        ("subject_type", subject_type),
+        ("fin_account_id", fin_account_id),
+        ("payment_initiation_id", payment_initiation_id),
+        (
+            "partially_reverses_payment_initiation_id",
+            partially_reverses_payment_initiation_id,
+        ),
+        ("direct_debit_payment_info_id", direct_debit_payment_info_id),
+        ("accounting_entry_id", accounting_entry_id),
+        ("camt52_entry_id", camt52_entry_id),
+        ("camt53_entry_id", camt53_entry_id),
+        ("ntry", ntry),
+        ("tx_dtls", tx_dtls),
+        ("additional_info", additional_info),
+    ]
+
+    query = col_val_pairs_to_insert_or_upsert_query(
+        "wsjrdp_camt_transactions",
+        matching_colval_pairs=matching_colval_pairs,
+        other_colval_pairs=other_colval_pairs,
+        returning="id",
+        upsert=upsert,
+    )
+    return _execute_query_fetch_id(cursor, query)
+
+
+def pg_insert_camt_transaction_from_tx(
+    cursor,
+    tx: _camt.CamtTransactionDetails,
+    *,
+    created_at: _datetime.datetime | str | None = None,
+    updated_at: _datetime.datetime | str | None = None,
+    deleted_at: _datetime.datetime | str | None = None,
+    entry_id: int | None = None,
+    replaced_by_id: int | None = None,
+    replaces_id: int | None = None,
+    reversed_by_id: int | None = None,
+    reverses_id: int | None = None,
+    partially_reverses_id: int | None = None,
+    subject_id: int | None = None,
+    subject_type: str | None = None,
+    fin_account_id: int | None = None,
+    payment_initiation_id: int | None = None,
+    partially_reverses_payment_initiation_id: int | None = None,
+    direct_debit_payment_info_id: int | None = None,
+    accounting_entry_id: int | None = None,
+    camt52_entry_id: int | None = None,
+    camt53_entry_id: int | None = None,
+    additional_info: dict | None = None,
+    upsert: bool | None = None,
+) -> int:
+    wsjrdp2027_mandate_id_prefix = "wsjrdp2027"
+    if (
+        tx.mandate_id
+        and tx.mandate_id.startswith(wsjrdp2027_mandate_id_prefix)
+        and subject_id is None
+        and subject_type in (None, "Person")
+    ):
+        subject_id = int(
+            tx.mandate_id.removeprefix(wsjrdp2027_mandate_id_prefix), base=10
+        )
+        subject_type = "Person"
+    return pg_insert_camt_transaction(
+        cursor,
+        # Mandatory
+        camt_type=tx.camt_type,
+        account_identification=tx.account_identification,
+        account_servicer_reference=tx.account_servicer_reference,
+        credit_debit_indication=tx.credit_debit_indication,
+        amount_cents=tx.amount_cents,
+        amount_currency=tx.amount_currency,
+        value_date=tx.value_date,
+        description=tx.description,
+        # message
+        message_identification=tx.message_identification,
+        message_creation_date_time=tx.message_creation_date_time,
+        # Rpt / Stmt / ...
+        report_identification=tx.report_identification,
+        report_electronic_sequence_number=tx.report_electronic_sequence_number,
+        report_legal_sequence_number=tx.report_legal_sequence_number,
+        report_page_number=tx.report_page_number,
+        report_creation_date_time=tx.report_creation_date_time,
+        # Ntry
+        status=tx.status,
+        additional_entry_info=tx.additional_entry_info,
+        booking_date=tx.booking_date,
+        number_of_transactions=1,
+        # TxDtls
+        transaction_details_index=tx.transaction_details_index,
+        references=tx.references,
+        endtoend_id=tx.endtoend_id,
+        mandate_id=tx.mandate_id,
+        bank_transaction_code=tx.bank_transaction_code,
+        bank_transaction_code_dk=tx.bank_transaction_code_dk,
+        return_reason=tx.return_reason,
+        cdtr_name=tx.cdtr_name,
+        cdtr_iban=tx.cdtr_iban,
+        cdtr_bic=tx.cdtr_bic,
+        cdtr_address=tx.cdtr_address,
+        dbtr_name=tx.dbtr_name,
+        dbtr_iban=tx.dbtr_iban,
+        dbtr_bic=tx.dbtr_bic,
+        dbtr_address=tx.dbtr_address,
+        # metadata
+        created_at=created_at,
+        updated_at=updated_at,
+        deleted_at=deleted_at,
+        entry_id=entry_id,
+        replaced_by_id=replaced_by_id,
+        replaces_id=replaces_id,
+        reversed_by_id=reversed_by_id,
+        reverses_id=reverses_id,
+        partially_reverses_id=partially_reverses_id,
+        subject_id=subject_id,
+        subject_type=subject_type,
+        fin_account_id=fin_account_id,
+        payment_initiation_id=payment_initiation_id,
+        partially_reverses_payment_initiation_id=partially_reverses_payment_initiation_id,
+        direct_debit_payment_info_id=direct_debit_payment_info_id,
+        accounting_entry_id=accounting_entry_id,
+        camt52_entry_id=camt52_entry_id,
+        camt53_entry_id=camt53_entry_id,
+        ntry=tx.Ntry or None,
+        tx_dtls=tx.TxDtls or None,
+        additional_info=additional_info,
+        upsert=upsert,
+    )
+
+
+def pg_insert_fin_account(
+    cursor_or_connection,
+    /,
+    *,
+    # mandatory
+    account_identification: str,
+    opening_balance_cents: int,
+    opening_balance_date: _datetime.date | str,
+    opening_balance_currency: str,
+    # optional
+    short_name: str | None = None,
+    description: str | None = None,
+    iban: str | None = None,
+    owner_name: str | None = None,
+    owner_address: str | None = None,
+    servicer_name: str | None = None,
+    servicer_bic: str | None = None,
+    servicer_address: str | None = None,
+    # metadata
+    created_at: _datetime.datetime | str | None = None,
+    updated_at: _datetime.datetime | str | None = None,
+    deleted_at: _datetime.datetime | str | None = None,
+    status: str | None = None,
+    additional_info: dict | None = None,
+    upsert: bool | None = None,
+) -> int:
+    from . import _util
+
+    matching_colval_pairs = [
+        ("account_identification", account_identification),
+    ]
+    other_colval_pairs = [
+        # Mandatory
+        ("opening_balance_cents", opening_balance_cents),
+        ("opening_balance_currency", opening_balance_currency),
+        ("opening_balance_date", _util.to_date(opening_balance_date)),
+        # optional
+        ("short_name", short_name),
+        ("description", description or ""),
+        ("iban", iban),
+        ("owner_name", owner_name),
+        ("owner_address", owner_address),
+        ("servicer_name", servicer_name),
+        ("servicer_bic", servicer_bic),
+        ("servicer_address", servicer_address),
+        # metadata
+        ("created_at", _util.to_datetime(created_at)),
+        ("updated_at", _util.to_datetime_or_none(updated_at)),
+        ("deleted_at", _util.to_datetime_or_none(deleted_at)),
+        ("status", status or "active"),
+        ("additional_info", additional_info),
+    ]
+    query = col_val_pairs_to_insert_or_upsert_query(
+        "wsjrdp_fin_accounts",
+        matching_colval_pairs=matching_colval_pairs,
+        other_colval_pairs=other_colval_pairs,
+        returning="id",
+        upsert=upsert,
+    )
+    return _execute_query_fetch_id(cursor_or_connection, query)
+
+
+def pg_upsert_fin_account(
+    cursor_or_connection,
+    /,
+    *,
+    # mandatory
+    account_identification: str,
+    opening_balance_cents: int,
+    opening_date: _datetime.date | str,
+    currency: str,
+    # optional
+    short_name: str | None = None,
+    description: str | None = None,
+    iban: str | None = None,
+    owner_name: str | None = None,
+    owner_address: str | None = None,
+    servicer_name: str | None = None,
+    servicer_bic: str | None = None,
+    servicer_address: str | None = None,
+    # metadata
+    created_at: _datetime.datetime | str | None = None,
+    updated_at: _datetime.datetime | str | None = None,
+    deleted_at: _datetime.datetime | str | None = None,
+    status: str | None = None,
+    additional_info: dict | None = None,
+) -> int:
+    from . import _util
+
+    cols_vals = [
+        # Mandatory
+        # ("account_identification", account_identification),
+        ("opening_balance_cents", opening_balance_cents),
+        ("opening_date", _util.to_date(opening_date)),
+        ("currency", currency),
+        # optional
+        ("short_name", short_name),
+        ("description", description or ""),
+        ("iban", iban),
+        ("owner_name", owner_name),
+        ("owner_address", owner_address),
+        ("servicer_name", servicer_name),
+        ("servicer_bic", servicer_bic),
+        ("servicer_address", servicer_address),
+        # metadata
+        ("created_at", _util.to_datetime(created_at)),
+        ("updated_at", _util.to_datetime_or_none(updated_at)),
+        ("deleted_at", _util.to_datetime_or_none(deleted_at)),
+        ("status", status or "active"),
+        ("additional_info", additional_info),
+    ]
+    query = col_val_pairs_to_insert_do_nothing_sql_query(
+        "wsjrdp_fin_accounts",
+        [("account_identification", account_identification)],
+        cols_vals,
+        returning="id",
+    )
+    return _execute_query_fetch_id(cursor_or_connection, query)
