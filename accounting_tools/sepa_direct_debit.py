@@ -91,7 +91,7 @@ def _upsert_payment_initiation_and_df_and_create_payment_infos(
         initiating_party_name=pain_message.initiating_party_name,
     )
     if pain_id is None:
-        pain_id = wsjrdp2027.pg_insert_payment_initiation(conn, **pain_updates)
+        pain_id = wsjrdp2027.pg_insert_payment_initiation(conn, **pain_updates)  # type: ignore
         df["pn_payment_initiation_id"] = pain_id
         df["sepa_dd_payment_initiation_id"] = pain_id
         _LOGGER.info("Finished INSERT wsjrdp_payment_initiations id=%s", pain_id)
@@ -411,34 +411,42 @@ def main(argv=None):
             pedantic=True,
         )
 
-        pain_message = wsjrdp2027.PainMessage.load(xml_filename)
-        _LOGGER.info("Parsed %s", xml_filename)
-        _write_mail_txt(mail_txt_filename, pain_message)
-        _write_datev_csv(datev_csv_filename, pain_message=pain_message, df=df)
-        _report_pain_message(pain_message)
-        _report_df(df, pain_message=pain_message)
+        # ==================================================================================
 
-        wsjrdp2027.report_direct_debit_amount_differences(df, logger=_LOGGER)
-
-        #
-        # ==============================================================================
-
-        ctx.require_approval_to_run_in_prod()
-
-        # ==============================================================================
-        #
-
-        if args.accounting:
-            wsjrdp2027.write_payment_dataframe_to_db(
-                conn, df, print_progress_message=ctx.print_progress_message
-            )
-            _upsert_payment_initiation_and_df_and_create_payment_infos(
-                conn, pain_id=pain_id, df=df, pain_message=pain_message
-            )
+        if sum_amount == 0:
+            _LOGGER.warning("")
+            _LOGGER.warning("No Direct Debit (sum_amount == 0)")
+            _LOGGER.warning("")
         else:
-            _LOGGER.info("")
-            _LOGGER.info("SKIP ACCOUNTING (--no-accounting given)")
-            _LOGGER.info("")
+            pain_message = wsjrdp2027.PainMessage.load(xml_filename)
+            _LOGGER.info("Parsed %s", xml_filename)
+            _write_mail_txt(mail_txt_filename, pain_message)
+            _write_datev_csv(datev_csv_filename, pain_message=pain_message, df=df)
+            _report_pain_message(pain_message)
+            _report_df(df, pain_message=pain_message)
+            wsjrdp2027.report_direct_debit_amount_differences(df, logger=_LOGGER)
+
+            #
+            # ==============================================================================
+
+            ctx.require_approval_to_run_in_prod()
+
+            # ==============================================================================
+            #
+
+            if args.accounting:
+                wsjrdp2027.write_payment_dataframe_to_db(
+                    conn, df, print_progress_message=ctx.print_progress_message
+                )
+                _upsert_payment_initiation_and_df_and_create_payment_infos(
+                    conn, pain_id=pain_id, df=df, pain_message=pain_message
+                )
+            else:
+                _LOGGER.info("")
+                _LOGGER.info("SKIP ACCOUNTING (--no-accounting given)")
+                _LOGGER.info("")
+
+        # ==================================================================================
 
         wsjrdp2027.write_payment_dataframe_to_xlsx(df, xlsx_filename)
         if args.rollback_for_testing:
@@ -451,6 +459,10 @@ def main(argv=None):
 
     _LOGGER.info("finish writing output")
 
+    if sum_amount == 0:
+        _LOGGER.warning("")
+        _LOGGER.warning("No Direct Debit (sum_amount == 0)")
+        _LOGGER.warning("")
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)
     _LOGGER.info("  SEPA XML: %s", xml_filename)

@@ -836,8 +836,8 @@ def pg_insert_direct_debit_pre_notification(
 def pg_insert_payment_initiation(
     cursor: _psycopg.Cursor,
     *,
-    created_at: _datetime.datetime | str = "NOW",
-    updated_at: _datetime.datetime | str | None = None,
+    created_at: _datetime.datetime | _datetime.date | str | int = "NOW",
+    updated_at: _datetime.datetime | _datetime.date | str | int | None = None,
     status: str = "planned",
     sepa_schema: str = "pain.008.001.02",
     message_identification: str | None = None,

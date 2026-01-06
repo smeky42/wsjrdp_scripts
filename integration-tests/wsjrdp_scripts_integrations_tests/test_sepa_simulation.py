@@ -12,7 +12,7 @@ import wsjrdp2027
 
 
 _DAY_OF_MONTH = 5
-_FIRST_COLLECTION_DATE = _datetime.date(2025, 12, _DAY_OF_MONTH)
+_FIRST_COLLECTION_DATE = _datetime.date(2026, 2, _DAY_OF_MONTH)
 _CUSTOM_PRE_NOTIFICATION_QUERY = """---
 where:
   id: [4, 141, 203, 204]
@@ -119,6 +119,7 @@ class Test_Run_Monthly_SEPA_Direct_Debits:
                         f"{_ROOT_DIR}/accounting_tools/sepa_direct_debit.py",
                         f"--collection-date={today}",
                         f"--payment-initiation-id={pain_id}",
+                        # f"--find-planned-payment-initiation",
                     ]
                 )
                 if (

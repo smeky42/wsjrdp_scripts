@@ -6,8 +6,6 @@ import logging as _logging
 import typing as _typing
 from collections import abc as _collections_abc
 
-import wsjrdp2027
-
 from . import _util
 
 
@@ -866,16 +864,26 @@ WHERE
         for idx, row in df.iterrows():
             pn_id = row.get("pn_id")
             pn_payment_status: str | None = row.get("pn_payment_status")
-            if pn_payment_status != 'pre_notified':
+            if pn_payment_status != "pre_notified":
                 _LOGGER.info(
                     "Notice: Skip payment due to pn.payment_status=%s: people.id=%s pn.id=%s",
                     pn_payment_status,
                     row.get("id"),
                     pn_id,
                 )
-                _LOGGER.info("    %s %s %s", row['payment_role'].short_role_name, row['id'], row['short_full_name'])
-                _LOGGER.info("    pn_comment: %s", row['pn_comment'])
-                _skip_payment(df, idx, f"pn.payment_status={pn_payment_status}", log_level=_logging.DEBUG)
+                _LOGGER.info(
+                    "    %s %s %s",
+                    row["payment_role"].short_role_name,
+                    row["id"],
+                    row["short_full_name"],
+                )
+                _LOGGER.info("    pn_comment: %s", row["pn_comment"])
+                _skip_payment(
+                    df,
+                    idx,
+                    f"pn.payment_status={pn_payment_status}",
+                    log_level=_logging.DEBUG,
+                )
             elif row.get("pn_try_skip"):
                 _LOGGER.info(
                     "Notice: Skip payment due to pn.try_skip=True: people.id=%s pn.id=%s pn.payment_status=%s",
@@ -883,8 +891,13 @@ WHERE
                     pn_id,
                     pn_payment_status,
                 )
-                _LOGGER.info("    %s %s %s", row['payment_role'].short_role_name, row['id'], row['short_full_name'])
-                _LOGGER.info("    pn_comment: %s", row['pn_comment'])
+                _LOGGER.info(
+                    "    %s %s %s",
+                    row["payment_role"].short_role_name,
+                    row["id"],
+                    row["short_full_name"],
+                )
+                _LOGGER.info("    pn_comment: %s", row["pn_comment"])
                 _skip_payment(df, idx, "pn.try_skip=True", log_level=_logging.DEBUG)
     else:
         new_cols = [
@@ -930,7 +943,10 @@ def report_direct_debit_amount_differences(
         )
         return
 
-    _LOGGER.info("==== Found %s payments with differences between amounts:", len(amount_changed_df))
+    _LOGGER.info(
+        "==== Found %s payments with differences between amounts:",
+        len(amount_changed_df),
+    )
     for _, row in amount_changed_df.iterrows():
         diff_msg = (
             f"amount difference between pre-notification, amount in pre-notification and current computation:\n"
