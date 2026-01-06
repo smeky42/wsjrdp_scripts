@@ -7,6 +7,8 @@ import pandas as _pandas
 import re
 
 import wsjrdp2027
+import wsjrdp2027.keycloak
+import wsjrdp2027.mailbox
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,35 +48,16 @@ def create_argument_parser():
     return p
 
 
-def update_batch_config_from_ctx(
+def update_config_from_ctx(
     config: wsjrdp2027.BatchConfig,
-    ctx: wsjrdp2027.WsjRdpContext,
     new_primary_group_id: str,
     where_unit_code: str,
 ) -> wsjrdp2027.BatchConfig:
-    config = config.replace(
-        dry_run=ctx.dry_run,
-        skip_email=ctx.parsed_args.skip_email,
-        skip_db_updates=ctx.parsed_args.skip_db_updates,
-    )
-    args = ctx.parsed_args
-
-    _LOGGER.info("Setting new_primary_group_id to %s", new_primary_group_id)
-    _LOGGER.info("Updates %s", config.updates)
+    _LOGGER.info("Setting new_primary_group_id to %s, where Unit Code %s", new_primary_group_id, where_unit_code)
+    
     config.updates["new_primary_group_id"] = new_primary_group_id
+    config.query.where.unit_code = where_unit_code
 
-    query = config.query
-    query.now = ctx.start_time
-    query.where.unit_code = where_unit_code
-
-    if (limit := args.limit) is not None:
-        query.limit = limit
-    if (collection_date := args.collection_date) is not None:
-        query.collection_date = wsjrdp2027.to_date(collection_date)
-    if (dry_run := ctx.dry_run) is not None:
-        config.dry_run = dry_run
-    if tags := getattr(args, "tags"):
-        config.updates.setdefault("add_tags", []).extend(tags)
     return config
 
 
@@ -108,19 +91,13 @@ def filter_people_by_unit_code(
     return result
 
 
-def update_and_mail(batch_config, ctx: wsjrdp2027.WsjRdpContext, gid: str, unit: str):
-    batch_config = update_batch_config_from_ctx(batch_config, ctx, gid, unit)
+def update_and_mail(batch_config, ctx: wsjrdp2027.WsjRdpContext, gid: str, unit: str, df: _pandas.DataFrame):
+    batch_config = update_config_from_ctx(batch_config, gid, unit)
 
-    out_base = ctx.make_out_path(batch_config.name)
-    log_filename = out_base.with_suffix(".log")
-    ctx.configure_log_file(log_filename)
-
-    prepared_batch = ctx.load_people_and_prepare_batch(batch_config)
+    prepared_batch = ctx.load_people_and_prepare_batch(batch_config, df_cb=lambda _: df)
     ctx.update_db_and_send_mailing(prepared_batch, zip_eml=ctx.parsed_args.zip_eml)
 
-    _LOGGER.info("")
-    _LOGGER.info("Output directory: %s", ctx.out_dir)
-    _LOGGER.info("  Log file: %s", log_filename)
+    _LOGGER.info("Update and mailing done for group %s (unit %s)", gid, unit)
 
 
 def mail_and_move_to_units(conn, pdf: _pandas.DataFrame, ctx: wsjrdp2027.WsjRdpContext):
@@ -136,23 +113,28 @@ def mail_and_move_to_units(conn, pdf: _pandas.DataFrame, ctx: wsjrdp2027.WsjRdpC
     batch_config_ul = wsjrdp2027.BatchConfig.from_yaml(ctx.parsed_args.yaml_file + "-UL.yml")
     batch_config_yp = wsjrdp2027.BatchConfig.from_yaml(ctx.parsed_args.yaml_file + "-YP.yml")
 
-    ctx.out_dir = ctx.make_out_path(batch_config_ul.name + "__{{ filename_suffix }}")
-
+    batch_config_name_ul = batch_config_ul.name
+    batch_config_name_yp = batch_config_yp.name
 
     for _, grow in gdf.iterrows():
         gid = grow.get("group_id")
         desc = grow.get("description", "")
         unit = extract_unit_code(desc)
+
+        batch_config_ul.name = f"{batch_config_name_ul}_group_{gid}"
+        batch_config_yp.name = f"{batch_config_name_yp}_group_{gid}"
+
         if unit is None:
             continue
         filtered = pdf[pdf["unit_code"].astype(str) == str(unit)].copy()
+        filtered = filtered[filtered["primary_group_id"].isin([2,3])]
         filtered_ul = filtered[filtered["payment_role"].fillna("").astype(str).str.endswith("UL")]
         filtered_yp = filtered[filtered["payment_role"].fillna("").astype(str).str.endswith("YP")]
-        _LOGGER.info(grow.get("name")," -> " , len(filtered_ul), "UL + ", len(filtered_yp), "YP = ", len(filtered))
+        _LOGGER.info(f"{grow.get("name")} -> {len(filtered_ul)} UL + {len(filtered_yp)} YP = {len(filtered)}")
 
-        update_and_mail(batch_config_ul,ctx, gid, unit)
-
-        update_and_mail(batch_config_yp,ctx, gid, unit)
+        # Todo duplicate
+        update_and_mail(batch_config_ul, ctx, gid, unit, df=filtered_ul)
+        update_and_mail(batch_config_yp, ctx, gid, unit, df=filtered_yp)
         
 
 def find_duplicate_usernames(df: _pandas.DataFrame) -> bool:
@@ -169,23 +151,26 @@ def create_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):
         lastname = row['last_name']
         email = username + "@units.worldscoutjamboree.de"
 
-        _LOGGER.info("Creating account for %s (%s %s)", username, firstname, lastname)
-        # wsjrdp2027.Keycloak.add_user(ctx,email, firstname, lastname, password)
-        # wsjrdp2027.Mailbox.add_mailbox(ctx, username, "units.worldscoutjamboree.de", f"{firstname} {lastname}", password)
+        _LOGGER.info("Creating account for %s %s (%s %s)", firstname, lastname, username, password)
+        # wsjrdp2027.keycloak.add_user(ctx,email, firstname, lastname, password)
+        # wsjrdp2027.mailbox.add_mailbox(ctx, username, "units.worldscoutjamboree.de", f"{firstname} {lastname}", password)
 
 def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
         argument_parser=create_argument_parser(),
         argv=argv,
-        out_dir="data/mailings{{ kind | omit_unless_prod | upper | to_ext }}",
+        out_dir="data/move_to_units{{ kind | omit_unless_prod | upper | to_ext }}",
     )
+
+    out_base = ctx.make_out_path("move_to_units__{{ filename_suffix }}")
+    log_filename = out_base.with_suffix(".log")
+    ctx.configure_log_file(log_filename)
 
     _LOGGER.info("Test Password %s", wsjrdp2027._util.generate_password())
     _LOGGER.info("Test Username %s",wsjrdp2027._util.generate_mail_username("Möbius-Walter mit coolem Zweitnamen", "von und zu Späßchen mit …	Uni汉字字符集cohànzìde¿Æ"))
     
-
-    wsjrdp2027.Keycloak.add_user(ctx, "test.email@units.worldscoutjamboree.de", "firstname", "lastname", "password")
-    wsjrdp2027.Mailbox.add_mailbox(ctx, "test.email", "units.worldscoutjamboree.de", f"Test Email", "password")
+    # wsjrdp2027.keycloak.add_user(ctx, "test.email@units.worldscoutjamboree.de", "firstname", "lastname", "password")
+    # wsjrdp2027.mailbox.add_mailbox(ctx, "test.email", "units.worldscoutjamboree.de", f"Test Email", "password")
     
     with ctx.psycopg_connect() as conn:
         pdf = wsjrdp2027.load_people_dataframe(
@@ -197,6 +182,8 @@ def main(argv=None):
         _LOGGER.info("Found %s people", len(pdf))
         # _LOGGER.info("People preview:\n%s", pdf.head().to_string())
         
+
+        pdf['skip_db_updates'] = False
         pdf['username'] = pdf.apply(lambda r: wsjrdp2027._util.generate_mail_username(str(r["first_name"]), str(r["last_name"])), axis=1)
         pdf['password'] = pdf.apply(lambda r: wsjrdp2027._util.generate_password(), axis=1)
 
@@ -210,9 +197,14 @@ def main(argv=None):
         
         if(not ctx.dry_run):
             _LOGGER.warning("Creating accounts for Unit Leaders")
+            #nur die die verschoben weden
             #create_accounts(ctx, uldf)
 
         mail_and_move_to_units(conn, pdf, ctx)
+
+    _LOGGER.info("")
+    _LOGGER.info("Output directory: %s", ctx.out_dir)
+    _LOGGER.info("  Log file: %s", log_filename)
 
 
 if __name__ == "__main__":
