@@ -1,5 +1,6 @@
 updates:
   new_primary_group_id: 2
+  new_primary_group_role_types: Group::Unit::Leader
   add_tags: ['Verschiebung-in-Unit-Mail']
 query:
   where:
@@ -22,8 +23,7 @@ content: |
 
   https://anmeldung.worldscoutjamboree.de/groups/{{ row.new_primary_group_id }}/people?returning=true
 
-  Du hast jetzt im Anmeldesystem Zugriff auf deine komplette Unit.
-  Nutze diesen vor allem erst einmal zum Überprüfen, nicht zum Ändern.
+  Du hast jetzt im Anmeldesystem vorerst nur Lesezugriff auf deine komplette Unit.
   Was du dort alles machen kannst und wie das geht erfährst du am UL-Kickoff.
 
   Damit deine Unit mit dir und du mit deiner Unit in Kontakt treten kannst, haben wir dir eine Mailadresse eingerichtet.
@@ -33,14 +33,14 @@ content: |
 
   https://mail.worldscoutjamboree.de
 
-  Nutzer: $KUERZEL
-  Passwort: $PASSWORT
-  Mailadresse: $VORNAME.NACHNAME@worldscoutjamboree.de
+  Nutzer und Mailadresse: {{ row.username }}@units.worldscoutjamboree.de
+  Passwort: {{ row.password }}
+ 
+  Dies ist auch der Zugang zu den weiteren Tools die wir euch bereitstellen werden. Dazu aber mehr am UL-Kickoff.
+  Falls es jetzt schon technische Probleme oder Fragen gibt schreib uns gerne an helpdesk@worldscoutjamboree.de.
 
-  Dies ist auch der Zugang zu den weiteren Tools die wir euch bereitstellen. Dazu aber mehr am UL-Kickoff.
-  Falls es jetzt schon technische Probleme oder Fragen gibt schreib uns gerne an helpdesk@worldscoutjamboree.de .
-
-  Jetzt kann es richtig losgehen und wir freuen uns dich schon bald bei unserem UL-Kickoff am 11.01.2026 kennenzulernen. Dort werdet ihr alle weiteren Infos zum Start in die Vorbereitungsphase bekommen.
+  Jetzt kann es richtig losgehen und wir freuen uns dich schon bald bei unserem UL-Kickoff am 11.01.2026 kennenzulernen. 
+  Dort werdet ihr alle weiteren Infos zum Start in die Vorbereitungsphase bekommen.
 
 
   Gut Pfad und bis bald

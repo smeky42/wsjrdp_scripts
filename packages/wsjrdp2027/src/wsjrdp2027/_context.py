@@ -63,6 +63,12 @@ class WsjRdpContextConfig:
     geo_api_key: str = ""
     hitobito_url: str = ""
 
+    mail_api_key: str = ""
+
+    keycloak_admin: str = ""
+    keycloak_admin_password: str = ""
+    keycloak_realm: str = ""
+
     @classmethod
     def from_file(cls, path: str | _pathlib.Path | None = None) -> _typing.Self:
         import yaml as _yaml
@@ -145,6 +151,10 @@ class WsjRdpContextConfig:
                 config.get("hitobito_url", "https://anmeldung.worldscoutjamboree.de")
             ),
             mail_accounts=mail_accounts,
+            mail_api_key=config["mail_api_key"],
+            keycloak_admin=config["keycloak_admin"],
+            keycloak_admin_password=config["keycloak_admin_password"],
+            keycloak_realm=config["keycloak_realm"],
             **kwargs,  # type: ignore
         )
         return self

@@ -1,0 +1,29 @@
+updates:
+  new_primary_group_id: 2
+  add_tags: ['Verschiebung-in-Unit-Mail']
+query:
+  where:
+    role: YP
+    status: ['confirmed']
+    primary_group_id: 2
+    unit_code: '000000'
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: unit-management@worldscoutjamboree.de
+email_subject: "Du bist jetzt Teil einer Unit zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+email_reply_to: unit-management@worldscoutjamboree.de
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir hoffen, du hattest einen guten Start in das neue Jahr und freuen uns, dir endlich mitteilen zu können wer deine Unit Leader für das Jamboree in Polen sein werden.
+
+  Die Namen und Mailadressen deiner Unit Leader findest du in unserem Anmeldetool.
+
+  https://anmeldung.worldscoutjamboree.de/groups/{{ row.new_primary_group_id }}
+
+  Deine Unit Leader werden sich bald bei dir melden und dann geht es endlich los mit der Vorbereitung auf die große Reise nach Polen. Falls ihr schon vorher Fragen an eure ULs haben solltet, könnt ihr diese unter deren E-Mail-Adressen erreichen, welche ebenfalls im Anmeldetool hinterlegt sind.
+
+  Wir freuen uns, dass es endlich so richtig losgeht 
+
+  Dein Unit Management Team

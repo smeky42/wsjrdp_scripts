@@ -78,6 +78,14 @@ from ._util import (
     write_dataframe_to_xlsx as write_dataframe_to_xlsx,
 )
 
+from ._keycloak_api import (
+    Keycloak as Keycloak
+)
+
+from ._mailbox_api import ( 
+    Mailbox as Mailbox
+)
+
 
 if _typing.TYPE_CHECKING:
     from ._camt import CamtMessage as CamtMessage

@@ -108,6 +108,70 @@ def filter_people_by_unit_code(
     return result
 
 
+def update_and_mail(batch_config, ctx: wsjrdp2027.WsjRdpContext, gid: str, unit: str):
+    batch_config = update_batch_config_from_ctx(batch_config, ctx, gid, unit)
+
+    out_base = ctx.make_out_path(batch_config.name)
+    log_filename = out_base.with_suffix(".log")
+    ctx.configure_log_file(log_filename)
+
+    prepared_batch = ctx.load_people_and_prepare_batch(batch_config)
+    ctx.update_db_and_send_mailing(prepared_batch, zip_eml=ctx.parsed_args.zip_eml)
+
+    _LOGGER.info("")
+    _LOGGER.info("Output directory: %s", ctx.out_dir)
+    _LOGGER.info("  Log file: %s", log_filename)
+
+
+def mail_and_move_to_units(conn, pdf: _pandas.DataFrame, ctx: wsjrdp2027.WsjRdpContext):
+
+    groups_sql = """
+            SELECT id AS group_id, name, short_name, description
+            FROM groups ORDER BY name ASC
+        """
+    gdf = _pandas.read_sql(groups_sql, conn)
+    _LOGGER.info("Found %s groups", len(gdf))
+    # _LOGGER.info("Groups preview:\n%s", gdf.head().to_string())
+
+    batch_config_ul = wsjrdp2027.BatchConfig.from_yaml(ctx.parsed_args.yaml_file + "-UL.yml")
+    batch_config_yp = wsjrdp2027.BatchConfig.from_yaml(ctx.parsed_args.yaml_file + "-YP.yml")
+
+    ctx.out_dir = ctx.make_out_path(batch_config_ul.name + "__{{ filename_suffix }}")
+
+
+    for _, grow in gdf.iterrows():
+        gid = grow.get("group_id")
+        desc = grow.get("description", "")
+        unit = extract_unit_code(desc)
+        if unit is None:
+            continue
+        filtered = pdf[pdf["unit_code"].astype(str) == str(unit)].copy()
+        filtered_ul = filtered[filtered["payment_role"].fillna("").astype(str).str.endswith("UL")]
+        filtered_yp = filtered[filtered["payment_role"].fillna("").astype(str).str.endswith("YP")]
+        _LOGGER.info(grow.get("name")," -> " , len(filtered_ul), "UL + ", len(filtered_yp), "YP = ", len(filtered))
+
+        update_and_mail(batch_config_ul,ctx, gid, unit)
+
+        update_and_mail(batch_config_yp,ctx, gid, unit)
+        
+
+def find_duplicate_usernames(df: _pandas.DataFrame) -> bool:
+    counts = df['username'].value_counts()
+    df['duplicate_count'] = df['username'].map(counts)
+    return df['duplicate_count'] > 1
+
+
+def create_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):
+    for _, row in df.iterrows():
+        username = row['username']
+        password = row['password']
+        firstname = row['first_name']
+        lastname = row['last_name']
+        email = username + "@units.worldscoutjamboree.de"
+
+        _LOGGER.info("Creating account for %s (%s %s)", username, firstname, lastname)
+        # wsjrdp2027.Keycloak.add_user(ctx,email, firstname, lastname, password)
+        # wsjrdp2027.Mailbox.add_mailbox(ctx, username, "units.worldscoutjamboree.de", f"{firstname} {lastname}", password)
 
 def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
@@ -115,8 +179,14 @@ def main(argv=None):
         argv=argv,
         out_dir="data/mailings{{ kind | omit_unless_prod | upper | to_ext }}",
     )
+
+    _LOGGER.info("Test Password %s", wsjrdp2027._util.generate_password())
+    _LOGGER.info("Test Username %s",wsjrdp2027._util.generate_mail_username("Möbius-Walter mit coolem Zweitnamen", "von und zu Späßchen mit …	Uni汉字字符集cohànzìde¿Æ"))
     
 
+    wsjrdp2027.Keycloak.add_user(ctx, "test.email@units.worldscoutjamboree.de", "firstname", "lastname", "password")
+    wsjrdp2027.Mailbox.add_mailbox(ctx, "test.email", "units.worldscoutjamboree.de", f"Test Email", "password")
+    
     with ctx.psycopg_connect() as conn:
         pdf = wsjrdp2027.load_people_dataframe(
             conn,
@@ -126,43 +196,23 @@ def main(argv=None):
         )
         _LOGGER.info("Found %s people", len(pdf))
         # _LOGGER.info("People preview:\n%s", pdf.head().to_string())
-
-        groups_sql = """
-                SELECT id AS group_id, name, short_name, description
-                FROM groups ORDER BY name ASC
-            """
-        gdf = _pandas.read_sql(groups_sql, conn)
-        _LOGGER.info("Found %s groups", len(gdf))
-        # _LOGGER.info("Groups preview:\n%s", gdf.head().to_string())
-
         
+        pdf['username'] = pdf.apply(lambda r: wsjrdp2027._util.generate_mail_username(str(r["first_name"]), str(r["last_name"])), axis=1)
+        pdf['password'] = pdf.apply(lambda r: wsjrdp2027._util.generate_password(), axis=1)
 
-        batch_config = wsjrdp2027.BatchConfig.from_yaml(ctx.parsed_args.yaml_file + "-UL.yml")
-        ctx.out_dir = ctx.make_out_path(batch_config.name + "__{{ filename_suffix }}")
+        uldf = pdf[pdf["payment_role"].fillna("").astype(str).str.endswith("UL")]
+        _LOGGER.info("Found %s Unit Leader", len(uldf))
+        # _LOGGER.info("People preview:\n%s", pdf.head().to_string())
 
-        for _, grow in gdf.iterrows():
-            gid = grow.get("group_id")
-            desc = grow.get("description", "")
-            unit = extract_unit_code(desc)
-            if unit is None:
-                continue
-            filtered = pdf[pdf["unit_code"].astype(str) == str(unit)].copy()
-            filtered_ul = filtered[filtered["payment_role"].fillna("").astype(str).str.endswith("UL")]
-            filtered_yp = filtered[filtered["payment_role"].fillna("").astype(str).str.endswith("YP")]
-            print(grow.get("name")," -> " , len(filtered_ul), "UL + ", len(filtered_yp), "YP = ", len(filtered))
+        if(find_duplicate_usernames(uldf)).any():
+            _LOGGER.error("Duplicate usernames found in UL dataset!")
+            return
         
-            batch_config = update_batch_config_from_ctx(batch_config, ctx, gid, unit)
+        if(not ctx.dry_run):
+            _LOGGER.warning("Creating accounts for Unit Leaders")
+            #create_accounts(ctx, uldf)
 
-            out_base = ctx.make_out_path(batch_config.name)
-            log_filename = out_base.with_suffix(".log")
-            ctx.configure_log_file(log_filename)
-
-            prepared_batch = ctx.load_people_and_prepare_batch(batch_config)
-            ctx.update_db_and_send_mailing(prepared_batch, zip_eml=ctx.parsed_args.zip_eml)
-
-            _LOGGER.info("")
-            _LOGGER.info("Output directory: %s", ctx.out_dir)
-            _LOGGER.info("  Log file: %s", log_filename)
+        mail_and_move_to_units(conn, pdf, ctx)
 
 
 if __name__ == "__main__":
