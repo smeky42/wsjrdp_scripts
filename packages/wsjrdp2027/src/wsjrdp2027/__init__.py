@@ -38,6 +38,7 @@ from ._pg import (
     pg_insert_fin_account as pg_insert_fin_account,
     pg_insert_payment_initiation as pg_insert_payment_initiation,
     pg_select_dataframe as pg_select_dataframe,
+    pg_select_dict_rows as pg_select_dict_rows,
     pg_update_payment_initiation as pg_update_payment_initiation,
 )
 from ._sepa_direct_debit import (
@@ -131,6 +132,7 @@ __all__ = [
     "pg_insert_fin_account",
     "pg_insert_payment_initiation",
     "pg_select_dataframe",
+    "pg_select_dict_rows",
     "pg_update_payment_initiation",
     "render_template",
     "report_direct_debit_amount_differences",
