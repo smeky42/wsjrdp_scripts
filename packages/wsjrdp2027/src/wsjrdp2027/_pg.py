@@ -10,6 +10,7 @@ from . import _person_pg, _types
 
 if _typing.TYPE_CHECKING:
     import datetime as _datetime
+    import string.templatelib as _string_templatelib
 
     import pandas as _pandas
     import psycopg as _psycopg
@@ -19,10 +20,6 @@ if _typing.TYPE_CHECKING:
 
 
 _LOGGER = _logging.getLogger(__name__)
-
-
-_t = t"{0}"
-_Template = type(_t)
 
 
 def pg_literal(obj):
@@ -105,7 +102,7 @@ def col_val_pairs_to_insert_do_nothing_sql_query(
     matching_colval_pairs,
     other_colval_pairs=None,
     *,
-    returning: str | _psycopg_sql.Identifier = "id",
+    returning: str | _psycopg_sql.Composable = "id",
 ) -> _psycopg_sql.Composed:
     r"""Return a composed INSERT query.
 
@@ -286,10 +283,10 @@ def _upsert_tagging(
     return _execute_query_fetch_id(cursor, query)
 
 
-def pg_select_dataframe(
-    conn: _psycopg.Connection, query: str | _psycopg_sql.Composed | _Template
-) -> _pandas.DataFrame:
-    import pandas as _pandas
+def pg_select_dict_rows(
+    conn: _psycopg.Connection,
+    query: str | _psycopg_sql.Composed | _string_templatelib.Template,
+) -> list[dict[str, _typing.Any]]:
     import psycopg.rows as _psycopg_rows
     from psycopg.sql import SQL
 
@@ -301,7 +298,16 @@ def pg_select_dataframe(
         cursor.execute(composed_query)
         rows = cursor.fetchall()
         cursor.close()
-    return _pandas.DataFrame(rows)
+    return rows
+
+
+def pg_select_dataframe(
+    conn: _psycopg.Connection,
+    query: str | _psycopg_sql.Composed | _string_templatelib.Template,
+) -> _pandas.DataFrame:
+    import pandas as _pandas
+
+    return _pandas.DataFrame(pg_select_dict_rows(conn, query))
 
 
 def pg_add_person_tag(cursor: _psycopg.Cursor, /, person_id: int, tag: str) -> int:
@@ -1071,12 +1077,10 @@ def pg_insert_camt_transaction(
     payment_initiation_id: int | None = None,
     partially_reverses_payment_initiation_id: int | None = None,
     direct_debit_payment_info_id: int | None = None,
-    accounting_entry_id: int | None = None,
-    camt52_entry_id: int | None = None,
-    camt53_entry_id: int | None = None,
     ntry: dict | None = None,
     tx_dtls: dict | None = None,
     additional_info: dict | None = None,
+    entry_or_details: str | None = None,
     upsert: bool | None = None,
 ) -> int:
     from . import _util
@@ -1149,12 +1153,10 @@ def pg_insert_camt_transaction(
             partially_reverses_payment_initiation_id,
         ),
         ("direct_debit_payment_info_id", direct_debit_payment_info_id),
-        ("accounting_entry_id", accounting_entry_id),
-        ("camt52_entry_id", camt52_entry_id),
-        ("camt53_entry_id", camt53_entry_id),
         ("ntry", ntry),
         ("tx_dtls", tx_dtls),
         ("additional_info", additional_info),
+        ("entry_or_details", entry_or_details or "entry"),
     ]
 
     query = col_val_pairs_to_insert_or_upsert_query(
@@ -1186,9 +1188,6 @@ def pg_insert_camt_transaction_from_tx(
     payment_initiation_id: int | None = None,
     partially_reverses_payment_initiation_id: int | None = None,
     direct_debit_payment_info_id: int | None = None,
-    accounting_entry_id: int | None = None,
-    camt52_entry_id: int | None = None,
-    camt53_entry_id: int | None = None,
     additional_info: dict | None = None,
     upsert: bool | None = None,
 ) -> int:
@@ -1245,6 +1244,8 @@ def pg_insert_camt_transaction_from_tx(
         dbtr_bic=tx.dbtr_bic,
         dbtr_address=tx.dbtr_address,
         # metadata
+        entry_or_details="entry",
+        # metadata
         created_at=created_at,
         updated_at=updated_at,
         deleted_at=deleted_at,
@@ -1260,9 +1261,6 @@ def pg_insert_camt_transaction_from_tx(
         payment_initiation_id=payment_initiation_id,
         partially_reverses_payment_initiation_id=partially_reverses_payment_initiation_id,
         direct_debit_payment_info_id=direct_debit_payment_info_id,
-        accounting_entry_id=accounting_entry_id,
-        camt52_entry_id=camt52_entry_id,
-        camt53_entry_id=camt53_entry_id,
         ntry=tx.Ntry or None,
         tx_dtls=tx.TxDtls or None,
         additional_info=additional_info,
