@@ -696,7 +696,11 @@ ORDER BY people.id{limit_clause}
         if "\n" in where_clause:
             _LOGGER.info("load_people_dataframe: Fetch people...")
         elif len(where_clause) > 80:
-            _LOGGER.info("load_people_dataframe: Fetch people %s ...[shortened]...  %s", where_clause[:50], where_clause[-20:])
+            _LOGGER.info(
+                "load_people_dataframe: Fetch people %s ...[shortened]...  %s",
+                where_clause[:50],
+                where_clause[-20:],
+            )
         else:
             _LOGGER.info("load_people_dataframe: Fetch people %s", where_clause)
         _LOGGER.debug(
