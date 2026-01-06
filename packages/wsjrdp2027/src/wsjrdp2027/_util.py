@@ -4,6 +4,10 @@ import collections.abc as _collections_abc
 import logging as _logging
 import math as _math
 import typing as _typing
+import secrets
+import string
+import unicodedata
+import re
 
 from . import _types
 
@@ -1131,3 +1135,33 @@ def print_progress_message(count, size, message, *, logger=_LOGGER) -> None:
         print(f"  | {message}", file=sys.stderr, flush=True)
     elif count == 15:
         print(f"  | ...", file=sys.stderr, flush=True)
+
+# ==============================================================================
+# Accounts
+# ==============================================================================
+
+def generate_password():
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for i in range(20))
+
+def generate_mail_username(firstname, lastname):
+    _LOGGER.info("Generated username from: %s, %s", str(firstname), str(lastname))
+    firstname = firstname.split(' ')[0]
+    username = firstname + '.' + lastname
+    username = username.lower()
+    username = username.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    username = unicodedata.normalize('NFKD', username)
+    username = ''.join(c for c in username if not unicodedata.combining(c))
+    username = re.sub(r'[^a-z0-9._-]+', '-', username)
+    username = re.sub(r'[_-]+', '-', username)
+    username = username.strip('.').strip('-')
+    
+    if len(username) > 64:
+        # try shrinking last username part
+        parts = username.split('.', 1)
+        first = parts[0][:30]  # keep some of first
+        last = parts[1][:max(1, 63 - len(first) - 1)]
+        username = f"{first}.{last}".strip('.')
+
+    _LOGGER.info("Generated username: %s", username)
+    return username
