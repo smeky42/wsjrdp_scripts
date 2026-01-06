@@ -19,6 +19,7 @@ from ._payment import (
     load_accounting_balance_in_cent as load_accounting_balance_in_cent,
     load_payment_dataframe as load_payment_dataframe,
     load_payment_dataframe_from_payment_initiation as load_payment_dataframe_from_payment_initiation,
+    report_direct_debit_amount_differences as report_direct_debit_amount_differences,
     write_payment_dataframe_to_db as write_payment_dataframe_to_db,
     write_payment_dataframe_to_html as write_payment_dataframe_to_html,
     write_payment_dataframe_to_xlsx as write_payment_dataframe_to_xlsx,
@@ -36,6 +37,8 @@ from ._pg import (
     pg_insert_direct_debit_pre_notification as pg_insert_direct_debit_pre_notification,
     pg_insert_fin_account as pg_insert_fin_account,
     pg_insert_payment_initiation as pg_insert_payment_initiation,
+    pg_select_dataframe as pg_select_dataframe,
+    pg_update_payment_initiation as pg_update_payment_initiation,
 )
 from ._sepa_direct_debit import (
     CREDITOR_ID as CREDITOR_ID,
@@ -68,6 +71,7 @@ from ._util import (
     to_datetime as to_datetime,
     to_datetime_or_none as to_datetime_or_none,
     to_int_or_none as to_int_or_none,
+    to_month_year_de as to_month_year_de,
     to_str_list as to_str_list,
     to_yaml_str as to_yaml_str,
     write_dataframe_to_xlsx as write_dataframe_to_xlsx,
@@ -76,6 +80,7 @@ from ._util import (
 
 if _typing.TYPE_CHECKING:
     from ._camt import CamtMessage as CamtMessage
+    from ._pain import PainMessage as PainMessage
 
 
 __all__ = [
@@ -94,6 +99,7 @@ __all__ = [
     "BatchConfig",
     "CamtMessage",
     "MailClient",
+    "PainMessage",
     "PaymentRole",
     "PeopleQuery",
     "PeopleWhere",
@@ -124,13 +130,17 @@ __all__ = [
     "pg_insert_direct_debit_pre_notification",
     "pg_insert_fin_account",
     "pg_insert_payment_initiation",
+    "pg_select_dataframe",
+    "pg_update_payment_initiation",
     "render_template",
+    "report_direct_debit_amount_differences",
     "sepa_mandate_id_from_hitobito_id",
     "to_date",
     "to_date_or_none",
     "to_datetime",
     "to_datetime_or_none",
     "to_int_or_none",
+    "to_month_year_de",
     "to_str_list",
     "to_yaml_str",
     "typst_compile",
@@ -242,6 +252,7 @@ This set was fixed before sending the Pre-Notification.
 
 __ALIASES__ = {
     "CamtMessage": (f"._camt", "CamtMessage"),
+    "PainMessage": (f"._pain", "PainMessage"),
 }
 
 

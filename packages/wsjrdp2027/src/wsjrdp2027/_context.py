@@ -606,7 +606,7 @@ class WsjRdpContext:
                 self._logger.info("psycopg_connect: Register HSTORE type info")
                 psycopg.types.hstore.register_hstore(hstore_info, conn)
             else:
-                self._logger.warning(
+                self._logger.debug(
                     "psycopg_connect: No HSTORE type info found => HSTORE not registered"
                 )
             exit_stack.enter_context(conn)
@@ -1061,6 +1061,11 @@ class WsjRdpContext:
         return _util.render_template(
             template, context, extra_context=extra_context, extra_filters=filters
         )
+
+    def print_progress_message(self, count, size, message, *, logger=_LOGGER) -> None:
+        from . import _util
+
+        _util.print_progress_message(count, size, message, logger=logger)
 
 
 class _UnlimitedBufferingHandler(_logging_handlers.MemoryHandler):

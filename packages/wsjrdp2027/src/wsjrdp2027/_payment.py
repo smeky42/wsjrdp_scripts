@@ -6,6 +6,10 @@ import logging as _logging
 import typing as _typing
 from collections import abc as _collections_abc
 
+import wsjrdp2027
+
+from . import _util
+
 
 if _typing.TYPE_CHECKING:
     import pathlib as _pathlib
@@ -177,12 +181,27 @@ PRE_NOTIFICATION_COLUMNS = [
     "mandate_id",
     "mandate_date",
     "description",
+    "comment",
     "endtoend_id",
     "creditor_id",
     "cdtr_name",
     "cdtr_iban",
     "cdtr_bic",
     "cdtr_address",
+]
+
+_SAVE_AS_CALCULATED_COLUMNS = [
+    "open_amount_cents",
+    "sepa_name",
+    "sepa_iban",
+    "sepa_bic",
+    "sepa_address",
+    "sepa_dd_sequence_type",
+    "sepa_mandate_id",
+    "sepa_mandate_date",
+    "sepa_dd_description",
+    "sepa_dd_endtoend_id",
+    "collection_date",
 ]
 
 
@@ -278,18 +297,18 @@ def _accounting_description_from_row(row: _pandas.Series) -> str:
 def enrich_people_dataframe_for_payments(
     df: _pandas.DataFrame,
     collection_date: _datetime.date | str = "2025-01-01",
-    booking_at: _datetime.datetime | None = None,
-    pedantic: bool = True,
+    booking_at: _datetime.datetime | _datetime.date | str | int | None = None,
+    pedantic: bool = False,
     endtoend_ids: dict[int, str] | None = None,
     reindex: bool = True,
+    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
 ) -> _pandas.DataFrame:
-    import datetime
-
     from . import _util
 
+    now = _util.to_datetime(now)
+
     collection_date = _util.to_date_or_none(collection_date)
-    if booking_at is None:
-        booking_at = datetime.datetime.now()
+    booking_at = _util.to_datetime(booking_at, now=now)
 
     if len(df):
         df["sepa_iban"] = df["sepa_iban"].map(lambda s: s.replace(" ", "").upper() if s else None)  # fmt: skip
@@ -400,9 +419,11 @@ def _is_bic_compatible(bic_a: str | None, bic_b: str | None) -> bool:
         return False
 
 
-def _skip_payment(df: _pandas.DataFrame, idx, reason: str = "") -> None:
+def _skip_payment(
+    df: _pandas.DataFrame, idx, reason: str = "", *, log_level=_logging.WARNING
+) -> None:
     row = df.loc[idx]
-    _LOGGER.warning("Skip payment id=%s reason=%r", row.get("id", "??"), reason)
+    _LOGGER.log(log_level, "Skip payment id=%s reason=%r", row.get("id", "??"), reason)
     df.at[idx, "payment_status"] = "skipped"
     reason_parts = filter(None, [df.at[idx, "payment_status_reason"], reason])
     df.at[idx, "payment_status_reason"] = ", ".join(filter(None, reason_parts))
@@ -431,6 +452,7 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
     booking_at = booking_at.to_pydatetime()
     if not booking_at.tzinfo:
         booking_at = booking_at.astimezone()
+    booking_date = booking_at.date()
 
     pn_id = row.get("pn_id")
     if pn_id is not None:
@@ -441,6 +463,7 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
             author_type=row["pn_author_type"],
             amount_cents=int(row.get("pn_amount_cents", 0)),
             description=row["pn_description"],
+            comment=row["pn_comment"],
             created_at=booking_at,
             payment_initiation_id=row.get("pn_payment_initiation_id"),
             direct_debit_payment_info_id=row.get("pn_direct_debit_payment_info_id"),
@@ -450,6 +473,7 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
             mandate_id=row.get("pn_mandate_id"),
             mandate_date=row.get("pn_mandate_date"),
             value_date=row.get("pn_collection_date"),
+            booking_date=booking_date,
             dbtr_name=row.get("pn_dbtr_name"),
             dbtr_iban=row.get("pn_dbtr_iban"),
             dbtr_bic=row.get("pn_dbtr_bic"),
@@ -477,6 +501,7 @@ def insert_accounting_entry_from_row(cursor, row: _pandas.Series) -> int:
             mandate_id=row.get("sepa_mandate_id"),
             mandate_date=row.get("sepa_mandate_date"),
             value_date=row.get("collection_date"),
+            booking_date=booking_date,
         )
 
 
@@ -530,13 +555,22 @@ def insert_direct_debit_pre_notification_from_row(
 
 
 def write_payment_dataframe_to_db(
-    conn: _psycopg.Connection, df: _pandas.DataFrame
+    conn: _psycopg.Connection, df: _pandas.DataFrame, *, print_progress_message=None
 ) -> None:
-    from . import _pg
+    from . import _pg, _util
 
+    if print_progress_message is None:
+        print_progress_message = _util.print_progress_message
+
+    df_len = len(df)
+    count = 0
+    try_skip_ids = []
+    _LOGGER.info("Write (up to) %s accounting entries to DB", df_len)
     with conn.cursor() as cursor:
         idx: int
-        for idx, row in df.iterrows():  # type: ignore
+        for i, (idx, row) in enumerate(df.iterrows()):  # type: ignore
+            pn_id = row.get("pn_id")
+            pn_payment_status: str | None = row.get("pn_payment_status")
             if row["payment_status"] != "ok":
                 _LOGGER.debug(
                     "[ACC] Skip non-ok row id=%s payment_status=%s payment_status_reason=%s",
@@ -544,9 +578,17 @@ def write_payment_dataframe_to_db(
                     row.get("payment_status", "??"),
                     row.get("payment_status_reason", "??"),
                 )
+                if pn_id is not None and pn_payment_status == "pre_notified":
+                    _pg.pg_update_direct_debit_pre_notification(
+                        cursor, id=pn_id, updates={"payment_status": "skipped"}
+                    )
+                    _LOGGER.debug(
+                        "[ACC]     SET pn.payment_status = 'skipped' WHERE pn.id=%s (pn.payment_status was %s)",
+                        pn_id,
+                        pn_payment_status,
+                    )
                 continue
-            if (pn_id := row.get("pn_id")) is not None:
-                pn_payment_status: str | None = row.get("pn_payment_status")
+            if pn_id is not None:
                 if pn_payment_status != "pre_notified":
                     _LOGGER.debug(
                         "[ACC] Skip pre-notification due to payment_status: people.id=%s pn.id=%s pn.payment_status=%s",
@@ -556,6 +598,7 @@ def write_payment_dataframe_to_db(
                     )
                     continue
                 elif row.get("pn_try_skip"):
+                    try_skip_ids.append(pn_id)
                     _pg.pg_update_direct_debit_pre_notification(
                         cursor, id=pn_id, updates={"payment_status": "skipped"}
                     )
@@ -571,20 +614,24 @@ def write_payment_dataframe_to_db(
                         cursor, id=pn_id, updates={"payment_status": "xml_generated"}
                     )
 
+            count += 1
             accounting_entry_id = insert_accounting_entry_from_row(cursor, row)
-            _LOGGER.info(
-                "[ACC] subject_id=%s sepa_name=%r %r %s print_at=%s open_amount_cents=%s -> id=%s",
-                row.get("id"),
-                row.get("sepa_name"),
-                row.get("short_full_name"),
-                row.get("payment_role"),
-                row.get("print_at"),
-                int(row.get("open_amount_cents", 0)),
-                accounting_entry_id,
+            progress_msg = (
+                f"[ACC] subject_id={row.get('id')}"
+                f" sepa_name={row.get('sepa_name')!r} {row.get('short_full_name')!r}"
+                f" {row.get('payment_role')}"
+                f" {int(row.get('open_amount_cents', 0))}"
+                f" -> id={accounting_entry_id}"
             )
+            print_progress_message(i, df_len, progress_msg, logger=_LOGGER)
             df.at[idx, "accounting_entry_id"] = accounting_entry_id
-        _LOGGER.info("COMMIT")
-    conn.commit()
+    _LOGGER.info("... Finished inserting %s accounting entries", count)
+    if try_skip_ids:
+        _LOGGER.info(
+            "    - Skipped %s pre notifications due to try_skip: pn_ids=%s",
+            len(try_skip_ids),
+            try_skip_ids,
+        )
 
 
 def write_payment_dataframe_to_html(
@@ -652,7 +699,7 @@ class _PreNotificationInfo:
         _LOGGER.info(
             "all pre notifications:\n%s", textwrap.indent(str(raw_pn_df), "  | ")
         )
-        _LOGGER.info(
+        _LOGGER.debug(
             "all pre notification id's (%s):\n  | all_pn_ids = %s",
             len(all_pn_ids),
             sorted(all_pn_ids),
@@ -680,9 +727,11 @@ def load_payment_dataframe_from_payment_initiation(
     conn: _psycopg.Connection,
     *,
     payment_initiation_id: int,
-    pedantic: bool = True,
+    pedantic: bool = False,
     where: str = "",
     report_amount_differences: bool = True,
+    booking_at: _datetime.datetime | _datetime.date | str | int | None = None,
+    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
 ) -> _pandas.DataFrame:
     import re
     import textwrap
@@ -721,12 +770,14 @@ SELECT
   mandate_id,
   mandate_date,
   description,
+  wsjrdp_direct_debit_pre_notifications.comment,
   endtoend_id,
   creditor_id,
   cdtr_name,
   cdtr_iban,
   cdtr_bic,
   cdtr_address,
+  wsjrdp_direct_debit_pre_notifications.additional_info,
   people.first_name,
   people.last_name,
   COALESCE(people.sepa_status, 'ok') as new_sepa_status
@@ -748,8 +799,9 @@ WHERE
             r"\n+", "\n", textwrap.dedent(query.as_string(context=cur)).strip()
         )
 
-        _LOGGER.info(
-            "Fetch pre notifications SQL Query:\n%s", textwrap.indent(sql_stmt, "  ")
+        _LOGGER.info("fetch pre notifications...")
+        _LOGGER.debug(
+            "SQL Query to fetch pre notifications:\n%s", textwrap.indent(sql_stmt, "  ")
         )
         cur.execute(query)
         rows = cur.fetchall()
@@ -764,13 +816,17 @@ WHERE
     df = load_payment_dataframe(
         conn,
         query=_people_query.PeopleQuery(
-            where=where, collection_date=pninf.collection_date
+            where=where, collection_date=pninf.collection_date, now=now
         ),
         pedantic=pedantic,
         endtoend_ids=pninf.endtoend_ids,
+        booking_at=booking_at,
     )
 
     if len(df):
+        df = df.copy()  # just for de-fragmentation
+        for key in _SAVE_AS_CALCULATED_COLUMNS:
+            df[f"calculated_{key}"] = df[key]
         df["sepa_dd_payment_initiation_id"] = payment_initiation_id
         df["sepa_dd_direct_debit_payment_info_id"] = df["id"].map(
             lambda person_id: pninf.id_to_pn_row[person_id][
@@ -781,33 +837,55 @@ WHERE
             lambda person_id: pninf.id_to_pn_row[person_id]["id"]
         )
         df["pre_notified_amount_cents"] = df["id"].map(
-            lambda person_id: pninf.id_to_pn_row[person_id]["amount_cents"]
+            lambda person_id: pninf.id_to_pn_row[person_id]["pre_notified_amount_cents"]
         )
+        df = df.copy()  # just for de-fragmentation
         for key in PRE_NOTIFICATION_COLUMNS:
             df[f"pn_{key}"] = df["id"].map(
                 lambda person_id: pninf.id_to_pn_row[person_id][key]
             )
+        df = df.copy()  # just for de-fragmentation
+        df["open_amount_cents"] = df["pn_amount_cents"]
+        df["sepa_name"] = df["pn_dbtr_name"]
+        df["sepa_iban"] = df["pn_dbtr_iban"]
+        df["sepa_bic"] = df["pn_dbtr_bic"]
+        df["sepa_address"] = df["pn_dbtr_address"]
+        df["sepa_dd_sequence_type"] = df["pn_debit_sequence_type"]
+        df["sepa_mandate_id"] = df["pn_mandate_id"]
+        df["sepa_mandate_date"] = df["pn_mandate_date"]
+        df["sepa_dd_description"] = df["pn_description"]
+        df["sepa_dd_endtoend_id"] = df["pn_endtoend_id"]
+        df["collection_date"] = df["pn_collection_date"]
 
-        amount_changed_df = df[df["open_amount_cents"] != df["pn_amount_cents"]]
         if report_amount_differences:
-            if len(amount_changed_df):
-                for _, row in amount_changed_df.iterrows():
-                    _LOGGER.info(
-                        "amount different between pre notification and current computation:\n"
-                        "    %s %s\n"
-                        "    pre-notified amount_cents: %s\n"
-                        "    open_amount_cents: %s\n"
-                        "%s",
-                        row["id"],
-                        row["full_name"],
-                        row.get("pn_amount_cents"),
-                        row.get("open_amount_cents"),
-                        textwrap.indent(row.to_string(), "  | "),
-                    )
-            else:
+            report_direct_debit_amount_differences(df)
+
+        # Skip payments in df if
+        # (a) the pn.payment_status is not pre_notified (e.g., already skipped or xml_generated)
+        # (b) the pn.try_skip flag is set, i.e., we are asked to skip the payment
+        for idx, row in df.iterrows():
+            pn_id = row.get("pn_id")
+            pn_payment_status: str | None = row.get("pn_payment_status")
+            if pn_payment_status != 'pre_notified':
                 _LOGGER.info(
-                    "All due amounts are the same between pre notification and current computation"
+                    "Notice: Skip payment due to pn.payment_status=%s: people.id=%s pn.id=%s",
+                    pn_payment_status,
+                    row.get("id"),
+                    pn_id,
                 )
+                _LOGGER.info("    %s %s %s", row['payment_role'].short_role_name, row['id'], row['short_full_name'])
+                _LOGGER.info("    pn_comment: %s", row['pn_comment'])
+                _skip_payment(df, idx, f"pn.payment_status={pn_payment_status}", log_level=_logging.DEBUG)
+            elif row.get("pn_try_skip"):
+                _LOGGER.info(
+                    "Notice: Skip payment due to pn.try_skip=True: people.id=%s pn.id=%s pn.payment_status=%s",
+                    row.get("id"),
+                    pn_id,
+                    pn_payment_status,
+                )
+                _LOGGER.info("    %s %s %s", row['payment_role'].short_role_name, row['id'], row['short_full_name'])
+                _LOGGER.info("    pn_comment: %s", row['pn_comment'])
+                _skip_payment(df, idx, "pn.try_skip=True", log_level=_logging.DEBUG)
     else:
         new_cols = [
             "sepa_dd_payment_initiation_id",
@@ -815,6 +893,7 @@ WHERE
             "sepa_dd_pre_notification_id",
             "pre_notified_amount_cents",
             *(f"pn_{k}" for k in PRE_NOTIFICATION_COLUMNS),
+            *(f"calculated_{k}" for k in _SAVE_AS_CALCULATED_COLUMNS),
         ]
         columns = list(df.columns) + [
             col for col in new_cols if col not in set(df.columns)
@@ -824,15 +903,60 @@ WHERE
     return df
 
 
+def report_direct_debit_amount_differences(
+    df: _pandas.DataFrame,
+    *,
+    logger: _logging.Logger | _logging.LoggerAdapter | None = None,
+) -> None:
+    import textwrap
+
+    from ._util import format_cents_as_eur_de
+
+    def to_eur(cents):
+        return format_cents_as_eur_de(cents, zero_cents=",00")
+
+    if logger is None:
+        logger = _LOGGER
+
+    amount_changed_df = df[
+        (df["calculated_open_amount_cents"] != df["pn_amount_cents"])
+        | (df["pn_pre_notified_amount_cents"] != df["pn_amount_cents"])
+        | (df["pn_debit_sequence_type"] != df["calculated_sepa_dd_sequence_type"])
+    ]
+    print(flush=True)
+    if amount_changed_df.empty:
+        _LOGGER.info(
+            "All due amounts are the same between pre notification and current computation"
+        )
+        return
+
+    _LOGGER.info("==== Found %s payments with differences between amounts:", len(amount_changed_df))
+    for _, row in amount_changed_df.iterrows():
+        diff_msg = (
+            f"amount difference between pre-notification, amount in pre-notification and current computation:\n"
+            f"  {row['payment_role'].short_role_name} {row['id']} {row['short_full_name']}\n"
+            f"  pn_amount_cents:              {to_eur(row['pn_amount_cents'])} (used amount)\n"
+            f"  pn_pre_notified_amount_cents: {to_eur(row['pn_pre_notified_amount_cents'])} (originally notified)\n"
+            f"  calculated_open_amount_cents: {to_eur(row['calculated_open_amount_cents'])} (newly calculated)\n"
+            f"  pn_debit_sequence_type: {row['pn_debit_sequence_type']} (used sequence type)\n"
+            f"  calculated_sepa_dd_sequence_type: {row['sepa_dd_sequence_type']} (newly calculated)\n"
+            f"  pn_comment: {row['pn_comment']}\n"
+        )
+        _LOGGER.info(diff_msg)
+        _LOGGER.debug("row:\n%s", textwrap.indent(row.to_string(), "  | "))
+    print(flush=True)
+
+
 def load_payment_dataframe(
     conn: _psycopg.Connection,
     *,
-    booking_at: _datetime.datetime | None = None,
+    booking_at: _datetime.datetime | _datetime.date | str | int | None = None,
     pedantic: bool = False,
     query: _people_query.PeopleQuery | None = None,
     where: str | _people_query.PeopleWhere | None = "",
     fee_rules: str | _collections_abc.Iterable[str] = "active",
     endtoend_ids: dict[int, str] | None = None,
+    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
 ) -> _pandas.DataFrame:
     import textwrap
 
@@ -841,22 +965,24 @@ def load_payment_dataframe(
     if query:
         if where:
             raise ValueError("Only one of 'query' and 'where' is allowed")
+        if now is None:
+            now = query.now
     else:
         query = _people_query.PeopleQuery(where=where)
-
     if query.collection_date is None:
         raise ValueError("query.collection_date must not be None")
+    now = _util.to_datetime(now)
 
     df = _people.load_people_dataframe(
-        conn, query=query, fee_rules=fee_rules, log_resulting_data_frame=False
+        conn, query=query, fee_rules=fee_rules, log_resulting_data_frame=False, now=now
     )
-
     df = enrich_people_dataframe_for_payments(
         df,
         collection_date=query.collection_date,
         booking_at=booking_at,
         pedantic=pedantic,
         endtoend_ids=endtoend_ids,
+        now=now,
     )
     _LOGGER.info("Resulting pandas DataFrame:\n%s", textwrap.indent(str(df), "  "))
     return df

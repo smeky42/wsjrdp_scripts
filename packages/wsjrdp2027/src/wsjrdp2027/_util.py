@@ -1039,7 +1039,6 @@ def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
     df = df.copy()
     datetime_cols = df.select_dtypes(include=["datetimetz"]).columns  # ty: ignore
     for col in datetime_cols:
-        print(col)
         df[col] = df[col].dt.tz_localize(None)
 
     def str_or_repr(obj):
@@ -1118,3 +1117,17 @@ def write_dataframe_to_xlsx(
     worksheet.autofit()
 
     writer.close()
+
+
+def print_progress_message(count, size, message, *, logger=_LOGGER) -> None:
+    import sys
+
+    count_p_1 = count + 1
+    pcnt = f"({count_p_1 / size * 100.0:.1f}%)"
+    prefix = f"{count_p_1:>4}/{size} {pcnt:>8} "
+    message = prefix + message
+    logger.debug(message)
+    if count < 15 or (size - count < 5):
+        print(f"  | {message}", file=sys.stderr, flush=True)
+    elif count == 15:
+        print(f"  | ...", file=sys.stderr, flush=True)

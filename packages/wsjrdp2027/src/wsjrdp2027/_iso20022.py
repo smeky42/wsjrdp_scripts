@@ -132,6 +132,15 @@ def iso20022_xml_text_to_dict(xml_text: str | bytes, *, expected_format=None) ->
         )
 
 
+def amount_string_to_cents(amount: str, currency: str, is_credit: bool) -> int:
+    import iso4217
+
+    cur = iso4217.Currency(currency)
+    exponent = cur.exponent or 0
+    cents = int(round(float(amount) * (10**exponent)))
+    return cents if is_credit else -cents
+
+
 class _Iso20022XmlDetector:
     def __init__(self):
         self.encoding = "utf-8"
