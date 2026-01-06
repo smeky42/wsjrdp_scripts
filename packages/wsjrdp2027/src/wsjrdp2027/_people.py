@@ -127,6 +127,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "amount_unpaid_cents",  # insgesamt offen
     "amount_due_cents",  # fällig gesamt (at collection_date)
     "open_amount_cents",  # Betrag der offen ist (at collection_date)
+    "amount_due_in_collection_date_month_cents",
     "additional_info",
     "payment_status_reason",
     "payment_status",
@@ -693,10 +694,9 @@ ORDER BY people.id{limit_clause}
         sql_stmt = re.sub(r"\n+", "\n", textwrap.dedent(sql_stmt).strip())
 
         if "\n" in where_clause:
-            _LOGGER.info(
-                "load_people_dataframe: Fetch people SQL where clause:\n%s",
-                textwrap.indent(where_clause, "  "),
-            )
+            _LOGGER.info("load_people_dataframe: Fetch people...")
+        elif len(where_clause) > 80:
+            _LOGGER.info("load_people_dataframe: Fetch people %s ...[shortened]...  %s", where_clause[:50], where_clause[-20:])
         else:
             _LOGGER.info("load_people_dataframe: Fetch people %s", where_clause)
         _LOGGER.debug(

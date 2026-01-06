@@ -7,7 +7,10 @@ import itertools as _itertools
 import typing as _typing
 
 from . import _weakref_util
-from ._iso20022 import element_or_list_to_list as _to_list
+from ._iso20022 import (
+    amount_string_to_cents as _amount_string_to_cents,
+    element_or_list_to_list as _to_list,
+)
 
 
 if _typing.TYPE_CHECKING:
@@ -606,12 +609,3 @@ class CamtMessage:
     def booked_transaction_details(self) -> _typing.Iterator[CamtTransactionDetails]:
         for ntry in self.booked_entries:
             yield from ntry.transaction_details
-
-
-def _amount_string_to_cents(amount: str, currency: str, is_credit: bool) -> int:
-    import iso4217
-
-    cur = iso4217.Currency(currency)
-    exponent = cur.exponent or 0
-    cents = int(round(float(amount) * (10**exponent)))
-    return cents if is_credit else -cents

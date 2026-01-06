@@ -11,6 +11,7 @@ from . import _person_pg, _types
 if _typing.TYPE_CHECKING:
     import datetime as _datetime
 
+    import pandas as _pandas
     import psycopg as _psycopg
     import psycopg.sql as _psycopg_sql
 
@@ -18,6 +19,10 @@ if _typing.TYPE_CHECKING:
 
 
 _LOGGER = _logging.getLogger(__name__)
+
+
+_t = t"{0}"
+_Template = type(_t)
 
 
 def pg_literal(obj):
@@ -183,8 +188,10 @@ def _execute_query_fetchone(
     return result
 
 
-def _execute_query_fetch_id(cursor: _psycopg.Cursor, query) -> int:
-    result = _execute_query_fetchone(cursor, query)
+def _execute_query_fetch_id(
+    cursor_or_connection: _psycopg.Cursor | _psycopg.Connection, /, query
+) -> int:
+    result = _execute_query_fetchone(cursor_or_connection, query)
     if result is None:
         raise RuntimeError("Query did not return any result")
     if len(result) < 1:
@@ -193,12 +200,16 @@ def _execute_query_fetch_id(cursor: _psycopg.Cursor, query) -> int:
 
 
 def _execute_query_fetchall(
-    cursor: _psycopg.Cursor[_typing.Any], query, *, show_result: bool = False
+    cursor_or_connection: _psycopg.Cursor | _psycopg.Connection,
+    /,
+    query,
+    *,
+    show_result: bool = False,
 ):
-    query_str = _textwrap.indent(query.as_string(context=cursor), "  | ")
+    query_str = _textwrap.indent(query.as_string(context=cursor_or_connection), "  | ")
     try:
-        cursor.execute(query)
-        result = cursor.fetchall()
+        result_cursor = cursor_or_connection.execute(query)
+        result = result_cursor.fetchall()
     except Exception:
         _LOGGER.error("failed to execute\n%s", query_str)
         raise
@@ -209,10 +220,12 @@ def _execute_query_fetchall(
     return result
 
 
-def _upsert_tag(cursor: _psycopg.Cursor, /, tag: str) -> int:
+def _upsert_tag(
+    cursor_or_connection: _psycopg.Cursor | _psycopg.Connection, /, tag: str
+) -> int:
     """Upserts tag with name *name* and returns the id of the row."""
     query = col_val_pairs_to_insert_do_nothing_sql_query("tags", [("name", tag)])
-    return _execute_query_fetch_id(cursor, query)
+    return _execute_query_fetch_id(cursor_or_connection, query)
 
 
 def _find_tagging_id(
@@ -271,6 +284,24 @@ def _upsert_tagging(
         ],
     )
     return _execute_query_fetch_id(cursor, query)
+
+
+def pg_select_dataframe(
+    conn: _psycopg.Connection, query: str | _psycopg_sql.Composed | _Template
+) -> _pandas.DataFrame:
+    import pandas as _pandas
+    import psycopg.rows as _psycopg_rows
+    from psycopg.sql import SQL
+
+    if isinstance(query, str):
+        composed_query = SQL(query)  # type: ignore
+    else:
+        composed_query = query
+    with conn.cursor(row_factory=_psycopg_rows.dict_row) as cursor:
+        cursor.execute(composed_query)
+        rows = cursor.fetchall()
+        cursor.close()
+    return _pandas.DataFrame(rows)
 
 
 def pg_add_person_tag(cursor: _psycopg.Cursor, /, person_id: int, tag: str) -> int:
@@ -471,6 +502,19 @@ def pg_update_direct_debit_pre_notification(
         id=id,
         updates=updates,
         table_name="wsjrdp_direct_debit_pre_notifications",
+        id_col="id",
+    )
+    return result[0][0] if result else None
+
+
+def pg_update_payment_initiation(
+    cursor: _psycopg.Cursor, /, *, id: int, updates: _UpdatesType
+) -> int | None:
+    result = _pg_update_table(
+        cursor,
+        id=id,
+        updates=updates,
+        table_name="wsjrdp_payment_initiations",
         id_col="id",
     )
     return result[0][0] if result else None
@@ -848,6 +892,7 @@ def pg_insert_direct_debit_payment_info(
     cdtr_name: str | None = None,
     cdtr_iban: str | None = None,
     cdtr_bic: str | None = None,
+    cdtr_address: str | None = None,
     creditor_id: str | None = None,
     sepa_dd_config: _types.SepaDirectDebitConfig | None = None,
 ) -> int:
@@ -860,6 +905,8 @@ def pg_insert_direct_debit_payment_info(
             cdtr_iban = sepa_dd_config.get("IBAN")
         if not cdtr_bic:
             cdtr_bic = sepa_dd_config.get("BIC")
+        if not cdtr_address:
+            cdtr_address = sepa_dd_config.get("address_as_single_line")
         if not creditor_id:
             creditor_id = sepa_dd_config.get("creditor_id")
 
@@ -880,6 +927,7 @@ def pg_insert_direct_debit_payment_info(
         ("cdtr_name", cdtr_name),
         ("cdtr_iban", cdtr_iban),
         ("cdtr_bic", cdtr_bic),
+        ("cdtr_address", cdtr_address),
         ("creditor_id", creditor_id),
     ]
     query = _pg.col_val_pairs_to_insert_sql_query(
@@ -894,6 +942,7 @@ def pg_insert_accounting_entry(
     author_id: int | str,
     amount_cents: int,
     description: str,
+    comment: str | None = None,
     subject_type: str = "Person",
     author_type: str = "Person",
     created_at: _datetime.datetime | str | None = None,
@@ -906,6 +955,7 @@ def pg_insert_accounting_entry(
     mandate_date: _datetime.date | str | None = None,
     debit_sequence_type: str | None = None,
     value_date: _datetime.date | str | None = None,
+    booking_date: _datetime.date | str | None = None,
     new_sepa_status: str | None = None,
     cdtr_name: str | None = None,
     cdtr_iban: str | None = None,
@@ -920,6 +970,8 @@ def pg_insert_accounting_entry(
 
     created_at = _util.to_datetime(created_at)
     updated_at = _util.to_datetime_or_none(updated_at)
+    value_date = _util.to_date(value_date, today=created_at.date())
+    booking_date = _util.to_date(booking_date, today=value_date)
 
     cols_vals = [
         ("created_at", created_at),
@@ -931,6 +983,7 @@ def pg_insert_accounting_entry(
         ("amount_currency", "EUR"),
         ("amount_cents", int(amount_cents)),
         ("description", description),
+        ("comment", comment or ""),
         ("payment_initiation_id", _util.to_int_or_none(payment_initiation_id)),
         (
             "direct_debit_payment_info_id",
@@ -945,6 +998,7 @@ def pg_insert_accounting_entry(
         ("mandate_date", _util.to_date_or_none(mandate_date)),
         ("debit_sequence_type", debit_sequence_type),
         ("value_date", _util.to_date_or_none(value_date)),
+        ("booking_date", booking_date),
         ("new_sepa_status", new_sepa_status),
         ("cdtr_name", cdtr_name),
         ("cdtr_iban", cdtr_iban),

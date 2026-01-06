@@ -151,13 +151,21 @@ def write_accounting_dataframe_to_sepa_dd(
     *,
     config: _types.SepaDirectDebitConfig,
     pedantic: bool = True,
+    print_progress_message=None,
 ) -> int:
+    from . import _util
+
+    if print_progress_message is None:
+        print_progress_message = _util.print_progress_message
+
     dd = SepaDirectDebit(config)
 
     already_not_ok = len(df[df["payment_status"] != "ok"])
 
     idx: int
-    for idx, row in df.iterrows():  # type: ignore
+    df_len = len(df)
+    written_payments = 0
+    for i, (idx, row) in enumerate(df.iterrows()):  # type: ignore
         if row["payment_status"] != "ok":
             if row.get("open_amount_cents", 0) == 0:
                 continue  # silently skip non-ok row with amount=0
@@ -186,18 +194,18 @@ def write_accounting_dataframe_to_sepa_dd(
             )
             continue
 
-        _LOGGER.info(
-            "[SDD] id=%s sepa_name=%r %r %s print_at=%s open_amount_cents=%s %s",
-            row.get("id"),
-            row.get("sepa_name"),
-            row.get("short_full_name"),
-            row.get("payment_role"),
-            row.get("print_at"),
-            row.get("open_amount_cents"),
-            row.get("sepa_iban"),
+        progress_msg = (
+            f"[SDD]"
+            f" {row.get('id')} {row.get('short_full_name')}"
+            f" sepa_name={row.get('sepa_name')!r}"
+            f" {row.get('payment_role')}"
+            f" open_amount_cents={row.get('open_amount_cents')}"
+            f" {row.get('sepa_iban')}"
         )
+        print_progress_message(i, df_len, progress_msg, logger=_LOGGER)
         try:
             dd.add_payment_from_accounting_row(row, pedantic=pedantic)
+            written_payments += 1
         except (KeyError, ValueError) as exc:
             df.at[idx, "payment_status"] = "skipped"
             reason = f"{type(exc).__qualname__}: {exc}"
@@ -206,6 +214,8 @@ def write_accounting_dataframe_to_sepa_dd(
 
     now_not_ok = len(df[df["payment_status"] != "ok"])
     _LOGGER.info("[SDD] Newly skipped rows: %s", now_not_ok - already_not_ok)
+    _LOGGER.info("[SDD] Already not ok: %s", already_not_ok)
+    _LOGGER.info("[SDD] Written payments: %s", written_payments)
 
     if dd.num_payments == 0:
         _LOGGER.warning("[SDD] No payments added to Direct Debit => No file written")
