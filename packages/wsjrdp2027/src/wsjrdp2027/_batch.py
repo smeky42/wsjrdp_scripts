@@ -661,7 +661,6 @@ class BatchConfig:
                 extra_mailing_bcc=extra_mailing_bcc,
                 log_resulting_data_frame=False,
             )
-            df["skip_db_updates"] = False
             if self.query.email_only_where:
                 email_only_where = self.query.email_only_where
                 exclude_found_ids = _people_query.PeopleWhere(exclude_id=list(df["id"]))
@@ -677,6 +676,7 @@ class BatchConfig:
                     extra_static_df_cols=extra_static_df_cols,
                     extra_mailing_bcc=extra_mailing_bcc,
                     log_resulting_data_frame=False,
+                    skip_db_updates=True,
                 )
                 if not df2.empty:
                     self.__mark_df_for_skip_db_updates(df2)
@@ -695,7 +695,6 @@ class BatchConfig:
     def __mark_df_for_skip_db_updates(df: _pandas.DataFrame) -> None:
         from ._payment import _skip_payment
 
-        df["skip_db_updates"] = True
         for idx, row in df.iterrows():
             _skip_payment(df, idx, "skip_db_updates is True")
 
