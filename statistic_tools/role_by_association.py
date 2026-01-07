@@ -6,6 +6,7 @@ import sys
 import pandas as pd
 import wsjrdp2027
 
+
 def last_half(role: str) -> str:
     parts = role.split("::Group::")
     return parts[1] if len(parts) > 1 else role
@@ -34,7 +35,6 @@ def main():
             ],
         )
 
-
     df = df.copy()
     df["role_last_half"] = df["payment_role"].apply(last_half)
 
@@ -44,9 +44,13 @@ def main():
     stats = df.groupby(["role_last_half"]).size().reset_index(name="count")
     print(stats)
 
-
-    stats = df.groupby(["role_last_half", "rdp_association"]).size().reset_index(name="count")
+    stats = (
+        df.groupby(["role_last_half", "rdp_association"])
+        .size()
+        .reset_index(name="count")
+    )
     print(stats)
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -53,8 +53,12 @@ def update_config_from_ctx(
     new_primary_group_id: str,
     where_unit_code: str,
 ) -> wsjrdp2027.BatchConfig:
-    _LOGGER.info("Setting new_primary_group_id to %s, where Unit Code %s", new_primary_group_id, where_unit_code)
-    
+    _LOGGER.info(
+        "Setting new_primary_group_id to %s, where Unit Code %s",
+        new_primary_group_id,
+        where_unit_code,
+    )
+
     config.updates["new_primary_group_id"] = new_primary_group_id
     config.query.where.unit_code = where_unit_code
 
@@ -62,6 +66,7 @@ def update_config_from_ctx(
 
 
 _HEX_COLOR_RE = re.compile(r"#([0-9A-Fa-f]{6})\b")
+
 
 def extract_unit_code(description: str) -> str | None:
     if not description:
@@ -91,7 +96,13 @@ def filter_people_by_unit_code(
     return result
 
 
-def update_and_mail(batch_config, ctx: wsjrdp2027.WsjRdpContext, gid: str, unit: str, df: _pandas.DataFrame):
+def update_and_mail(
+    batch_config,
+    ctx: wsjrdp2027.WsjRdpContext,
+    gid: str,
+    unit: str,
+    df: _pandas.DataFrame,
+):
     batch_config = update_config_from_ctx(batch_config, gid, unit)
 
     prepared_batch = ctx.load_people_and_prepare_batch(batch_config, df_cb=lambda _: df)
@@ -100,11 +111,13 @@ def update_and_mail(batch_config, ctx: wsjrdp2027.WsjRdpContext, gid: str, unit:
     _LOGGER.info("Update and mailing done for group %s (unit %s)", gid, unit)
 
 
-def update_group_description(con: _pandas.io.sql.Connection, gid: str, df: _pandas.DataFrame):
+def update_group_description(
+    con: _pandas.io.sql.Connection, gid: str, df: _pandas.DataFrame
+):
     new_description = "Die Unit Leader sind:"
     for _, row in df.iterrows():
         new_description += f"  {row['short_first_name']} ({row['username']}@units.worldscoutjamboree.de),"
-    
+
     new_description = new_description.rstrip(",")
 
     update_group_sql = """
@@ -121,7 +134,6 @@ def update_group_description(con: _pandas.io.sql.Connection, gid: str, df: _pand
 
 
 def mail_and_move_to_units(conn, pdf: _pandas.DataFrame, ctx: wsjrdp2027.WsjRdpContext):
-
     groups_sql = """
             SELECT id AS group_id, name, short_name, description
             FROM groups ORDER BY name ASC
@@ -130,8 +142,12 @@ def mail_and_move_to_units(conn, pdf: _pandas.DataFrame, ctx: wsjrdp2027.WsjRdpC
     _LOGGER.info("Found %s groups", len(gdf))
     # _LOGGER.info("Groups preview:\n%s", gdf.head().to_string())
 
-    batch_config_ul = wsjrdp2027.BatchConfig.from_yaml(ctx.parsed_args.yaml_file + "-UL.yml")
-    batch_config_yp = wsjrdp2027.BatchConfig.from_yaml(ctx.parsed_args.yaml_file + "-YP.yml")
+    batch_config_ul = wsjrdp2027.BatchConfig.from_yaml(
+        ctx.parsed_args.yaml_file + "-UL.yml"
+    )
+    batch_config_yp = wsjrdp2027.BatchConfig.from_yaml(
+        ctx.parsed_args.yaml_file + "-YP.yml"
+    )
 
     batch_config_name_ul = batch_config_ul.name
     batch_config_name_yp = batch_config_yp.name
@@ -147,40 +163,72 @@ def mail_and_move_to_units(conn, pdf: _pandas.DataFrame, ctx: wsjrdp2027.WsjRdpC
         if unit is None:
             continue
         filtered = pdf[pdf["unit_code"].astype(str) == str(unit)].copy()
-        filtered = filtered[filtered["primary_group_id"].isin([2,3])]
-        filtered_ul = filtered[filtered["payment_role"].fillna("").astype(str).str.endswith("UL")]
-        filtered_yp = filtered[filtered["payment_role"].fillna("").astype(str).str.endswith("YP")]
-        _LOGGER.info(f"{grow.get("name")} -> {len(filtered_ul)} UL + {len(filtered_yp)} YP = {len(filtered)}")
+        filtered = filtered[filtered["primary_group_id"].isin([2, 3])]
+        filtered_ul = filtered[
+            filtered["payment_role"].fillna("").astype(str).str.endswith("UL")
+        ]
+        filtered_yp = filtered[
+            filtered["payment_role"].fillna("").astype(str).str.endswith("YP")
+        ]
+        _LOGGER.info(
+            f"{grow.get('name')} -> {len(filtered_ul)} UL + {len(filtered_yp)} YP = {len(filtered)}"
+        )
 
-        try: 
+        try:
             # if(gid == 8): # Testgruppe
             create_ul_accounts(ctx, filtered_ul)
             update_group_description(con=conn, gid=gid, df=filtered_ul)
-            update_and_mail(batch_config=batch_config_ul, ctx=ctx, gid=gid, unit=unit, df=filtered_ul)
-            update_and_mail(batch_config=batch_config_yp, ctx=ctx, gid=gid, unit=unit, df=filtered_yp)
+            update_and_mail(
+                batch_config=batch_config_ul,
+                ctx=ctx,
+                gid=gid,
+                unit=unit,
+                df=filtered_ul,
+            )
+            update_and_mail(
+                batch_config=batch_config_yp,
+                ctx=ctx,
+                gid=gid,
+                unit=unit,
+                df=filtered_yp,
+            )
         except Exception as e:
-            _LOGGER.error("Error creating accounts for group %s (unit %s): %s", gid, unit, e)
+            _LOGGER.error(
+                "Error creating accounts for group %s (unit %s): %s", gid, unit, e
+            )
 
-        
 
 def find_duplicate_usernames(df: _pandas.DataFrame) -> bool:
-    counts = df['username'].value_counts()
-    df['duplicate_count'] = df['username'].map(counts)
-    return df['duplicate_count'] > 1
+    counts = df["username"].value_counts()
+    df["duplicate_count"] = df["username"].map(counts)
+    return df["duplicate_count"] > 1
 
 
 def create_ul_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):
     for _, row in df.iterrows():
-        username = row['username']
-        password = row['password']
-        firstname = row['first_name']
-        lastname = row['last_name']
+        username = row["username"]
+        password = row["password"]
+        firstname = row["first_name"]
+        lastname = row["last_name"]
         email = username + "@units.worldscoutjamboree.de"
 
-        _LOGGER.info("Creating account for %s %s (%s %s)", firstname, lastname, username, password)
-        wsjrdp2027.keycloak.add_user(ctx,email, firstname, lastname, password)
+        _LOGGER.info(
+            "Creating account for %s %s (%s %s)",
+            firstname,
+            lastname,
+            username,
+            password,
+        )
+        wsjrdp2027.keycloak.add_user(ctx, email, firstname, lastname, password)
         wsjrdp2027.keycloak.add_user_to_group(ctx, email, "UL")
-        wsjrdp2027.mailbox.add_mailbox(ctx, username, "units.worldscoutjamboree.de", f"{firstname} {lastname}", password)
+        wsjrdp2027.mailbox.add_mailbox(
+            ctx,
+            username,
+            "units.worldscoutjamboree.de",
+            f"{firstname} {lastname}",
+            password,
+        )
+
 
 def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
@@ -195,14 +243,14 @@ def main(argv=None):
 
     # _LOGGER.info("Test Password %s", wsjrdp2027._util.generate_password())
     # _LOGGER.info("Test Username %s",wsjrdp2027._util.generate_mail_username("Möbius-Walter mit coolem Zweitnamen", "von und zu Späßchen mit …	Uni汉字字符集cohànzìde¿Æ"))
-    
+
     # test_firstname = "Test Firstname"
     # test_lastname = "Test Lastname"
     # test_mail = "test11"
     # wsjrdp2027.keycloak.add_user(ctx, f"{test_mail}@units.worldscoutjamboree.de", test_firstname, test_lastname, "password1234")
     # wsjrdp2027.keycloak.add_user_to_group(ctx, f"{test_mail}@units.worldscoutjamboree.de", "UL")
     # wsjrdp2027.mailbox.add_mailbox(ctx, test_mail, "units.worldscoutjamboree.de", f"Test Email", "password1234")
-    
+
     # return
 
     with ctx.psycopg_connect() as conn:
@@ -214,11 +262,17 @@ def main(argv=None):
         )
         _LOGGER.info("Found %s people", len(pdf))
         # _LOGGER.info("People preview:\n%s", pdf.head().to_string())
-        
 
-        pdf['skip_db_updates'] = False
-        pdf['username'] = pdf.apply(lambda r: wsjrdp2027._util.generate_mail_username(str(r["first_name"]), str(r["last_name"])), axis=1)
-        pdf['password'] = pdf.apply(lambda r: wsjrdp2027._util.generate_password(), axis=1)
+        pdf["skip_db_updates"] = False
+        pdf["username"] = pdf.apply(
+            lambda r: wsjrdp2027._util.generate_mail_username(
+                str(r["first_name"]), str(r["last_name"])
+            ),
+            axis=1,
+        )
+        pdf["password"] = pdf.apply(
+            lambda r: wsjrdp2027._util.generate_password(), axis=1
+        )
 
         uldf = pdf[pdf["payment_role"].fillna("").astype(str).str.endswith("UL")]
         _LOGGER.info("Found %s Unit Leader", len(uldf))
@@ -227,7 +281,7 @@ def main(argv=None):
         # if(find_duplicate_usernames(uldf)).any():
         #     _LOGGER.error("Duplicate usernames found in UL dataset!")
         #     return
-        
+
         mail_and_move_to_units(conn, pdf, ctx)
 
     _LOGGER.info("")
