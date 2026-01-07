@@ -230,11 +230,15 @@ def _dd_description_from_row(row) -> str:
     subject_ident = " ".join(
         str(x) for x in [role_short_name, row["id"], row["short_full_name"]] if x
     )
+    open_amount_cents = row["open_amount_cents"]
+    this_month_cents = row["amount_due_in_collection_date_month_cents"]
 
     purpose = "WSJ 2027"
 
     if row["early_payer"] or len(installments_dict) < 2:
         purpose += " Beitrag"
+    elif this_month_cents == 0:
+        purpose += " Zahlungsrückstand"
     else:
         collection_ym = _util.to_year_month(collection_date)
         installment_num = len([ym for ym in installments_dict if ym <= collection_ym])
@@ -248,9 +252,7 @@ def _dd_description_from_row(row) -> str:
             currency="EUR",
         )
 
-    open_amount_cents = row["open_amount_cents"]
-    this_month_cents = row["amount_due_in_collection_date_month_cents"]
-    if open_amount_cents != this_month_cents:
+    if open_amount_cents != this_month_cents and this_month_cents != 0:
         this_month_eur = cents_to_eur(this_month_cents)
         purpose += f" ({this_month_eur})"
         difference_eur = cents_to_eur(abs(open_amount_cents - this_month_cents))
