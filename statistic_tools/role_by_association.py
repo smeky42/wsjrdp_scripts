@@ -38,6 +38,13 @@ def main():
     df = df.copy()
     df["role_last_half"] = df["payment_role"].apply(last_half)
 
+    stats = df.groupby(["rdp_association"]).size().reset_index(name="count")
+    print(stats)
+
+    stats = df.groupby(["role_last_half"]).size().reset_index(name="count")
+    print(stats)
+
+
     stats = df.groupby(["role_last_half", "rdp_association"]).size().reset_index(name="count")
     print(stats)
 
