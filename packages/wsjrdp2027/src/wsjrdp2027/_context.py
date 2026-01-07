@@ -151,10 +151,10 @@ class WsjRdpContextConfig:
                 config.get("hitobito_url", "https://anmeldung.worldscoutjamboree.de")
             ),
             mail_accounts=mail_accounts,
-            mail_api_key=config["mail_api_key"],
-            keycloak_admin=config["keycloak_admin"],
-            keycloak_admin_password=config["keycloak_admin_password"],
-            keycloak_realm=config["keycloak_realm"],
+            mail_api_key=config.get("mail_api_key", ""),
+            keycloak_admin=config.get("keycloak_admin", ""),
+            keycloak_admin_password=config.get("keycloak_admin_password", ""),
+            keycloak_realm=config.get("keycloak_realm", ""),
             **kwargs,  # type: ignore
         )
         return self
