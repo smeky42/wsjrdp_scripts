@@ -26,9 +26,9 @@ def __get_realm():
     except Exception as e:
         _LOGGER.error('__get_realm() failed: %s', e)
 
-def __get_user_id(username):
+def __get_user_id(ctx,username):
     try:
-        keycloak_admin = __login()
+        keycloak_admin = __login(ctx)
         return keycloak_admin.get_user_id(username)
     except Exception as e:
         _LOGGER.error('__get_user_id(username=%s) failed: %s', username, e)
@@ -42,12 +42,29 @@ def add_user(ctx, mail, firstname, lastname, pw):
                                             "enabled": True,
                                             "firstName": firstname,
                                             "lastName": lastname,
-                                            "requiredActions": ["UPDATE_PASSWORD"],
                                             "credentials": [{"value": pw,"type": "password",}]})
     except Exception as e:
         _LOGGER.error('add_user(mail=%s, firstname=%s, lastname=%s) failed: %s', mail, firstname, lastname, e)
         _LOGGER.error('add_user: trying to update user with: mail=%s, firstname=%s, lastname=%s', mail, firstname, lastname)
         edit_user(ctx, mail, firstname, lastname, mail)
+
+def add_user_to_group(ctx, username, group_name):
+    try:
+        keycloak_admin = __login(ctx)
+        userID = __get_user_id(ctx, username)
+        groups = keycloak_admin.get_groups()
+        groupID = None
+        for group in groups:
+            if group['name'] == group_name:
+                groupID = group['id']
+                break
+        if groupID is not None:
+            _LOGGER.info('add_user_to_group: adding userID=%s (%s) to group_name=%s',  userID, username, group_name)
+            return keycloak_admin.group_user_add(userID, groupID)
+        else:
+            _LOGGER.error('add_user_to_group(username=%s, group_name=%s) failed: Group not found', username, group_name)
+    except Exception as e:
+        _LOGGER.error('add_user_to_group(username=%s, group_name=%s) failed: %s', username, group_name, e)
 
 def set_user_pw(ctx, username, pw):
     try:
