@@ -132,6 +132,8 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "payment_status_reason",
     "payment_status",
     "person_dict",
+    #
+    "skip_db_updates",
 ]
 
 
@@ -474,6 +476,7 @@ def _enrich_people_dataframe(
     today: _datetime.date,
     collection_date: _datetime.date | None = None,
     extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
+    skip_db_updates: bool | None = None,
 ) -> None:
     from . import _util
     from ._payment_role import PaymentRole
@@ -568,6 +571,8 @@ def _enrich_people_dataframe(
     df["contract_additional_names"] = df.apply(get_contract_additional_names, axis=1)
     df["contract_names"] = df.apply(get_contract_names, axis=1)
 
+    df["skip_db_updates"] = bool(skip_db_updates)  # None => False
+
     assert_all_people_rows_consistent(df)
     df.drop(
         columns=[
@@ -592,6 +597,7 @@ def load_people_dataframe(
     print_at: _datetime.date | str | None = None,
     extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
     extra_static_df_cols: dict[str, _typing.Any] | None = None,
+    skip_db_updates: bool | None = None,
 ) -> _pandas.DataFrame:
     import re
     import textwrap
@@ -728,6 +734,7 @@ ORDER BY people.id{limit_clause}
             today=today,
             collection_date=query.collection_date,
             extra_mailing_bcc=extra_mailing_bcc,
+            skip_db_updates=skip_db_updates,
         )
         df_columns = set(df.columns)
         for key, val in (extra_static_df_cols or {}).items():

@@ -150,6 +150,7 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "payment_status_reason",
     "payment_status",
     "person_dict",
+    "skip_db_updates",
 ]
 
 PRE_NOTIFICATION_COLUMNS = [
