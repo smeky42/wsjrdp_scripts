@@ -19,12 +19,24 @@ def add_mailbox(ctx, local_part, domain, name, password):
         "password": password,
         "password2": password,
         "active": "1",
-        "force_pw_update": "1",
+        "force_pw_update": "0",
+        "authsource": "keycloak", # Only Keycloak login
         "tls_enforce_in": "1",
         "tls_enforce_out": "1"
     }
 
     resp = requests.post("https://mail.worldscoutjamboree.de/api/v1/add/mailbox", json=payload, headers=headers, timeout=30)
     #resp.raise_for_status()  # optional: raise exception for HTTP error codes
+    _LOGGER.info("Add Response: %s", resp.text)
 
-    _LOGGER.info("Response: %s", resp.text)
+    # edit_payload = {
+    #     "items": [
+    #     f"{local_part}@{domain}".format(local_part=local_part, domain=domain)
+    #     ],
+    #     "attr": {
+    #     "active": "1",
+    #     "authsource": "keycloak" # Only Keycloak login
+    #     }
+    # }
+    # edit_resp = requests.post("https://mail.worldscoutjamboree.de/api/v1/edit/mailbox", json=edit_payload, headers=headers, timeout=30)
+    # _LOGGER.info("Update Response: %s", edit_resp.text)

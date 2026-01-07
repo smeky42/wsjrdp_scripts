@@ -27,16 +27,18 @@ content: |
   Was du dort alles machen kannst und wie das geht erfährst du am UL-Kickoff.
 
   Damit deine Unit mit dir und du mit deiner Unit in Kontakt treten kannst, haben wir dir eine Mailadresse eingerichtet.
-  Wie diese funktioniert findest du unter unithub.worldscoutjamboree.de/ TODO 
+  Wie diese funktioniert findest du unter https://unithub.worldscoutjamboree.de/?page_id=27
+  Wir wünschen uns, dass ihr diese Mailadresse aktiv nutzt, um mit uns und eurer Unit zu kommunizieren.
+  So sehen die YPs und das CMT, dass ihr von uns bestätigte Unit-Leader seid.  
 
-  Bitte logge dich (via WSJ Login - Single Sign On) in der nächsten Woche hin und wieder dort ein und überprüfe ob es schon fragen aus deiner Unit an euch gibt.
+  Bitte logge dich, über Single Sign-On, in der nächsten Woche hin und wieder dort ein und überprüfe ob es schon Fragen aus deiner Unit an euch gibt.
 
   https://mail.worldscoutjamboree.de
 
-  Nutzer und Mailadresse: {{ row.username }}@units.worldscoutjamboree.de
+  Mailadresse: {{ row.username }}@units.worldscoutjamboree.de
   Passwort: {{ row.password }}
  
-  Dies ist auch der Zugang zu den weiteren Tools die wir euch bereitstellen werden. Dazu aber mehr am UL-Kickoff.
+  Dies wird auch der Zugang zu den weiteren Tools die wir euch bereitstellen sein. Dazu aber mehr am UL-Kickoff.
   Falls es jetzt schon technische Probleme oder Fragen gibt schreib uns gerne an helpdesk@worldscoutjamboree.de.
 
   Jetzt kann es richtig losgehen und wir freuen uns dich schon bald bei unserem UL-Kickoff am 11.01.2026 kennenzulernen. 

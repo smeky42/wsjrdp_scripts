@@ -1145,7 +1145,7 @@ def generate_password():
     return ''.join(secrets.choice(alphabet) for i in range(20))
 
 def generate_mail_username(firstname, lastname):
-    _LOGGER.info("Generated username from: %s, %s", str(firstname), str(lastname))
+    # _LOGGER.info("Generated username from: %s, %s", str(firstname), str(lastname))
     firstname = firstname.split(' ')[0]
     username = firstname + '.' + lastname
     username = username.lower()
@@ -1163,5 +1163,5 @@ def generate_mail_username(firstname, lastname):
         last = parts[1][:max(1, 63 - len(first) - 1)]
         username = f"{first}.{last}".strip('.')
 
-    _LOGGER.info("Generated username: %s", username)
+    # _LOGGER.info("Generated username: %s", username)
     return username
