@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import logging
-import sys
-import pandas as _pandas
 import re
+import sys
 
+import pandas as _pandas
+import psycopg as _psycopg
 import wsjrdp2027
 import wsjrdp2027.keycloak
 import wsjrdp2027.mailbox
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,8 +83,8 @@ def filter_people_by_unit_code(
     people_unit_col: str = "unit_code",
     group_id_col: str = "group_id",
     description_col: str = "description",
-) -> Dict[str, _pandas.DataFrame]:
-    result: Dict[str, _pandas.DataFrame] = {}
+) -> dict[str, _pandas.DataFrame]:
+    result: dict[str, _pandas.DataFrame] = {}
     for _, grow in groups_df.iterrows():
         gid = grow.get(group_id_col)
         desc = grow.get(description_col, "")
@@ -111,9 +113,7 @@ def update_and_mail(
     _LOGGER.info("Update and mailing done for group %s (unit %s)", gid, unit)
 
 
-def update_group_description(
-    con: _pandas.io.sql.Connection, gid: str, df: _pandas.DataFrame
-):
+def update_group_description(con: _psycopg.Connection, gid: str, df: _pandas.DataFrame):
     new_description = "Die Unit Leader sind:"
     for _, row in df.iterrows():
         new_description += f"  {row['short_first_name']} ({row['username']}@units.worldscoutjamboree.de),"

@@ -94,7 +94,6 @@ def main(argv=None):
     with ctx.psycopg_connect() as conn:
         mailing = batch_config.prepare_batch_for_dataframe(
             df,
-            conn=conn,
             msg_cb=lambda p: attach_cancellation_confirmation(ctx, p),
             out_dir=ctx.out_dir,
         )

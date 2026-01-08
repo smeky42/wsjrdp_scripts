@@ -64,7 +64,7 @@ def create_select_query(
 def col_val_pairs_to_insert_sql_query(
     table_name: str | _psycopg_sql.Identifier,
     colval_pairs,
-    returning: str | _psycopg_sql.Identifier | None = "id",
+    returning: str | _psycopg_sql.Composable | None = "id",
     on_conflict: _psycopg_sql.Composed | _psycopg_sql.SQL | str | None = None,
 ) -> _psycopg_sql.Composed:
     r"""Return a composed INSERT query.
@@ -174,7 +174,10 @@ def col_val_pairs_to_insert_or_upsert_query(
 def _execute_query_fetchone(
     cursor_or_connection: _psycopg.Cursor | _psycopg.Connection, /, query
 ):
-    query_str = _textwrap.indent(query.as_string(context=cursor_or_connection), "  | ")
+    import psycopg.sql as _psycopg_sql
+
+    query_str = _psycopg_sql.as_string(query, context=cursor_or_connection)
+    query_str = _textwrap.indent(query_str, "  | ")
     try:
         result_cursor = cursor_or_connection.execute(query)
         result = result_cursor.fetchone()
@@ -201,9 +204,13 @@ def _execute_query_fetchall(
     /,
     query,
     *,
-    show_result: bool = False,
+    show_result: bool | None = None,
 ):
-    query_str = _textwrap.indent(query.as_string(context=cursor_or_connection), "  | ")
+    import psycopg.sql as _psycopg_sql
+
+    show_result = bool(show_result)
+    query_str = _psycopg_sql.as_string(query, context=cursor_or_connection)
+    query_str = _textwrap.indent(query_str, "  | ")
     try:
         result_cursor = cursor_or_connection.execute(query)
         result = result_cursor.fetchall()
@@ -217,12 +224,35 @@ def _execute_query_fetchall(
     return result
 
 
+def _execute_query_fetchall_dicts(
+    connection: _psycopg.Connection,
+    /,
+    query,
+    *,
+    show_result: bool | None = None,
+):
+    import psycopg.rows
+
+    with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
+        return _execute_query_fetchall(
+            cursor,  # type: ignore
+            query,
+            show_result=show_result,
+        )
+
+
 def _upsert_tag(
-    cursor_or_connection: _psycopg.Cursor | _psycopg.Connection, /, tag: str
+    cursor_or_connection: _psycopg.Cursor | _psycopg.Connection, /, tag_name: str
 ) -> int:
     """Upserts tag with name *name* and returns the id of the row."""
-    query = col_val_pairs_to_insert_do_nothing_sql_query("tags", [("name", tag)])
+    query = col_val_pairs_to_insert_do_nothing_sql_query("tags", [("name", tag_name)])
     return _execute_query_fetch_id(cursor_or_connection, query)
+
+
+def _find_tag_id_for_name(cursor: _psycopg.Cursor, /, *, tag_name: str) -> int | None:
+    query = t"""SELECT "id" FROM "tags" WHERE "name" = {tag_name} LIMIT 1"""
+    result = _execute_query_fetchone(cursor, query)
+    return result[0] if result is not None else None
 
 
 def _find_tagging_id(
@@ -238,6 +268,29 @@ def _find_tagging_id(
 
     query = SQL(
         """SELECT "id" FROM "taggings" WHERE "tag_id" = {tag_id} AND "taggable_type" = {taggable_type} AND "taggable_id" = {taggable_id} AND "context" = {context} LIMIT 1"""
+    ).format(
+        tag_id=tag_id,
+        taggable_type=taggable_type,
+        taggable_id=taggable_id,
+        context=context,
+    )
+    result = _execute_query_fetchone(cursor, query)
+    return result[0] if result is not None else None
+
+
+def _delete_tagging(
+    cursor: _psycopg.Cursor,
+    /,
+    *,
+    tag_id: int,
+    taggable_type: str = "Person",
+    taggable_id: int,
+    context: str = "tags",
+) -> int | None:
+    from psycopg.sql import SQL
+
+    query = SQL(
+        """DELETE FROM "taggings" WHERE "tag_id" = {tag_id} AND "taggable_type" = {taggable_type} AND "taggable_id" = {taggable_id} AND "context" = {context} RETURNING "id" """
     ).format(
         tag_id=tag_id,
         taggable_type=taggable_type,
@@ -286,19 +339,17 @@ def _upsert_tagging(
 def pg_select_dict_rows(
     conn: _psycopg.Connection,
     query: str | _psycopg_sql.Composed | _string_templatelib.Template,
+    *,
+    show_result: bool | None = None,
 ) -> list[dict[str, _typing.Any]]:
-    import psycopg.rows as _psycopg_rows
     from psycopg.sql import SQL
 
     if isinstance(query, str):
         composed_query = SQL(query)  # type: ignore
     else:
         composed_query = query
-    with conn.cursor(row_factory=_psycopg_rows.dict_row) as cursor:
-        cursor.execute(composed_query)
-        rows = cursor.fetchall()
-        cursor.close()
-    return rows
+    rows = _execute_query_fetchall_dicts(conn, composed_query, show_result=show_result)
+    return list(rows)  # type: ignore
 
 
 def pg_select_dataframe(
@@ -310,10 +361,10 @@ def pg_select_dataframe(
     return _pandas.DataFrame(pg_select_dict_rows(conn, query))
 
 
-def pg_add_person_tag(cursor: _psycopg.Cursor, /, person_id: int, tag: str) -> int:
+def pg_add_person_tag(cursor: _psycopg.Cursor, /, person_id: int, tag_name: str) -> int:
     from psycopg.sql import SQL
 
-    tag_id = _upsert_tag(cursor, tag=tag)
+    tag_id = _upsert_tag(cursor, tag_name=tag_name)
     tagging_id = _find_tagging_id(cursor, tag_id=tag_id, taggable_id=person_id)
     if tagging_id is not None:
         return tagging_id
@@ -323,6 +374,27 @@ def pg_add_person_tag(cursor: _psycopg.Cursor, /, person_id: int, tag: str) -> i
             cursor,
             SQL(
                 'UPDATE "tags" SET "taggings_count" = "taggings_count" + 1 WHERE "id" = {tag_id} RETURNING "taggings_count"'
+            ).format(tag_id=tag_id),
+        )
+        return tagging_id
+
+
+def pg_remove_person_tag(
+    cursor: _psycopg.Cursor, /, person_id: int, tag_name: str
+) -> int | None:
+    from psycopg.sql import SQL
+
+    tag_id = _find_tag_id_for_name(cursor, tag_name=tag_name)
+    if tag_id is None:
+        return None
+    tagging_id = _delete_tagging(cursor, tag_id=tag_id, taggable_id=person_id)
+    if tagging_id is None:
+        return None
+    else:
+        _execute_query_fetchone(
+            cursor,
+            SQL(
+                'UPDATE "tags" SET "taggings_count" = "taggings_count" - 1 WHERE "id" = {tag_id} RETURNING "taggings_count"'
             ).format(tag_id=tag_id),
         )
         return tagging_id

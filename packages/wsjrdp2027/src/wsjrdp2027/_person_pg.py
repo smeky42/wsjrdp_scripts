@@ -100,7 +100,7 @@ PERSON_VERSION_COLS = [
 ]
 
 
-@_dataclasses.dataclass(kw_only=True)
+@_dataclasses.dataclass(kw_only=True, frozen=True, eq=True)
 class _ScalarChange:
     old_col: str | None = None
     new_col: str
@@ -111,6 +111,10 @@ class _ScalarChange:
     def col_name(self) -> str:
         return self.new_col
 
+    @property
+    def col_names(self) -> list[str]:
+        return [self.new_col]
+
     def __normalize(self, value):
         from . import _util
 
@@ -119,13 +123,14 @@ class _ScalarChange:
         else:
             return value
 
-    def compute_df_val(self, row: _pandas.Series, new_val):
-        if row.get("skip_db_updates") and self.old_col:
-            return self.__normalize(row[self.old_col])
-        elif self.render_jinja2:
-            return _util.render_template(new_val, {"row": row})
+    def compute_df_val(
+        self, row: _pandas.Series, column: str, value: _typing.Any, updates: dict
+    ) -> _typing.Any:
+        """Compute value for *row* in column *column* for user provided *value*."""
+        if self.render_jinja2:
+            return _util.render_template(value, {"row": row})
         else:
-            return new_val
+            return value
 
     def get_old_val(self, row: _pandas.Series):
         if self.old_col:
@@ -137,38 +142,54 @@ class _ScalarChange:
         return self.__normalize(row[self.new_col])
 
 
-@_dataclasses.dataclass(kw_only=True)
+@_dataclasses.dataclass(kw_only=True, frozen=True, eq=True)
 class _StrListChange:
     old_col: str | None = None
     add_col: str
+    remove_col: str | None = None
 
     @property
     def col_name(self) -> str:
         return self.add_col
 
-    def compute_df_val(self, row: _pandas.Series, new_val):
+    @property
+    def col_names(self) -> list[str]:
+        return list(filter(None, [self.add_col, self.remove_col]))
+
+    def compute_df_val(
+        self, row: _pandas.Series, column: str, value: _typing.Any, updates: dict
+    ) -> _typing.Any:
+        """Compute value for *row* in column *column* for user provided *value*."""
         from . import _util
 
-        if row.get("skip_db_updates") and self.old_col:
-            return row[self.old_col]
-        else:
-            return _util.dedup(
-                _util.to_str_list(row.get(self.add_col)) + _util.to_str_list(new_val)
-            )
+        tag_list = sorted(set(_util.to_str_list(value)))
+
+        # If we compute the dataframe value for `add_col`, we can and
+        # should remove entries in `remove_col`
+        if column == self.add_col:
+            remove_tag_set = set(_util.to_str_list(updates.get(self.remove_col)))
+            tag_list = [tag for tag in tag_list if tag not in remove_tag_set]
+
+        return tag_list
 
     def get_old_val(self, row: _pandas.Series):
         from . import _util
 
         if self.old_col:
-            return _util.to_str_list(row[self.old_col])
+            return sorted(_util.to_str_list(row[self.old_col]))
         else:
             return []
 
     def get_new_val(self, row: _pandas.Series):
         from . import _util
 
-        old_val = self.get_old_val(row)
-        return _util.dedup(old_val + _util.to_str_list(row[self.add_col]))
+        remove_tag_set = set(_util.to_str_list(row.get(self.remove_col)))
+
+        old_tag_set = set(_util.to_str_list(self.get_old_val(row)))
+        add_tag_set = set(_util.to_str_list(row[self.add_col]))
+        return sorted(
+            tag for tag in (old_tag_set | add_tag_set) if tag not in remove_tag_set
+        )
 
 
 PERSON_CHANGES: list[_ScalarChange | _StrListChange] = [
@@ -177,9 +198,11 @@ PERSON_CHANGES: list[_ScalarChange | _StrListChange] = [
         old_col="primary_group_role_types", new_col="new_primary_group_role_types"
     ),
     _ScalarChange(old_col=None, new_col="add_note", render_jinja2=True),
-    _StrListChange(old_col="tag_list", add_col="add_tags"),
+    _StrListChange(old_col="tag_list", add_col="add_tags", remove_col="remove_tags"),
 ]
 
-UPDATE_KEY_TO_CHANGE = {chg.col_name: chg for chg in PERSON_CHANGES}
+UPDATE_KEY_TO_CHANGE = {
+    col_name: chg for chg in PERSON_CHANGES for col_name in chg.col_names
+}
 
 VALID_PERSON_UPDATE_KEYS = frozenset(UPDATE_KEY_TO_CHANGE.keys())

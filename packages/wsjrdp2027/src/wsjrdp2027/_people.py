@@ -655,7 +655,7 @@ WITH "people" AS (
     *,
     ARRAY(SELECT "tags".name FROM taggings
           LEFT JOIN "tags" ON taggings.tag_id = "tags".id AND taggings.taggable_type = 'Person'
-          WHERE taggings.taggable_id = people.id
+          WHERE taggings.taggable_id = people.id ORDER BY "tags"."name"
     ) AS tag_list,
     ARRAY(SELECT "a".email FROM additional_emails "a"
           WHERE "a".contactable_type='Person' AND "a".contactable_id = people.id AND "a".mailings = TRUE
@@ -846,7 +846,6 @@ def write_people_dataframe_to_xlsx(
 def update_dataframe_for_updates(
     df: _pandas.DataFrame,
     *,
-    conn: _psycopg.Connection,
     updates: dict | None = None,
     now: _datetime.datetime | _datetime.date | str | int | float | None = None,
 ):
@@ -857,22 +856,27 @@ def update_dataframe_for_updates(
     now = _util.to_datetime(now)
     updates = updates or {}
 
+    used_changes_set = set()
     used_changes = []
 
     new_cols = []
 
-    for key in updates:
+    for key, new_val in updates.items():
         if key not in _person_pg.VALID_PERSON_UPDATE_KEYS:
             raise TypeError(f"Invalid keyword argument {key!r}")
 
         chg = _person_pg.UPDATE_KEY_TO_CHANGE[key]
-        new_val = updates.get(chg.col_name)
-        used_changes.append(chg)
+        if chg not in used_changes_set:
+            used_changes.append(chg)
+        used_changes_set.add(chg)
         if len(df) == 0:
-            new_cols.append(chg.col_name)
+            new_cols.append(key)
         else:
-            df[chg.col_name] = df.apply(
-                lambda row: chg.compute_df_val(row, new_val), axis=1
+            df[key] = df.apply(
+                lambda row: chg.compute_df_val(
+                    row, column=key, value=new_val, updates=updates
+                ),
+                axis=1,
             )
 
     if len(df) == 0:
@@ -907,7 +911,7 @@ def update_dataframe_for_updates(
                         changed = True
                         object_changes[chg.old_col] = [old_val, new_val]
             df.at[idx, "db_changes"] = changed
-            df.at[idx, "person_changes"] = object_changes  # ty: ignore
+            df.at[idx, "person_changes"] = object_changes  # type: ignore
 
     return df
 
@@ -1026,8 +1030,10 @@ def _update_person_from_row(
     person_updates = []
     person_changes = row["person_changes"]
     if "tag_list" in person_changes:
-        for tag in _util.to_str_list(row.get("add_tags")):
-            _pg.pg_add_person_tag(cursor, person_id=row["id"], tag=tag)
+        for tag_name in _util.to_str_list(row.get("add_tags")):
+            _pg.pg_add_person_tag(cursor, person_id=row["id"], tag_name=tag_name)
+        for tag_name in _util.to_str_list(row.get("remove_tags")):
+            _pg.pg_remove_person_tag(cursor, person_id=row["id"], tag_name=tag_name)
     if (add_note := row.get("add_note")) is not None:
         _pg.pg_insert_note(cursor, subject_id=row["id"], text=add_note)
     for chg in _person_pg.PERSON_CHANGES:
