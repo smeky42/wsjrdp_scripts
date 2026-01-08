@@ -74,9 +74,19 @@ from ._util import (
     to_int_or_none as to_int_or_none,
     to_month_year_de as to_month_year_de,
     to_str_list as to_str_list,
+    to_str_list_or_none as to_str_list_or_none,
+    to_str_set as to_str_set,
+    to_str_set_or_none as to_str_set_or_none,
     to_yaml_str as to_yaml_str,
     write_dataframe_to_xlsx as write_dataframe_to_xlsx,
 )
+
+
+if _typing.TYPE_CHECKING:
+    from . import keycloak, mailbox
+    from ._camt import CamtMessage
+    from ._pain import PainMessage
+
 
 __all__ = [
     "CREDITOR_ID",
@@ -113,10 +123,12 @@ __all__ = [
     "get_default_email_policy",
     "get_typst_font_paths",
     "insert_direct_debit_pre_notification_from_row",
+    "keycloak",
     "load_accounting_balance_in_cent",
     "load_payment_dataframe",
     "load_payment_dataframe_from_payment_initiation",
     "load_people_dataframe",
+    "mailbox",
     "merge_mail_addresses",
     "nan_to_none",
     "pg_add_person_tag",
@@ -138,6 +150,9 @@ __all__ = [
     "to_int_or_none",
     "to_month_year_de",
     "to_str_list",
+    "to_str_list_or_none",
+    "to_str_set",
+    "to_str_set_or_none",
     "to_yaml_str",
     "typst_compile",
     "write_accounting_dataframe_to_sepa_dd",
@@ -158,7 +173,6 @@ Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
 Chausseestr. 128/129
 10115 Berlin
 
-info@worldscoutjamboree.de
 https://worldscoutjamboree.de"""
 )
 
@@ -173,7 +187,6 @@ Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
 Chausseestr. 128/129
 10115 Berlin
 
-info@worldscoutjamboree.de
 https://worldscoutjamboree.de"""
 )
 
@@ -188,7 +201,6 @@ Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
 Chausseestr. 128/129
 10115 Berlin
 
-info@worldscoutjamboree.de
 https://worldscoutjamboree.de
 """
 )
@@ -249,6 +261,8 @@ This set was fixed before sending the Pre-Notification.
 __ALIASES__ = {
     "CamtMessage": (f"._camt", "CamtMessage"),
     "PainMessage": (f"._pain", "PainMessage"),
+    "keycloak": (".keycloak", ""),
+    "mailbox": (".mailbox", ""),
 }
 
 
@@ -259,6 +273,9 @@ def __getattr__(name):
     if not mod_name or not qualname:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     mod = importlib.import_module(mod_name, package=__name__)
-    obj = getattr(mod, qualname)
+    if qualname:
+        obj = getattr(mod, qualname)
+    else:
+        obj = mod
     globals()[qualname] = obj
     return obj

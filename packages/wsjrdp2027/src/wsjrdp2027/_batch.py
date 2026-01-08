@@ -362,7 +362,7 @@ class BatchConfig:
             self.skip_email = skip_email
 
         updates = updates.copy() if updates else {}
-        for key in ["add_tags", "new_primary_group_role_types"]:
+        for key in ["add_tags", "remove_tags", "new_primary_group_role_types"]:
             if key not in updates:
                 continue
             val = _util.to_str_list(updates.get(key)) or None
@@ -596,7 +596,6 @@ class BatchConfig:
         df: _pandas.DataFrame,
         /,
         *,
-        conn: _psycopg.Connection,
         inplace: bool = True,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
     ) -> _pandas.DataFrame:
@@ -608,7 +607,6 @@ class BatchConfig:
         keys_set = set(self.updates) & _person_pg.VALID_PERSON_UPDATE_KEYS
         _people.update_dataframe_for_updates(
             df,
-            conn=conn,
             updates={k: v for k, v in self.updates.items() if k in keys_set},
             now=now,
         )
@@ -750,7 +748,6 @@ class BatchConfig:
             return self.prepare_batch_for_dataframe(
                 df,
                 unfiltered_df=unfiltered_df,
-                conn=conn,
                 msg_cb=msg_cb,
                 out_dir=out_dir,
                 msgid_idstring=msgid_idstring,
@@ -762,7 +759,6 @@ class BatchConfig:
         self,
         df: _pandas.DataFrame,
         *,
-        conn: _psycopg.Connection,
         unfiltered_df: _pandas.DataFrame | None = None,
         msg_cb: _collections_abc.Callable[[PreparedEmailMessage], None] | None = None,
         out_dir: _pathlib.Path | None = None,
@@ -786,7 +782,7 @@ class BatchConfig:
 
         now = _util.to_datetime(now)
         _LOGGER.info("Update dataframe for updates and action arguments...")
-        df = self.update_dataframe_for_updates(df, conn=conn, now=now, inplace=False)
+        df = self.update_dataframe_for_updates(df, now=now, inplace=False)
         _LOGGER.info("Prepare mailing...")
         tic = time.monotonic()
         messages = tuple(

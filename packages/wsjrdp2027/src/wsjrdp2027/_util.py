@@ -4,10 +4,6 @@ import collections.abc as _collections_abc
 import logging as _logging
 import math as _math
 import typing as _typing
-import secrets
-import string
-import unicodedata
-import re
 
 from . import _types
 
@@ -761,6 +757,32 @@ def to_str_list(*args: str | _collections_abc.Iterable[str] | None) -> list[str]
 
 
 @_typing.overload
+def to_str_set_or_none(str_or_iter: None, /) -> None: ...
+
+
+@_typing.overload
+def to_str_set_or_none(
+    str_or_iter: str | _collections_abc.Iterable[str], /
+) -> set[str]: ...
+
+
+def to_str_set_or_none(str_or_iter, /) -> set[str] | None:
+    if str_or_iter is None:
+        return None
+    if isinstance(str_or_iter, str):
+        str_or_iter = [str_or_iter]
+    return set(str(x) for x in str_or_iter if x)
+
+
+def to_str_set(*args: str | _collections_abc.Iterable[str] | None) -> set[str]:
+    result = set()
+    for arg in args:
+        if arg is not None:
+            result.update(to_str_set_or_none(arg))
+    return result
+
+
+@_typing.overload
 def to_int_or_none(obj: int) -> int: ...
 
 
@@ -1143,11 +1165,17 @@ def print_progress_message(count, size, message, *, logger=_LOGGER) -> None:
 
 
 def generate_password():
+    import secrets
+    import string
+
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for i in range(20))
 
 
 def generate_mail_username(firstname, lastname):
+    import re
+    import unicodedata
+
     # _LOGGER.info("Generated username from: %s, %s", str(firstname), str(lastname))
     firstname = firstname.split(" ")[0]
     username = firstname + "." + lastname
