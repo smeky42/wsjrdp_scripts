@@ -249,6 +249,7 @@ class BatchConfig:
     html_content_file: _pathlib.Path | None = None
     name: str = "batch"
     summary: str = "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}{% if msg %}; To: {{ msg.to }}; Cc: {{ msg.cc }}{% endif %}"
+    jinja_extra_globals: dict | None = None
     action_arguments: dict
     updates: dict
     dry_run: bool = False
@@ -278,6 +279,7 @@ class BatchConfig:
         html_content_file: _pathlib.Path | str | None = None,
         name: str | None = None,
         summary: str | None = None,
+        jinja_extra_globals: dict | None = None,
         action_arguments: dict | None = None,
         updates: dict | None = None,
         dry_run: bool | None = None,
@@ -350,6 +352,7 @@ class BatchConfig:
             summary
             or "{{ row.payment_role.short_role_name }} {{ row.id_and_name }}; status: {{ row.status }}{% if msg %}; To: {{ msg.to }}; Cc: {{ msg.cc }}{% endif %}"
         )
+        self.jinja_extra_globals = jinja_extra_globals
         self.action_arguments = action_arguments if action_arguments is not None else {}
         self.dry_run = dry_run if dry_run is not None else False
         self.skip_db_updates = skip_db_updates if skip_db_updates is not None else False
@@ -386,6 +389,7 @@ class BatchConfig:
         name: str | None = None,
         query: _people_query.PeopleQuery | dict | None = None,
         where: _people_query.PeopleWhere | dict | str | None = None,
+        jinja_extra_globals: dict | None = None,
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
@@ -412,6 +416,8 @@ class BatchConfig:
             query = _normalize_query_where_or_none(query, where, logger=None)
             if query:
                 config["query"] = query
+            if jinja_extra_globals is not None:
+                config["jinja_extra_globals"] = jinja_extra_globals
             if name:
                 config["name"] = name
             elif not config.get("name") and path and path.stem:
@@ -450,6 +456,7 @@ class BatchConfig:
         name: str | None = None,
         query: _people_query.PeopleQuery | dict | None = None,
         where: _people_query.PeopleWhere | dict | str | None = None,
+        jinja_extra_globals: dict | None = None,
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
@@ -469,6 +476,7 @@ class BatchConfig:
             name=name,
             query=query,
             where=where,
+            jinja_extra_globals=jinja_extra_globals,
             dry_run=dry_run,
             skip_email=skip_email,
             skip_db_updates=skip_db_updates,
@@ -486,6 +494,7 @@ class BatchConfig:
         name: str | None = None,
         query: _people_query.PeopleQuery | dict | None = None,
         where: _people_query.PeopleWhere | dict | str | None = None,
+        jinja_extra_globals: dict | None = None,
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
@@ -505,6 +514,7 @@ class BatchConfig:
             raw_yaml,
             name=name,
             query=query,
+            jinja_extra_globals=jinja_extra_globals,
             dry_run=dry_run,
             skip_email=skip_email,
             skip_db_updates=skip_db_updates,
@@ -522,6 +532,7 @@ class BatchConfig:
         *,
         name: str | None = None,
         query: _people_query.PeopleQuery | None = None,
+        jinja_extra_globals: dict | None = None,
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
@@ -533,6 +544,8 @@ class BatchConfig:
             obj.name = name
         if query is not None:
             obj.query = query
+        if jinja_extra_globals is not None:
+            obj.jinja_extra_globals = jinja_extra_globals
         if dry_run is not None:
             obj.dry_run = dry_run
         if skip_email is not None:
@@ -540,6 +553,14 @@ class BatchConfig:
         if skip_db_updates is not None:
             obj.skip_db_updates = skip_db_updates
         return obj
+
+    def extend_extra_email_bcc(
+        self, *args: str | _typing.Iterable[str] | None
+    ) -> list[str] | None:
+        from . import _util
+
+        self.extra_email_bcc = _util.to_str_list_or_none(self.extra_email_bcc, *args)
+        return self.extra_email_bcc
 
     def __to_yaml__(self) -> str:
         from . import _util
@@ -782,7 +803,10 @@ class BatchConfig:
 
         now = _util.to_datetime(now)
         _LOGGER.info("Update dataframe for updates and action arguments...")
+        unfiltered_df_is_df = unfiltered_df is df
         df = self.update_dataframe_for_updates(df, now=now, inplace=False)
+        if unfiltered_df_is_df:
+            unfiltered_df = df
         _LOGGER.info("Prepare mailing...")
         tic = time.monotonic()
         messages = tuple(
@@ -845,6 +869,7 @@ class BatchConfig:
             msgid_idstring=msgid_idstring,
             msgid_domain=msgid_domain,
             context={"query": self},
+            extra_context=self.jinja_extra_globals,
         )
         prepared = PreparedEmailMessage(
             mailing_name=self.name,
@@ -915,6 +940,7 @@ def email_message_from_row(
     msgid_idstring: str | None = None,
     msgid_domain: str | None = None,
     context: dict | None = None,
+    extra_context: dict | None = None,
 ) -> _email_message.EmailMessage | None:
     import email.message
     import email.utils
@@ -948,7 +974,11 @@ def email_message_from_row(
             **SIGNATURES,
         }
         return _util.render_template(
-            template, local_context, trim_blocks=True, lstrip_blocks=True
+            template,
+            context=local_context,
+            extra_context=extra_context,
+            trim_blocks=True,
+            lstrip_blocks=True,
         )
 
     if message_id is None:

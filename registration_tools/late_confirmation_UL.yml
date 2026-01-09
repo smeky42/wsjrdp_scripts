@@ -1,0 +1,41 @@
+updates:
+  new_status: confirmed
+  add_tags: UL-Confirmation-Mail
+  remove_tags: Warteliste
+query:
+  include_sepa_mail_in_mailing_to: true
+  where:
+    role: UL
+    id: [484]  # Test-Account
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: unit-management@worldscoutjamboree.de
+email_subject: "Bestätigung deiner {{ row.payment_role.short_role_name }} Anmeldung zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir freuen uns sehr, deine Teilnahme als Unit Leader am World Scout Jamboree 2027 in Polen hiermit offiziell zu bestätigen!
+
+  {{ render_confirmation_info() }}
+
+
+  Vielen Dank, dass du bereit bist, Verantwortung zu übernehmen und dieses große Abenteuer gemeinsam mit uns für die Teilnehmenden zu gestalten. Deine Rolle ist ein wichtiger Beitrag zum Erfolg unseres deutschen Kontingents.
+
+  Damit du alle wichtigen Informationen für Unit Leader erhältst, findest du hier den speziellen Infokanal für alle UL im deutschen Kontingent:
+
+  UL-Infokanal: https://t.me/+hs96A2oGJIEzOTIy
+
+  Zusätzlich gibt es allgemeine Infokanäle für das gesamte deutsche Kontingent:
+
+      Telegram: https://t.me/wsjrdp
+      WhatsApp: https://whatsapp.com/channel/0029Vb0LOom7DAWzG1tjxf3s
+
+
+  Willkommen im Kontingent – wir freuen uns auf die Zusammenarbeit mit dir und auf die nächsten Schritte auf dem Weg zum Jamboree!
+
+
+  {{ render_upcoming_payment_text() }}
+
+
+  Gut Pfad
+  Dein Contingent Management Team
+signature: "{{ EMAIL_SIGNATURE_CMT }}"

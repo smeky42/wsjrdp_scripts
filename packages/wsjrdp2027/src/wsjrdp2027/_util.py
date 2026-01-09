@@ -529,6 +529,8 @@ def render_template(
         trim_blocks=trim_blocks,
         lstrip_blocks=lstrip_blocks,
     )
+    jinja_env.globals.update(context or {})
+    jinja_env.globals.update(extra_context or {})
     jinja_env.filters.update(
         {
             "strftime": _strftime,
@@ -546,10 +548,7 @@ def render_template(
     )
     jinja_env.filters.update(extra_filters or {})
     jinja_template = jinja_env.from_string(template)
-    context = (context or {}).copy()
-    context.update(extra_context or {})
-    out = jinja_template.render(context)
-    return out
+    return jinja_template.render()
 
 
 def _tee_log(level, obj):
@@ -730,56 +729,90 @@ def to_int_list_or_none(int_or_list, /) -> list[int] | None:
     return [int(x) for x in int_or_list if x]
 
 
+def _iter_nested_strings(*args) -> _typing.Iterator[str]:
+    for arg in args:
+        if arg is None:
+            pass
+        elif isinstance(arg, str):
+            yield arg
+        elif isinstance(arg, _typing.Iterable):
+            yield from _iter_nested_strings(*arg)
+        else:
+            yield str(arg)
+
+
 @_typing.overload
-def to_str_list_or_none(str_or_list: None, /) -> None: ...
-
-
+def to_str_list_or_none(arg: None) -> None: ...
+@_typing.overload
+def to_str_list_or_none(arg: str | _collections_abc.Iterable[str]) -> list[str]: ...
 @_typing.overload
 def to_str_list_or_none(
-    str_or_list: str | _collections_abc.Iterable[str], /
-) -> list[str]: ...
+    arg: str | _collections_abc.Iterable[str] | None,
+    *args: str | _collections_abc.Iterable[str] | None,
+) -> list[str] | None: ...
+def to_str_list_or_none(
+    arg=None,
+    *args: str | _collections_abc.Iterable[str] | None,
+) -> list[str] | None:
+    """Return a list of strings.
 
-
-def to_str_list_or_none(str_or_list, /) -> list[str] | None:
-    if str_or_list is None:
+    >>> to_str_list_or_none(None, None) is None
+    True
+    >>> to_str_list_or_none(None, "foo")
+    ['foo']
+    >>> to_str_list_or_none(None, "foo", ["bar", ["baz"]])
+    ['foo', 'bar', 'baz']
+    """
+    if arg is None and all(arg is None for arg in args):
         return None
-    if isinstance(str_or_list, str):
-        str_or_list = [str_or_list]
-    return [str(x) for x in str_or_list if x]
+    return list(_iter_nested_strings(arg, *args))
 
 
 def to_str_list(*args: str | _collections_abc.Iterable[str] | None) -> list[str]:
-    result = []
-    for arg in args:
-        if arg is not None:
-            result.extend(to_str_list_or_none(arg))
-    return result
+    """Return a list of strings.
+
+    >>> to_str_list(None, None)
+    []
+    >>> to_str_list(None, ["foo", ["bar", ["baz"]]])
+    ['foo', 'bar', 'baz']
+    """
+    return list(_iter_nested_strings(*args))
 
 
 @_typing.overload
-def to_str_set_or_none(str_or_iter: None, /) -> None: ...
-
-
+def to_str_set_or_none(arg: None) -> None: ...
+@_typing.overload
+def to_str_set_or_none(arg: str | _collections_abc.Iterable[str]) -> set[str]: ...
 @_typing.overload
 def to_str_set_or_none(
-    str_or_iter: str | _collections_abc.Iterable[str], /
-) -> set[str]: ...
+    arg: str | _collections_abc.Iterable[str] | None,
+    *args: str | _collections_abc.Iterable[str] | None,
+) -> set[str] | None: ...
+def to_str_set_or_none(
+    arg=None,
+    *args: str | _collections_abc.Iterable[str] | None,
+) -> set[str] | None:
+    """Return a set of strings.
 
-
-def to_str_set_or_none(str_or_iter, /) -> set[str] | None:
-    if str_or_iter is None:
+    >>> to_str_set_or_none(None, None) is None
+    True
+    >>> to_str_set_or_none(None, "foo")
+    {'foo'}
+    >>> sorted(to_str_set_or_none(None, "foo", ["bar", ["baz"]]))
+    ['bar', 'baz', 'foo']
+    """
+    if arg is None and all(arg is None for arg in args):
         return None
-    if isinstance(str_or_iter, str):
-        str_or_iter = [str_or_iter]
-    return set(str(x) for x in str_or_iter if x)
+    return set(_iter_nested_strings(arg, *args))
 
 
 def to_str_set(*args: str | _collections_abc.Iterable[str] | None) -> set[str]:
-    result = set()
-    for arg in args:
-        if arg is not None:
-            result.update(to_str_set_or_none(arg))
-    return result
+    """Return a set of strings.
+
+    >>> to_str_set(None, None)
+    set()
+    """
+    return set(_iter_nested_strings(*args))
 
 
 @_typing.overload
