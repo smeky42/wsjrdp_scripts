@@ -1,13 +1,17 @@
 #!/usr/bin/env -S uv run
 from __future__ import annotations
 
+import dataclasses as _dataclasses
 import logging
 import pathlib as _pathlib
 import pprint
 import sys
+import typing as _typing
 
+import jinja2
 import pandas as _pandas
 import psycopg as _psycopg
+import psycopg.sql as _psycopg_sql
 import wsjrdp2027
 
 
@@ -15,6 +19,74 @@ _SELFDIR = _pathlib.Path(__file__).parent
 _SELF_NAME = _pathlib.Path(__file__).stem
 
 _LOGGER = logging.getLogger(__name__)
+
+if _typing.TYPE_CHECKING:
+    import string.templatelib as _string_templatelib
+
+    import psycopg.sql as _psycopg_sql
+
+_FULLY_PAID = """
+Herzlichen Dank, dass du den Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} bereits vollständig bezahlt hast. Das ist keine Kleinigkeit und wir wollen uns dafür bei dir bedanken! Ohne deine Unterstützung wäre das Jamboree für alle noch teurer geworden.
+""".lstrip()
+
+_SEPA_STATUS_NOT_OK = """
+Wir prüfen gerade deine Beitragszahlung und führen solange keinen SEPA Lastschrifteinzug durch.
+Schreibe uns bitte eine Antwort auf diese E-Mail, wenn du davon noch nichts weißt.
+""".lstrip()
+
+_NEXT_INSTALLMENT = """
+Wir werden {% if row.early_payer or (row.installments_cents_dict | length) == 1 %}deinen Teilnahmebetrag{% else %}die {% if row.amount_paid_cents == 0 %}erste{% else %}nächste{% endif %} Rate deines Teilnahmebetrags{% endif %} voraussichtlich am {{ row.collection_date | date_de }} per SEPA Lastschrift einziehen. Du nimmst mit folgenden Daten am Einzug teil:
+
+Teilnehmer*in: {{ row.full_name }}
+Betrag: {{ row.open_amount_cents | format_cents_as_eur_de }}
+Kontoinhaber*in: {{ row.sepa_name }}
+IBAN: {{ row.sepa_iban | format_iban }}
+{% if (row.sepa_bank_name is defined) and (row.sepa_bank_name) %}Bank: {{ row.sepa_bank_name }}
+{% endif %}
+Mandatsreferenz: {{ row.sepa_mandate_id }}
+Verwendungszweck: {{ row.sepa_dd_description }}
+""".lstrip()
+
+_ANNOUNCE_UPCOMING_INSTALLMENT = """
+{% set next_installment_year_month_de = (row.installments_cents_dict.keys() | sort | first | month_year_de) %}
+{% if row.early_payer or (row.installments_cents_dict | length) == 1 %}
+Deinen Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+{% else %}
+Die erste Rate deines Teilnahmebetrags ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+{% endif %}
+""".lstrip()
+
+
+@jinja2.pass_environment
+def render_upcoming_payment_text(env: jinja2.Environment) -> str:
+    row = env.globals.get("row", {})
+    if not row.get("collection_date"):
+        raise RuntimeError("collection_date fehlt")
+    if row.get("amount_unpaid_cents") == 0:
+        return env.from_string(_FULLY_PAID).render()
+    elif row.get("sepa_status") != "ok":
+        return env.from_string(_SEPA_STATUS_NOT_OK).render()
+    elif (row.get("open_amount_cents") or 0) > 0:
+        return env.from_string(_NEXT_INSTALLMENT).render()
+    elif row.get("installments_cents_dict"):
+        return env.from_string(_ANNOUNCE_UPCOMING_INSTALLMENT).render()
+    else:
+        raise RuntimeError(
+            "Unsupported financial configuration -- cannot confirm and send email"
+        )
+
+
+@jinja2.pass_environment
+def render_confirmation_info(env: jinja2.Environment) -> str:
+    _TEMPLATE = """
+Name: {{ row.full_name }}
+Anmeldungs-ID: {{ row.id }}
+Rolle: {{ row.payment_role.full_role_name }}
+Teilnahmebetrag: {{ row.total_fee_cents | format_cents_as_eur_de }}
+{% if row.amount_paid_cents > 0 %}Davon bereits bezahlt: {{ row.amount_paid_cents | format_cents_as_eur_de }}
+{% endif %}
+"""
+    return env.from_string(_TEMPLATE).render().strip()
 
 
 def create_argument_parser():
@@ -28,24 +100,22 @@ def create_argument_parser():
     p.add_argument(
         "--collection-date",
         type=to_date_or_none,
-        default=None,
-        help="Collection date of the next SEPA direct debit. "
-        "Computes SEPA direct debit information if set. "
-        "Setting the collection date does not imply writing of payment information.",
         required=True,
+        help="Collection date of the next SEPA direct debit.",
     )
     p.add_argument(
-        "--unit-id",
-        help="""e.g., A1 or K3 - required to confirm YP or UL
-        unless --new-primary-group-id is given""",
+        "--group",
+        "-g",
+        required=True,
+        help="""Name or id of the group the confirmed person should be moved to.""",
     )
+    p.add_argument("--bcc", action="append", help="Additional mail addresses to Bcc")
     p.add_argument(
-        "--new-primary-group-id",
-        type=int,
-        default=None,
-        help="New primary_group_id to use",
+        "--allow-reconfirmation",
+        action="store_true",
+        default=False,
+        help="""Allow a reconfirmation.""",
     )
-    p.add_argument("--bcc", action="append")
     p.add_argument("id", type=int)
     return p
 
@@ -92,32 +162,58 @@ def _load_person_row(
     return row
 
 
-def _select_group_id_for_group_name(conn, group_name: str) -> int:
-    list_of_rows = wsjrdp2027.pg_select_dict_rows(
-        conn, t'SELECT * FROM "groups" WHERE "name" = {group_name}'
-    )
-    if len(list_of_rows) == 0:
-        _LOGGER.error(f"Found no group with name {group_name!r}")
-        raise SystemExit(1)
-    elif len(list_of_rows) != 1:
-        _LOGGER.error(f"Expected to find ONE group with name {group_name!r}, found:")
-        for row in list_of_rows:
-            _LOGGER.error(f"  id={row['id']} name={row['id']}")
-    return list_of_rows[0]["id"]
+@_dataclasses.dataclass(kw_only=True)
+class Group:
+    id: int
+    parent_id: int | None = None
+    short_name: str | None = None
+    name: str
+    type: str | None = None
+    email: str | None = None
+    description: str
+    additional_info: dict
+
+    @property
+    def unit_code(self) -> str | None:
+        return self.additional_info.get("unit_code")
+
+    @property
+    def group_code(self) -> str | None:
+        return self.additional_info.get("group_code")
 
 
-def _select_group_name_for_group_id(conn, group_id: int) -> str:
+def _select_group_for_where(
+    conn, where: _psycopg_sql.Composable | _string_templatelib.Template
+) -> Group:
+    from psycopg.sql import as_string
+
+    where_str = as_string(where, context=conn)
+
     list_of_rows = wsjrdp2027.pg_select_dict_rows(
-        conn, t'SELECT * FROM "groups" WHERE "id" = {group_id}'
+        conn,
+        t'SELECT id, parent_id, name, short_name, type, email, description, additional_info FROM "groups" WHERE {where:q}',
     )
     if len(list_of_rows) == 0:
-        _LOGGER.error(f"Found no group with id {group_id!r}")
+        _LOGGER.error(f"Found no group for where condition {where_str!r}")
         raise SystemExit(1)
     elif len(list_of_rows) != 1:
-        _LOGGER.error(f"Expected to find ONE group with id {group_id!r}, found:")
+        _LOGGER.error(
+            f"Expected to find ONE group for where condition {where_str!r}, found {len(list_of_rows)}:"
+        )
         for row in list_of_rows:
             _LOGGER.error(f"  id={row['id']} name={row['id']}")
-    return list_of_rows[0]["name"]
+    return Group(**list_of_rows[0])
+
+
+def _select_group_for_group_name(conn, group_name: str) -> Group:
+    return _select_group_for_where(
+        conn,
+        t'"name" = {group_name} OR "short_name" = {group_name} OR "additional_info"->>\'group_code\' = {group_name}',
+    )
+
+
+def _select_group_for_group_id(conn, group_id: int) -> Group:
+    return _select_group_for_where(conn, t'"id" = {group_id}')
 
 
 def _confirm_person(
@@ -128,59 +224,92 @@ def _confirm_person(
     wsj_role: str,
     batch_name: str,
 ) -> None:
+    import re
+
     is_yp_or_ul = wsj_role in ["YP", "UL"]
-
+    allow_reconfirmation = bool(ctx.parsed_args.allow_reconfirmation)
+    confirmation_tag = f"{wsj_role}-Confirmation-Mail"
     person_id: int = int(person_row["id"])
+    old_primary_group_id = wsjrdp2027.to_int_or_none(person_row.get("primary_group_id"))
     role_id_name = f"{wsj_role} {person_row['id_and_name']}"
-    unit_id: str | None = ctx.parsed_args.unit_id
-    new_primary_group_id: int | None = ctx.parsed_args.new_primary_group_id
-    bcc = wsjrdp2027.to_str_list(ctx.parsed_args.bcc)
-
-    # Check unit_id and new_primary_group_id
-    if new_primary_group_id is not None:
-        _LOGGER.info(
-            f"Use new_primary_group_id={new_primary_group_id} (from --new-primary-group-id)"
-        )
-        if is_yp_or_ul:
-            new_unit_id = _select_group_name_for_group_id(conn, new_primary_group_id)
-            if unit_id is not None and new_unit_id != unit_id:
-                _LOGGER.error(
-                    f"Inconsistent arguments: --new-primary-group-id={new_primary_group_id} "
-                    f"(=> unit_id={new_unit_id}), but --unit-id={unit_id} given"
-                )
-                raise SystemExit(1)
-            unit_id = new_unit_id
-    elif is_yp_or_ul:
-        if unit_id:
-            new_primary_group_id = _select_group_id_for_group_name(conn, unit_id)
-            _LOGGER.info(
-                f"Use new_primary_group_id={new_primary_group_id} (from --unit-id={unit_id})"
-            )
+    group_arg: str | int | None = ctx.parsed_args.group
+    if group_arg is None:
+        if is_yp_or_ul or old_primary_group_id is None:
+            _LOGGER.error(f"Missing --group for confirmation of {role_id_name}")
+            raise SystemExit(1)
         else:
-            _LOGGER.error(
-                f"Missing --unit-id (or --new-primary-group-id) for confirmation of {role_id_name}"
-            )
+            target_group = _select_group_for_group_id(conn, old_primary_group_id)
+    elif isinstance(group_arg, int) or re.fullmatch(group_arg, "[0-9]+"):
+        target_group = _select_group_for_group_id(conn, int(group_arg))
+    else:
+        target_group = _select_group_for_group_name(conn, group_arg)
+    if is_yp_or_ul and not target_group:
+        _LOGGER.error(f"Missing --group for confirmation of {role_id_name}")
+        raise SystemExit(1)
+    unit_code: str | None = target_group.unit_code if target_group else None
+    confirmation_email_bcc = target_group.additional_info.get("confirmation_email_bcc")
+    if person_row["status"] == "confirmed":
+        err_msg = f"Already status = 'confirmed' for {role_id_name}"
+        if allow_reconfirmation:
+            _LOGGER.warning(err_msg)
+            _LOGGER.warning(f"  continue due to --allow-reconfirmation")
+        else:
+            print(flush=True)
+            _LOGGER.error(err_msg)
+            raise SystemExit(1)
+    if confirmation_tag in (person_row.get("tag_list") or []):
+        err_msg = f"Tag {confirmation_tag} already set for {role_id_name}"
+        if allow_reconfirmation:
+            _LOGGER.warning(err_msg)
+            _LOGGER.warning(f"  continue due to --allow-reconfirmation")
+        else:
+            print(flush=True)
+            _LOGGER.error(err_msg)
             raise SystemExit(1)
 
+    # load batch config
     batch_config = wsjrdp2027.BatchConfig.from_yaml(
         _SELFDIR / f"late_confirmation_{wsj_role}.yml",
         name=batch_name,
+        jinja_extra_globals={
+            render_confirmation_info.__name__: render_confirmation_info,
+            render_upcoming_payment_text.__name__: render_upcoming_payment_text,
+        },
     )
-    if bcc:
-        batch_config.extra_email_bcc = bcc
+
+    # Add to extra_email_bcc
+    if bcc := ctx.parsed_args.bcc:
+        _LOGGER.info(f"Add extra_email_bcc (from --bcc): {bcc}")
+        batch_config.extend_extra_email_bcc(bcc)
+    if confirmation_email_bcc:
+        _LOGGER.info(
+            f"Add extra_email_bcc (from additional_info['confirmation_email_bcc'] of group): {confirmation_email_bcc}",
+        )
+        batch_config.extend_extra_email_bcc(confirmation_email_bcc)
 
     batch_config.query = batch_config.query.replace(
         where=wsjrdp2027.PeopleWhere(id=person_id),
         collection_date=ctx.parsed_args.collection_date,
+        include_sepa_mail_in_mailing_to=True,
     )
     batch_config.updates.update(
         {
-            "add_tags": f"{wsj_role}-Confirmation-Mail",
+            "new_status": "confirmed",
+            "add_tags": confirmation_tag,
             "remove_tags": ["Warteliste"],
+            "add_note": f"Bestätigungs-E-Mail am {ctx.today.strftime('%d.%m.%Y')} verschickt",
         }
     )
-    if new_primary_group_id is not None:
-        batch_config.updates["new_primary_group_id"] = new_primary_group_id
+    if target_group.id != old_primary_group_id:
+        _LOGGER.info(
+            f"Set new_primary_group_id={target_group.id} (derived from --group={group_arg})"
+        )
+        batch_config.updates["new_primary_group_id"] = target_group.id
+    if is_yp_or_ul and (unit_code := target_group.unit_code):
+        _LOGGER.info(
+            f"Set new_unit_code={unit_code!r} (derived from --group={group_arg})"
+        )
+        batch_config.updates["new_unit_code"] = unit_code
 
     _LOGGER.info("Query:\n%s", batch_config.query)
     _LOGGER.info("Updates:\n%s", pprint.pformat(batch_config.updates))

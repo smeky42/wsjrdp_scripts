@@ -1,0 +1,55 @@
+updates:
+  new_status: confirmed
+  add_tags: IST-Confirmation-Mail
+  remove_tags: Warteliste
+query:
+  include_sepa_mail_in_mailing_to: true
+  where:
+    role: IST
+    id: [485, 486]  # Test-Accounts
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: ist@worldscoutjamboree.de
+email_subject: "Bestätigung deiner {{ row.payment_role.short_role_name }} Anmeldung zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir freuen uns sehr, deine Teilnahme im IST am World Scout Jamboree 2027 in Polen hiermit offiziell zu bestätigen!
+
+  {{ render_confirmation_info() }}
+
+
+  Ein aufregendes Abenteuer liegt vor uns, und wir danken dir für dein Engagement.
+
+
+  Damit du keine wichtigen Informationen verpasst und dich optimal mit dem Team vernetzen kannst, laden wir dich herzlich in unsere Telegram-Gruppen ein:
+
+    * IST-Infokanal //t.me/+WlnM89iA9b4wZWJi (Hier erhältst du wichtige Informationen und Updates direkt von uns.)
+    * IST-Austauschgruppe: //t.me/+Nb1UEfJCof1jOTBi (Hier kannst du dich mit anderen IST-Mitgliedern austauschen und vernetzen.)
+
+
+  ==== Erstes IST-Treffen (20. - 22. März 2026 in Mainz) ====
+
+  Unser erstes, sehr wichtiges IST-Treffen findet am Wochenende vom 20. bis 22. März 2026 in Mainz statt.
+
+  Deine Teilnahme ist entscheidend, um:
+
+    * das Team kennenzulernen.
+    * dich auf deine Rolle als IST in einem internationalen Team vorzubereiten.
+    * dich auf das Abenteuer WSJ vorzubereiten.
+
+  Wichtige Schritte für das Treffen:
+
+    * Angaben prüfen: Bitte kontrolliere bis spätestens Weihnachten im Anmeldesystem, dass alle deine Angaben zu "Essensgewohnheiten" und "Essensbesonderheiten" vollständig und korrekt sind. Nur so kann unser Küchenteam optimal planen.
+
+    * Anmeldung folgt: Im Januar erhältst du eine gesonderte Anmeldung für das Treffen, mit der du deine Teilnahme verbindlich bestätigen kannst.
+
+
+  Wir freuen uns schon sehr darauf, dich im März persönlich kennenzulernen und gemeinsam in die Vorbereitung zu starten!
+
+
+  {{ render_upcoming_payment_text() }}
+
+
+  Gut Pfad
+  Dein Contingent Management Team
+signature: "{{ EMAIL_SIGNATURE_CMT }}"

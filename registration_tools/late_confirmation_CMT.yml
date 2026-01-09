@@ -1,0 +1,32 @@
+updates:
+  new_status: confirmed
+  add_tags: CMT-Confirmation-Mail
+  remove_tags: Warteliste
+query:
+  include_sepa_mail_in_mailing_to: true
+  where:
+    role: CMT
+    id: []
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: info@worldscoutjamboree.de
+email_subject: "Bestätigung deiner {{ row.payment_role.short_role_name }} Anmeldung zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir freuen uns sehr, deine Teilnahme im CMT am World Scout Jamboree 2027 in Polen hiermit offiziell zu bestätigen!
+
+  {{ render_confirmation_info() }}
+
+
+  Vielen Dank, dass du bereit bist, Verantwortung zu übernehmen und dieses große Abenteuer gemeinsam mit uns für die Teilnehmenden zu gestalten. Deine Rolle ist ein wichtiger Beitrag zum Erfolg unseres deutschen Kontingents.
+
+  Willkommen im Kontingent – wir freuen uns auf die Zusammenarbeit mit dir und auf die nächsten Schritte auf dem Weg zum Jamboree!
+
+
+  {{ render_upcoming_payment_text() }}
+
+
+  Gut Pfad
+  Dein HoC-Team
+  (Caro, Fox, Ines)
+signature: "{{ EMAIL_SIGNATURE_HOC }}"

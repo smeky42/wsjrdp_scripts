@@ -495,6 +495,7 @@ class PeopleQueryDict(_typing.TypedDict, total=False):
     limit: int | None
     now: _datetime.datetime | None
     collection_date: _datetime.date | None
+    include_sepa_mail_in_mailing_to: bool | None
 
 
 @_dataclasses.dataclass(kw_only=True)
