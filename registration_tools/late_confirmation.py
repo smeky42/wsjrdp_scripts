@@ -25,6 +25,44 @@ if _typing.TYPE_CHECKING:
 
     import psycopg.sql as _psycopg_sql
 
+
+def create_argument_parser():
+    import argparse
+
+    from wsjrdp2027 import to_date_or_none
+
+    p = argparse.ArgumentParser()
+    p.add_argument("--skip-email", action="store_true", default=None)
+    p.add_argument("--skip-db-updates", action="store_true", default=None)
+    p.add_argument(
+        "--collection-date",
+        type=to_date_or_none,
+        required=True,
+        help="Collection date of the next SEPA direct debit.",
+    )
+    p.add_argument(
+        "--group",
+        "-g",
+        required=True,
+        help="""Name or id of the group the confirmed person should be moved to.""",
+    )
+    p.add_argument("--bcc", action="append", help="Additional mail addresses to Bcc")
+    p.add_argument(
+        "--allow-reconfirmation",
+        action="store_true",
+        default=False,
+        help="""Allow a reconfirmation.""",
+    )
+    p.add_argument(
+        "--skip-status-update",
+        dest="skip_status_update",
+        default=False,
+        action="store_true",
+    )
+    p.add_argument("id", type=int)
+    return p
+
+
 _FULLY_PAID = """
 Herzlichen Dank, dass du den Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} bereits vollständig bezahlt hast. Das ist keine Kleinigkeit und wir wollen uns dafür bei dir bedanken! Ohne deine Unterstützung wäre das Jamboree für alle noch teurer geworden.
 """.lstrip()
@@ -89,37 +127,6 @@ Teilnahmebetrag: {{ row.total_fee_cents | format_cents_as_eur_de }}
     return env.from_string(_TEMPLATE).render().strip()
 
 
-def create_argument_parser():
-    import argparse
-
-    from wsjrdp2027 import to_date_or_none
-
-    p = argparse.ArgumentParser()
-    p.add_argument("--skip-email", action="store_true", default=None)
-    p.add_argument("--skip-db-updates", action="store_true", default=None)
-    p.add_argument(
-        "--collection-date",
-        type=to_date_or_none,
-        required=True,
-        help="Collection date of the next SEPA direct debit.",
-    )
-    p.add_argument(
-        "--group",
-        "-g",
-        required=True,
-        help="""Name or id of the group the confirmed person should be moved to.""",
-    )
-    p.add_argument("--bcc", action="append", help="Additional mail addresses to Bcc")
-    p.add_argument(
-        "--allow-reconfirmation",
-        action="store_true",
-        default=False,
-        help="""Allow a reconfirmation.""",
-    )
-    p.add_argument("id", type=int)
-    return p
-
-
 def update_batch_config_from_ctx(
     config: wsjrdp2027.BatchConfig,
     ctx: wsjrdp2027.WsjRdpContext,
@@ -181,28 +188,17 @@ class Group:
     def group_code(self) -> str | None:
         return self.additional_info.get("group_code")
 
+    def __getitem__(self, key: str) -> _typing.Any:
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            raise KeyError(key) from None
+
 
 def _select_group_for_where(
     conn, where: _psycopg_sql.Composable | _string_templatelib.Template
 ) -> Group:
-    from psycopg.sql import as_string
-
-    where_str = as_string(where, context=conn)
-
-    list_of_rows = wsjrdp2027.pg_select_dict_rows(
-        conn,
-        t'SELECT id, parent_id, name, short_name, type, email, description, additional_info FROM "groups" WHERE {where:q}',
-    )
-    if len(list_of_rows) == 0:
-        _LOGGER.error(f"Found no group for where condition {where_str!r}")
-        raise SystemExit(1)
-    elif len(list_of_rows) != 1:
-        _LOGGER.error(
-            f"Expected to find ONE group for where condition {where_str!r}, found {len(list_of_rows)}:"
-        )
-        for row in list_of_rows:
-            _LOGGER.error(f"  id={row['id']} name={row['id']}")
-    return Group(**list_of_rows[0])
+    return Group(**wsjrdp2027.pg_select_group_dict_for_where(conn, where=where))
 
 
 def _select_group_for_group_name(conn, group_name: str) -> Group:
@@ -268,7 +264,7 @@ def _confirm_person(
             raise SystemExit(1)
 
     # load batch config
-    batch_config = wsjrdp2027.BatchConfig.from_yaml(
+    batch_config = ctx.load_batch_config_from_yaml(
         _SELFDIR / f"late_confirmation_{wsj_role}.yml",
         name=batch_name,
         jinja_extra_globals={
@@ -300,6 +296,9 @@ def _confirm_person(
             "add_note": f"Bestätigungs-E-Mail am {ctx.today.strftime('%d.%m.%Y')} verschickt",
         }
     )
+    if ctx.parsed_args.skip_status_update:
+        _LOGGER.warning(f"Skipping status update (--skip-status-update given)")
+        batch_config.updates.pop("new_status", None)
     if target_group.id != old_primary_group_id:
         _LOGGER.info(
             f"Set new_primary_group_id={target_group.id} (derived from --group={group_arg})"

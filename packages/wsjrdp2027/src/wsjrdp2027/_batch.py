@@ -440,7 +440,7 @@ class BatchConfig:
             if skip_email is not None:
                 config["skip_email"] = skip_email
             if skip_db_updates is not None:
-                config["skip_db_updated"] = skip_db_updates
+                config["skip_db_updates"] = skip_db_updates
             self = cls(**config, effective_base_dir=effective_base_dir)
             return self
         except Exception as exc:
