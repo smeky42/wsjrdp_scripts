@@ -59,7 +59,7 @@ Die erste Rate deines Teilnahmebetrags ziehen wir im {{ next_installment_year_mo
 
 @jinja2.pass_environment
 def render_upcoming_payment_text(env: jinja2.Environment) -> str:
-    row = env.globals.get("row", {})
+    row = _typing.cast(dict, env.globals.get("row", {}))
     if not row.get("collection_date"):
         raise RuntimeError("collection_date fehlt")
     if row.get("amount_unpaid_cents") == 0:

@@ -52,7 +52,7 @@ def create_argument_parser():
 
 def update_config_from_ctx(
     config: wsjrdp2027.BatchConfig,
-    new_primary_group_id: str,
+    new_primary_group_id: int,
     where_unit_code: str,
 ) -> wsjrdp2027.BatchConfig:
     _LOGGER.info(
@@ -62,6 +62,7 @@ def update_config_from_ctx(
     )
 
     config.updates["new_primary_group_id"] = new_primary_group_id
+    assert config.query.where
     config.query.where.unit_code = where_unit_code
 
     return config
@@ -101,7 +102,7 @@ def filter_people_by_unit_code(
 def update_and_mail(
     batch_config,
     ctx: wsjrdp2027.WsjRdpContext,
-    gid: str,
+    gid: int,
     unit: str,
     df: _pandas.DataFrame,
 ):
@@ -113,7 +114,7 @@ def update_and_mail(
     _LOGGER.info("Update and mailing done for group %s (unit %s)", gid, unit)
 
 
-def update_group_description(con: _psycopg.Connection, gid: str, df: _pandas.DataFrame):
+def update_group_description(con: _psycopg.Connection, gid: int, df: _pandas.DataFrame):
     new_description = "Die Unit Leader sind:"
     for _, row in df.iterrows():
         new_description += f"  {row['short_first_name']} ({row['username']}@units.worldscoutjamboree.de),"
@@ -153,8 +154,8 @@ def mail_and_move_to_units(conn, pdf: _pandas.DataFrame, ctx: wsjrdp2027.WsjRdpC
     batch_config_name_yp = batch_config_yp.name
 
     for _, grow in gdf.iterrows():
-        gid = grow.get("group_id")
-        desc = grow.get("description", "")
+        gid: int = grow.get("group_id")  # type: ignore
+        desc: str = grow.get("description", "")
         unit = extract_unit_code(desc)
 
         batch_config_ul.name = f"{batch_config_name_ul}_group_{gid}"
@@ -208,24 +209,30 @@ def create_ul_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):
     for _, row in df.iterrows():
         username = row["username"]
         password = row["password"]
-        firstname = row["first_name"]
-        lastname = row["last_name"]
+        first_name = row["first_name"]
+        last_name = row["last_name"]
         email = username + "@units.worldscoutjamboree.de"
 
         _LOGGER.info(
             "Creating account for %s %s (%s %s)",
-            firstname,
-            lastname,
+            first_name,
+            last_name,
             username,
             password,
         )
-        wsjrdp2027.keycloak.add_user(ctx, email, firstname, lastname, password)
-        wsjrdp2027.keycloak.add_user_to_group(ctx, email, "UL")
+        wsjrdp2027.keycloak.add_user(
+            ctx,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            password=password,
+        )
+        wsjrdp2027.keycloak.add_user_to_group(ctx, username=email, group_name="UL")
         wsjrdp2027.mailbox.add_mailbox(
             ctx,
             username,
             "units.worldscoutjamboree.de",
-            f"{firstname} {lastname}",
+            f"{first_name} {last_name}",
             password,
         )
 

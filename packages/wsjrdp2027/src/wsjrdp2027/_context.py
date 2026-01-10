@@ -65,9 +65,11 @@ class WsjRdpContextConfig:
 
     mail_api_key: str = ""
 
+    keycloak_url: str = "https://login.worldscoutjamboree.de"
     keycloak_admin: str = ""
     keycloak_admin_password: str = ""
     keycloak_realm: str = ""
+    keycloak_user_realm: str | None = None
 
     @classmethod
     def from_file(cls, path: str | _pathlib.Path | None = None) -> _typing.Self:
@@ -152,9 +154,11 @@ class WsjRdpContextConfig:
             ),
             mail_accounts=mail_accounts,
             mail_api_key=config.get("mail_api_key", ""),
+            keycloak_url=config.get("keycloak_url", ""),
             keycloak_admin=config.get("keycloak_admin", ""),
             keycloak_admin_password=config.get("keycloak_admin_password", ""),
             keycloak_realm=config.get("keycloak_realm", ""),
+            keycloak_user_realm=config.get("keycloak_user_realm", ""),
             **kwargs,  # type: ignore
         )
         return self

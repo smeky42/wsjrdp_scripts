@@ -1,184 +1,214 @@
-from keycloak import KeycloakAdmin, KeycloakOpenID
-from keycloak.exceptions import KeycloakAuthenticationError
+import collections.abc as _collections_abc
 import logging
+import typing as _typing
+
+import keycloak as _keycloak
+from keycloak.exceptions import KeycloakAuthenticationError
+
+
+if _typing.TYPE_CHECKING:
+    from . import _context
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def __login(ctx):
+def log_and_reraise[F: _collections_abc.Callable[..., _typing.Any]](func: F) -> F:
+    import functools
+
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            call_args = [repr(a) for a in args]
+            call_args.extend(f"{k}={v}" for k, v in kwargs.items())
+            _LOGGER.error(f"{func.__qualname__}({', '.join(call_args)}) failed: {exc}")
+            raise
+
+    return wrapped  # type: ignore
+
+
+@log_and_reraise
+def admin_login(
+    ctx: _context.WsjRdpContext, *, verify: bool = True
+) -> _keycloak.KeycloakAdmin:
+    return _keycloak.KeycloakAdmin(
+        server_url=ctx.config.keycloak_url,
+        username=ctx.config.keycloak_admin,
+        password=ctx.config.keycloak_admin_password,
+        realm_name=ctx.config.keycloak_realm,
+        user_realm_name=ctx.config.keycloak_user_realm or ctx.config.keycloak_realm,
+        verify=verify,
+    )
+
+
+@log_and_reraise
+def __get_realm(ctx: _context.WsjRdpContext) -> _keycloak.KeycloakOpenID:
+    return _keycloak.KeycloakOpenID(
+        server_url=ctx.config.keycloak_url,
+        client_id="",
+        realm_name=ctx.config.keycloak_realm,
+        client_secret_key="",
+    )
+
+
+@log_and_reraise
+def __get_user_id(ctx: _context.WsjRdpContext, username: str) -> str:
+    keycloak_admin = admin_login(ctx)
+    user_id = keycloak_admin.get_user_id(username)
+    if not user_id:
+        raise RuntimeError(f"Failed to get a user_id for {username=}")
+    return user_id
+
+
+def add_user(
+    ctx: _context.WsjRdpContext,
+    email: str,
+    first_name: str,
+    last_name: str,
+    password: str,
+    username: str | None = None,
+    enabled: bool = True,
+) -> None:
+    keycloak_admin = admin_login(ctx)
+    _LOGGER.info(
+        "add_user: trying to create user with: mail=%s, firstname=%s, lastname=%s",
+        email,
+        first_name,
+        last_name,
+    )
     try:
-        return KeycloakAdmin(
-            server_url="https://login.worldscoutjamboree.de",
-            username=ctx._config.keycloak_admin,
-            password=ctx._config.keycloak_admin_password,
-            realm_name=ctx._config.keycloak_realm,
-            verify=True,
-        )
-    except Exception as e:
-        _LOGGER.error("__login() failed: %s", e)
-
-
-def __get_realm():
-    try:
-        return KeycloakOpenID(
-            server_url="https://login.worldscoutjamboree.de",
-            client_id="",
-            realm_name="WSJ",
-            client_secret_key="",
-        )
-    except Exception as e:
-        _LOGGER.error("__get_realm() failed: %s", e)
-
-
-def __get_user_id(ctx, username):
-    try:
-        keycloak_admin = __login(ctx)
-        return keycloak_admin.get_user_id(username)
-    except Exception as e:
-        _LOGGER.error("__get_user_id(username=%s) failed: %s", username, e)
-
-
-def add_user(ctx, mail, firstname, lastname, pw):
-    try:
-        keycloak_admin = __login(ctx)
-        _LOGGER.info(
-            "add_user: trying to create user with: mail=%s, firstname=%s, lastname=%s",
-            mail,
-            firstname,
-            lastname,
-        )
-        return keycloak_admin.create_user(
+        keycloak_admin.create_user(
             {
-                "email": mail,
-                "username": mail,
-                "enabled": True,
-                "firstName": firstname,
-                "lastName": lastname,
-                "credentials": [
-                    {
-                        "value": pw,
-                        "type": "password",
-                    }
-                ],
+                "username": username or email,
+                "email": email,
+                "enabled": enabled,
+                "firstName": first_name,
+                "lastName": last_name,
+                "credentials": [{"type": "password", "value": password}],
             }
         )
     except Exception as e:
         _LOGGER.error(
             "add_user(mail=%s, firstname=%s, lastname=%s) failed: %s",
-            mail,
-            firstname,
-            lastname,
+            email,
+            first_name,
+            last_name,
             e,
         )
         _LOGGER.error(
             "add_user: trying to update user with: mail=%s, firstname=%s, lastname=%s",
-            mail,
-            firstname,
-            lastname,
+            email,
+            first_name,
+            last_name,
         )
-        edit_user(ctx, mail, firstname, lastname, mail)
+        edit_user(ctx, email, first_name, last_name, email)
 
 
-def add_user_to_group(ctx, username, group_name):
+def add_user_to_group(ctx: _context.WsjRdpContext, username: str, group_name: str):
     try:
-        keycloak_admin = __login(ctx)
-        userID = __get_user_id(ctx, username)
+        keycloak_admin = admin_login(ctx)
+        user_id = __get_user_id(ctx, username)
         groups = keycloak_admin.get_groups()
-        groupID = None
+        group_id = None
         for group in groups:
             if group["name"] == group_name:
-                groupID = group["id"]
+                group_id = group["id"]
                 break
-        if groupID is not None:
+        if group_id is not None:
             _LOGGER.info(
-                "add_user_to_group: adding userID=%s (%s) to group_name=%s",
-                userID,
+                "add_user_to_group: adding user_id=%s (%s) to group_name=%s",
+                user_id,
                 username,
                 group_name,
             )
-            return keycloak_admin.group_user_add(userID, groupID)
+            return keycloak_admin.group_user_add(user_id, group_id)
         else:
             _LOGGER.error(
                 "add_user_to_group(username=%s, group_name=%s) failed: Group not found",
                 username,
                 group_name,
             )
-    except Exception as e:
+    except Exception as exc:
         _LOGGER.error(
             "add_user_to_group(username=%s, group_name=%s) failed: %s",
             username,
             group_name,
-            e,
+            exc,
         )
 
 
-def set_user_pw(ctx, username, pw):
-    try:
-        keycloak_admin = __login(ctx)
-        userID = __get_user_id(username)
-        return keycloak_admin.set_user_password(
-            user_id=userID, password=pw, temporary=True
-        )
-    except Exception as e:
-        _LOGGER.error("set_user_pw(username=%s) failed: %s", username, e)
+@log_and_reraise
+def set_user_password(
+    ctx: _context.WsjRdpContext, username: str, password: str
+) -> dict:
+    keycloak_admin = admin_login(ctx)
+    user_id = __get_user_id(ctx, username)
+    return keycloak_admin.set_user_password(
+        user_id=user_id, password=password, temporary=True
+    )
 
 
-def edit_user(ctx, username, firstname, lastname, mail):
-    try:
-        keycloak_admin = __login(ctx)
-        userID = __get_user_id(ctx, username)
-        return keycloak_admin.update_user(
-            user_id=userID,
-            payload={"firstName": firstname, "lastName": lastname, "email": mail},
-        )
-    except Exception as e:
-        _LOGGER.error(
-            "edit_user(username=%s, firstname=%s, lastname=%s, mail=%s) failed: %s",
-            username,
-            firstname,
-            lastname,
-            mail,
-            e,
-        )
+@log_and_reraise
+def get_user(
+    ctx: _context.WsjRdpContext, username: str, user_profile_metadata: bool = False
+) -> dict:
+    keycloak_admin = admin_login(ctx)
+    user_id = __get_user_id(ctx, username)
+    return keycloak_admin.get_user(user_id, user_profile_metadata=user_profile_metadata)
 
 
-def enable_user(ctx, username):
-    try:
-        keycloak_admin = __login(ctx)
-        userID = __get_user_id(ctx, username)
-        return keycloak_admin.enable_user(userID)
-    except Exception as e:
-        _LOGGER.error("enable_user(username=%s) failed: %s", username, e)
+@log_and_reraise
+def edit_user(
+    ctx: _context.WsjRdpContext,
+    username: str,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    email: str | None = None,
+) -> None:
+    keycloak_admin = admin_login(ctx)
+    user_id = __get_user_id(ctx, username)
+    payload = {"firstName": first_name, "lastName": last_name, "email": email}
+    payload = {k: v for k, v in payload.items() if v is not None}
+    if payload:
+        keycloak_admin.update_user(user_id=user_id, payload=payload)
 
 
-def disable_user(ctx, username):
-    try:
-        keycloak_admin = __login(ctx)
-        userID = __get_user_id(ctx, username)
-        return keycloak_admin.disable_user(userID)
-    except Exception as e:
-        _LOGGER.error("disable_user(username=%s) failed: %s", username, e)
+@log_and_reraise
+def is_user_enabled(ctx: _context.WsjRdpContext, username: str) -> bool:
+    user_dict = get_user(ctx, username, user_profile_metadata=False)
+    return user_dict["enabled"]
 
 
-def delete_user(ctx, userID):
-    try:
-        keycloak_admin = __login(ctx)
-        return keycloak_admin.delete_user(ctx, userID)
-    except Exception as e:
-        _LOGGER.error("delete_user(userID=%s) failed: %s", userID, e)
+@log_and_reraise
+def enable_user(ctx: _context.WsjRdpContext, username: str) -> None:
+    keycloak_admin = admin_login(ctx)
+    userID = __get_user_id(ctx, username)
+    keycloak_admin.enable_user(userID)
 
 
-def get_users(ctx):
-    try:
-        keycloak_admin = __login(ctx)
-        return keycloak_admin.get_users({})
-    except Exception as e:
-        _LOGGER.error("get_users() failed: %s", e)
+@log_and_reraise
+def disable_user(ctx: _context.WsjRdpContext, username: str):
+    keycloak_admin = admin_login(ctx)
+    userID = __get_user_id(ctx, username)
+    return keycloak_admin.disable_user(userID)
+
+
+@log_and_reraise
+def delete_user(ctx: _context.WsjRdpContext, user_id):
+    keycloak_admin = admin_login(ctx)
+    return keycloak_admin.delete_user(user_id)
+
+
+@log_and_reraise
+def get_users(ctx: _context.WsjRdpContext):
+    keycloak_admin = admin_login(ctx)
+    return keycloak_admin.get_users({})
 
 
 def is_admin(ctx, userID):
     try:
-        keycloak_admin = __login(ctx)
+        keycloak_admin = admin_login(ctx)
         if str(keycloak_admin.get_user(userID)["email"]).endswith("esh.essen.de"):
             return True
         else:
@@ -188,9 +218,9 @@ def is_admin(ctx, userID):
         return True  # temp fix. Users are deleted if keycloak api call fails -> main: remove non admin users from keycloak if missing in db
 
 
-def verify_token(headers):
+def verify_token(ctx, headers):
     try:
-        keycloak_openid = __get_realm()
+        keycloak_openid = __get_realm(ctx)
         # keycloakPub = "-----BEGIN PUBLIC KEY-----\n" + keycloak_openid.public_key() + "\n-----END PUBLIC KEY-----"
         # options = {"verify_signature": True, "verify_aud": False, "verify_exp": True}
         # tokenInfo = keycloak_openid.decode_token(headers['Authorization'][7:], key=keycloakPub, options=options)
@@ -206,10 +236,10 @@ def verify_token(headers):
         return 401
 
 
-def get_user_of_token(headers):
+def get_user_of_token(ctx, headers):
     try:
-        keycloak_openid = __get_realm()
-        keycloak_admin = __login()
+        keycloak_openid = __get_realm(ctx)
+        keycloak_admin = admin_login(ctx)
         # keycloakPub = "-----BEGIN PUBLIC KEY-----\n" + keycloak_openid.public_key() + "\n-----END PUBLIC KEY-----"
         # options = {"verify_signature": True, "verify_aud": False, "verify_exp": True}
         # tokenInfo = keycloak_openid.decode_token(headers['Authorization'][7:], key=keycloakPub, options=options)
@@ -223,9 +253,9 @@ def get_user_of_token(headers):
         return ""
 
 
-def is_user_in_roles(headers):
+def is_user_in_roles(ctx, headers):
     try:
-        keycloak_openid = __get_realm()
+        keycloak_openid = __get_realm(ctx)
         # keycloak_admin = __login()
         # keycloakPub = "-----BEGIN PUBLIC KEY-----\n" + keycloak_openid.public_key() + "\n-----END PUBLIC KEY-----"
         # options = {"verify_signature": True, "verify_aud": False, "verify_exp": True}
