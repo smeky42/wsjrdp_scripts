@@ -22,7 +22,7 @@ if _typing.TYPE_CHECKING:
     import psycopg as _psycopg
     import sshtunnel as _sshtunnel
 
-    from . import _batch, _mail_client, _mail_config
+    from . import _batch, _mail_client, _mail_config, _people_query
 
 
 __all__ = [
@@ -190,7 +190,9 @@ class WsjRdpContext:
     _kind: WsjRdpContextKind
     _start_time: _datetime.datetime
     _out_dir: _pathlib.Path = _typing.cast("_pathlib.Path", None)
-    _dry_run: bool = False
+    _dry_run: bool | None = None
+    _skip_email: bool | None = None
+    _skip_db_updates: bool | None = None
     _parsed_args: _argparse.Namespace | None = None
 
     def __init__(
@@ -202,6 +204,8 @@ class WsjRdpContext:
         start_time: _datetime.datetime | str | None = None,
         out_dir: _pathlib.Path | str | None = "data",
         dry_run: bool | None = None,
+        skip_email: bool | None = None,
+        skip_db_updates: bool | None = None,
         parse_arguments: bool = True,
         argument_parser: _argparse.ArgumentParser | None = None,
         argv: list[str] | None = None,
@@ -281,6 +285,10 @@ class WsjRdpContext:
         self._out_dir = self._determine_out_dir(out_dir)
         if dry_run is not None:
             self._dry_run = dry_run
+        if skip_email is not None:
+            self._skip_email = skip_email
+        if skip_db_updates is not None:
+            self._skip_db_updates = skip_db_updates
 
     def __get_env(
         self, env_name: str, /, *, env=None, ignore_in_prod: bool = True
@@ -431,8 +439,10 @@ class WsjRdpContext:
         self.add_common_argument_parser_arguments(p)
 
         args = p.parse_args(argv[1:])
-        if args.dry_run is not None:
-            self._dry_run = args.dry_run
+        for key in ("dry_run", "skip_email", "skip_db_updates"):
+            val = getattr(args, key, None)
+            if val is not None:
+                setattr(self, f"_{key}", val)
         args.start_time = _util.to_datetime_or_none(args.start_time or None)
 
         self._parsed_args = args
@@ -457,13 +467,34 @@ class WsjRdpContext:
         return self._config.is_production
 
     @property
-    def dry_run(self) -> bool:
-        """`True` if in dry run mode, `False` otherwise."""
+    def dry_run_or_none(self) -> bool | None:
+        """`True` if in dry run mode, `False` or `None` otherwise."""
         return self._dry_run
 
+    @property
+    def dry_run(self) -> bool:
+        """`True` if in dry run mode, `False` otherwise."""
+        return bool(self._dry_run)
+
     @dry_run.setter
-    def dry_run(self, value: bool) -> None:
-        self._dry_run = bool(value)
+    def dry_run(self, value: bool | None) -> None:
+        self._dry_run = value
+
+    @property
+    def skip_email_or_none(self) -> bool | None:
+        return self._skip_email
+
+    @property
+    def skip_email(self) -> bool:
+        return bool(self._skip_email)
+
+    @property
+    def skip_db_updates_or_none(self) -> bool | None:
+        return self._skip_db_updates
+
+    @property
+    def skip_db_updates(self) -> bool:
+        return bool(self._skip_db_updates)
 
     @property
     def start_time(self) -> _datetime.datetime:
@@ -541,7 +572,7 @@ class WsjRdpContext:
             if not prompt:
                 prompt = "Do you want to continue running this script in a PRODUCTION environment?"
             print()
-            print()
+            print(flush=True)
             if not console_confirm(prompt, default=False):
                 _LOGGER.info("[ctx] Ending script: No user approval given")
                 raise SystemExit(0)
@@ -832,17 +863,25 @@ class WsjRdpContext:
             self.require_approval_to_run_in_prod(prompt=prompt)
             return True
 
-        _LOGGER.info("[ctx] mail_login")
+        _LOGGER.info("[ctx] mail_login with args")
         _LOGGER.info("[ctx]   mail_config: %s", mail_config)
         _LOGGER.info("[ctx]   from_addr: %s", from_addr)
         _LOGGER.info("[ctx]   dry_run: %s", dry_run)
         mail_config = self.__get_mail_config(
             mail_config=mail_config, from_addr=from_addr
         )
-        if dry_run is None:
-            dry_run = self._dry_run
-        _LOGGER.info("[ctx]   => mail_config: %s", mail_config)
-        _LOGGER.info("[ctx]   => dry_run: %s", dry_run)
+        dry_run_reasons = []
+        if dry_run:
+            dry_run_reasons.append("mail_login argument")
+        dry_run = dry_run or self.dry_run_or_none or self.skip_email_or_none
+        if self.dry_run:
+            dry_run_reasons.append("ctx.dry_run")
+        if self.skip_email:
+            dry_run_reasons.append("ctx.skip_email")
+        dry_run_suffix = f" ({', '.join(dry_run_reasons)})" if dry_run_reasons else ""
+        _LOGGER.info(f"[ctx] =>")
+        _LOGGER.info(f"[ctx]   mail_config: {mail_config}")
+        _LOGGER.info(f"[ctx]   dry_run: {dry_run}{dry_run_suffix}")
         client = _mail_client.MailClient(
             config=mail_config,
             dry_run=dry_run,
@@ -850,6 +889,30 @@ class WsjRdpContext:
         )
         with client:
             yield client
+
+    def load_batch_config_from_yaml(
+        self,
+        path: str | _pathlib.Path,
+        /,
+        *,
+        name: str | None = None,
+        query: _people_query.PeopleQuery | dict | None = None,
+        where: _people_query.PeopleWhere | dict | str | None = None,
+        jinja_extra_globals: dict | None = None,
+    ) -> _batch.BatchConfig:
+        from . import _batch
+
+        config = _batch.BatchConfig.from_yaml(
+            path,
+            name=name,
+            query=query,
+            where=where,
+            jinja_extra_globals=jinja_extra_globals,
+            dry_run=self.dry_run_or_none,
+            skip_email=self.skip_email_or_none,
+            skip_db_updates=self.skip_db_updates,
+        )
+        return config
 
     def __compute_batch_out_dir(
         self,

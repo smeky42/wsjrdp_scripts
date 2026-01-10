@@ -361,6 +361,40 @@ def pg_select_dataframe(
     return _pandas.DataFrame(pg_select_dict_rows(conn, query))
 
 
+def pg_select_groups_dicts_for_where(
+    conn: _psycopg.Connection,
+    /,
+    where: _psycopg_sql.Composable | _string_templatelib.Template,
+) -> list[dict]:
+    return pg_select_dict_rows(
+        conn,
+        t'SELECT id, parent_id, name, short_name, type, email, description, additional_info FROM "groups" WHERE {where:q}',
+    )
+
+
+def pg_select_group_dict_for_where(
+    conn: _psycopg.Connection,
+    /,
+    where: _psycopg_sql.Composable | _string_templatelib.Template,
+) -> dict:
+    from psycopg.sql import as_string
+
+    where_str = as_string(where, context=conn)
+    list_of_rows = pg_select_groups_dicts_for_where(conn, where)
+    if len(list_of_rows) == 0:
+        err_msg = f"Found no group for where condition {where_str!r}"
+        _LOGGER.debug(err_msg)
+        raise RuntimeError(err_msg)
+    elif len(list_of_rows) != 1:
+        err_msg = (
+            f"Expected to find one group for where condition {where_str!r}, found {len(list_of_rows)}:\n"
+            + "".join(f"  id={row['id']} name={row['id']}\n" for row in list_of_rows)
+        )
+        _LOGGER.debug(err_msg)
+        raise RuntimeError(err_msg)
+    return list_of_rows[0]
+
+
 def pg_add_person_tag(cursor: _psycopg.Cursor, /, person_id: int, tag_name: str) -> int:
     from psycopg.sql import SQL
 
