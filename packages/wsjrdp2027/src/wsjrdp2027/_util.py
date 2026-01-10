@@ -1202,16 +1202,16 @@ def generate_password():
     import string
 
     alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for i in range(20))
+    return "".join(secrets.choice(alphabet) for _ in range(20))
 
 
-def generate_mail_username(firstname, lastname):
+def generate_mail_username(first_name, last_name):
     import re
     import unicodedata
 
     # _LOGGER.info("Generated username from: %s, %s", str(firstname), str(lastname))
-    firstname = firstname.split(" ")[0]
-    username = firstname + "." + lastname
+    first_name = first_name.split(" ")[0]
+    username = first_name + "." + last_name
     username = username.lower()
     username = (
         username.replace("ä", "ae")
