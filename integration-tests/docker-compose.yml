@@ -31,6 +31,19 @@ services:
       POSTGRES_USER: hitobito
       POSTGRES_PASSWORD: hitobito
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5
+    container_name: wsjrdp_scripts-tests-keycloak
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3081:8080"
+    volumes:
+      - ./keycloak/data/import:/opt/keycloak/data/import
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    command: ['start-dev', '--import-realm']
+
 
 volumes:
   postgres:

@@ -25,6 +25,8 @@ mail_accounts:
 # Mailcow API
 mail_api_key:
 
-keycloak_admin:
-keycloak_admin_password:
-keycloak_realm:
+keycloak_url: "http://localhost:3081"
+keycloak_admin: admin
+keycloak_admin_password: admin
+keycloak_realm: WSJ_development
+keycloak_user_realm: master

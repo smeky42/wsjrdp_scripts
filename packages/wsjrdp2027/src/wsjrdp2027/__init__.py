@@ -270,7 +270,7 @@ def __getattr__(name):
     import importlib
 
     mod_name, qualname = __ALIASES__.get(name, (None, None))
-    if not mod_name or not qualname:
+    if not mod_name:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     mod = importlib.import_module(mod_name, package=__name__)
     if qualname:

@@ -21,3 +21,12 @@ mail_accounts:
   unit-management@worldscoutjamboree.de:
     smtp_server: localhost
     smtp_port: 2025
+
+# Mailcow API
+mail_api_key:
+
+keycloak_url: "http://localhost:3081"
+keycloak_admin: admin
+keycloak_admin_password: admin
+keycloak_realm: WSJ_development
+keycloak_user_realm: master
