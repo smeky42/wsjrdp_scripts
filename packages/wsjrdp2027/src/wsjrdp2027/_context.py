@@ -210,6 +210,7 @@ class WsjRdpContext:
         argument_parser: _argparse.ArgumentParser | None = None,
         argv: list[str] | None = None,
         logger: _logging.Logger | _logging.LoggerAdapter | None = None,
+        __file__: str | None = None,
     ) -> None:
         """Initialize this context.
 
@@ -282,7 +283,7 @@ class WsjRdpContext:
 
         # start_time, output_directory, ...
         self._start_time = self._determine_start_time(start_time=start_time)
-        self._out_dir = self._determine_out_dir(out_dir)
+        self._out_dir = self._determine_out_dir(out_dir, dunder_file=__file__)
         if dry_run is not None:
             self._dry_run = dry_run
         if skip_email is not None:
@@ -331,7 +332,11 @@ class WsjRdpContext:
         return result
 
     def _determine_out_dir(
-        self, p: _pathlib.Path | str | None = None, *, env=None
+        self,
+        p: _pathlib.Path | str | None = None,
+        *,
+        env=None,
+        dunder_file: str | None,
     ) -> _pathlib.Path:
         import os as _os
         import pathlib as _pathlib
@@ -367,6 +372,23 @@ class WsjRdpContext:
 
         out_dir: _pathlib.Path
         if p is None:
+            if dunder_file is not None:
+                script_name = _pathlib.Path(dunder_file).stem
+                p = (
+                    "data/"
+                    + script_name
+                    + "{{ kind | omit_unless_prod | upper | to_ext }}"
+                )
+                out_dir = _pathlib.Path(
+                    self.render_template(
+                        p, extra_context={"filename_suffix": self.filename_suffix}
+                    )
+                )
+                self._logger.info(
+                    "output_directory=%s (from given __file__)",
+                    _os.path.relpath(out_dir, "."),
+                )
+                return out_dir
             if env_val:
                 out_dir = _pathlib.Path(env_val).resolve()
                 self._logger.info(

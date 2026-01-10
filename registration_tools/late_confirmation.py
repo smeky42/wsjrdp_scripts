@@ -319,9 +319,7 @@ def _confirm_person(
 
 def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
-        argument_parser=create_argument_parser(),
-        argv=argv,
-        out_dir="data/" + _SELF_NAME + "{{ kind | omit_unless_prod | upper | to_ext }}",
+        argument_parser=create_argument_parser(), argv=argv, __file__=__file__
     )
     person_id = int(ctx.parsed_args.id)
     print(flush=True)

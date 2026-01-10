@@ -388,7 +388,10 @@ def pg_select_group_dict_for_where(
     elif len(list_of_rows) != 1:
         err_msg = (
             f"Expected to find one group for where condition {where_str!r}, found {len(list_of_rows)}:\n"
-            + "".join(f"  id={row['id']} name={row['id']}\n" for row in list_of_rows)
+            + "".join(
+                f"  id={row['id']} name={row['name']} short_name={row['short_name']}\n"
+                for row in list_of_rows
+            )
         )
         _LOGGER.debug(err_msg)
         raise RuntimeError(err_msg)
