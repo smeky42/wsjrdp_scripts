@@ -16,7 +16,6 @@ import wsjrdp2027
 
 
 _SELFDIR = _pathlib.Path(__file__).parent
-_SELF_NAME = _pathlib.Path(__file__).stem
 
 _LOGGER = logging.getLogger(__name__)
 
