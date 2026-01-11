@@ -202,7 +202,7 @@ class WsjRdpContext:
         setup_logging: bool = True,
         log_level: int | str | None = None,
         start_time: _datetime.datetime | str | None = None,
-        out_dir: _pathlib.Path | str | None = "data",
+        out_dir: _pathlib.Path | str | None = None,
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
@@ -372,7 +372,7 @@ class WsjRdpContext:
 
         out_dir: _pathlib.Path
         if p is None:
-            if dunder_file is not None:
+            if dunder_file:
                 script_name = _pathlib.Path(dunder_file).stem
                 p = (
                     "data/"
@@ -383,13 +383,13 @@ class WsjRdpContext:
                     self.render_template(
                         p, extra_context={"filename_suffix": self.filename_suffix}
                     )
-                )
+                ).resolve()
                 self._logger.info(
                     "output_directory=%s (from given __file__)",
                     _os.path.relpath(out_dir, "."),
                 )
                 return out_dir
-            if env_val:
+            elif env_val:
                 out_dir = _pathlib.Path(env_val).resolve()
                 self._logger.info(
                     "output_directory=%s (from env %s)",
@@ -398,7 +398,7 @@ class WsjRdpContext:
                 )
                 return out_dir
             else:
-                out_dir = _pathlib.Path(".").resolve()
+                out_dir = _pathlib.Path("./data/").resolve()
                 self._logger.info(
                     "output_directory=%s (default)", _os.path.relpath(out_dir, ".")
                 )
