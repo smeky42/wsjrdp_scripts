@@ -34,10 +34,26 @@ def create_argument_parser():
     p.add_argument("--skip-email", action="store_true", default=None)
     p.add_argument("--skip-db-updates", action="store_true", default=None)
     p.add_argument(
+        "--payment-info",
+        dest="show_payment_info",
+        action="store_true",
+        default=True,
+        help="""Show payment information
+        (amount already paid, next installment).
+        On by default.""",
+    )
+    p.add_argument(
+        "--no-payment-info",
+        dest="show_payment_info",
+        action="store_false",
+        help="""Do not show payment information
+        (amount already paid, next installment).""",
+    )
+    p.add_argument(
         "--collection-date",
         type=to_date_or_none,
-        required=True,
-        help="Collection date of the next SEPA direct debit.",
+        help="""Collection date of the next SEPA direct debit.
+        Required unless --no-payment-info is given.""",
     )
     p.add_argument(
         "--group",
@@ -64,12 +80,12 @@ def create_argument_parser():
 
 _FULLY_PAID = """
 Herzlichen Dank, dass du den Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} bereits vollständig bezahlt hast. Das ist keine Kleinigkeit und wir wollen uns dafür bei dir bedanken! Ohne deine Unterstützung wäre das Jamboree für alle noch teurer geworden.
-""".lstrip()
+"""
 
 _SEPA_STATUS_NOT_OK = """
 Wir prüfen gerade deine Beitragszahlung und führen solange keinen SEPA Lastschrifteinzug durch.
 Schreibe uns bitte eine Antwort auf diese E-Mail, wenn du davon noch nichts weißt.
-""".lstrip()
+"""
 
 _NEXT_INSTALLMENT = """
 Wir werden {% if row.early_payer or (row.installments_cents_dict | length) == 1 %}deinen Teilnahmebetrag{% else %}die {% if row.amount_paid_cents == 0 %}erste{% else %}nächste{% endif %} Rate deines Teilnahmebetrags{% endif %} voraussichtlich am {{ row.collection_date | date_de }} per SEPA Lastschrift einziehen. Du nimmst mit folgenden Daten am Einzug teil:
@@ -82,7 +98,7 @@ IBAN: {{ row.sepa_iban | format_iban }}
 {% endif %}
 Mandatsreferenz: {{ row.sepa_mandate_id }}
 Verwendungszweck: {{ row.sepa_dd_description }}
-""".lstrip()
+"""
 
 _ANNOUNCE_UPCOMING_INSTALLMENT = """
 {% set next_installment_year_month_de = (row.installments_cents_dict.keys() | sort | first | month_year_de) %}
@@ -91,26 +107,31 @@ Deinen Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur
 {% else %}
 Die erste Rate deines Teilnahmebetrags ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
 {% endif %}
-""".lstrip()
+"""
 
 
 @jinja2.pass_environment
 def render_upcoming_payment_text(env: jinja2.Environment) -> str:
+    show_payment_info = _typing.cast(bool, env.globals.get("show_payment_info", True))
+    if not show_payment_info:
+        return ""
     row = _typing.cast(dict, env.globals.get("row", {}))
     if not row.get("collection_date"):
         raise RuntimeError("collection_date fehlt")
     if row.get("amount_unpaid_cents") == 0:
-        return env.from_string(_FULLY_PAID).render()
-    elif row.get("sepa_status") != "ok":
-        return env.from_string(_SEPA_STATUS_NOT_OK).render()
+        source = _FULLY_PAID
+    elif row.get("sepa_status") not in ("ok", "missing"):
+        source = _SEPA_STATUS_NOT_OK
     elif (row.get("open_amount_cents") or 0) > 0:
-        return env.from_string(_NEXT_INSTALLMENT).render()
+        source = _NEXT_INSTALLMENT
     elif row.get("installments_cents_dict"):
-        return env.from_string(_ANNOUNCE_UPCOMING_INSTALLMENT).render()
+        source = _ANNOUNCE_UPCOMING_INSTALLMENT
     else:
         raise RuntimeError(
             "Unsupported financial configuration -- cannot confirm and send email"
         )
+    source = f"\n{source.strip()}\n\n\n"
+    return env.from_string(source).render()
 
 
 @jinja2.pass_environment
@@ -120,7 +141,7 @@ Name: {{ row.full_name }}
 Anmeldungs-ID: {{ row.id }}
 Rolle: {{ row.payment_role.full_role_name }}
 Teilnahmebetrag: {{ row.total_fee_cents | format_cents_as_eur_de }}
-{% if row.amount_paid_cents > 0 %}Davon bereits bezahlt: {{ row.amount_paid_cents | format_cents_as_eur_de }}
+{% if show_payment_info and (row.amount_paid_cents > 0) %}Davon bereits bezahlt: {{ row.amount_paid_cents | format_cents_as_eur_de }}
 {% endif %}
 """
     return env.from_string(_TEMPLATE).render().strip()
@@ -211,6 +232,21 @@ def _select_group_for_group_id(conn, group_id: int) -> Group:
     return _select_group_for_where(conn, t'"id" = {group_id}')
 
 
+def _select_group(conn, group_arg: str | int, *, auto_group_id: int | None) -> Group:
+    import re
+
+    if isinstance(group_arg, int):
+        return _select_group_for_group_id(conn, group_arg)
+    elif re.fullmatch(group_arg, "[0-9]+"):
+        return _select_group_for_group_id(conn, int(group_arg, base=10))
+    elif group_arg == "auto":
+        if auto_group_id is None:
+            raise RuntimeError("group='auto' and auto_group_id=None not supported")
+        return _select_group_for_group_id(conn, auto_group_id)
+    else:
+        return _select_group_for_group_name(conn, group_arg)
+
+
 def _confirm_person(
     *,
     ctx: wsjrdp2027.WsjRdpContext,
@@ -234,10 +270,10 @@ def _confirm_person(
             raise SystemExit(1)
         else:
             target_group = _select_group_for_group_id(conn, old_primary_group_id)
-    elif isinstance(group_arg, int) or re.fullmatch(group_arg, "[0-9]+"):
-        target_group = _select_group_for_group_id(conn, int(group_arg))
     else:
-        target_group = _select_group_for_group_name(conn, group_arg)
+        target_group = _select_group(
+            conn, group_arg, auto_group_id=old_primary_group_id
+        )
     if is_yp_or_ul and not target_group:
         _LOGGER.error(f"Missing --group for confirmation of {role_id_name}")
         raise SystemExit(1)
@@ -269,6 +305,7 @@ def _confirm_person(
         jinja_extra_globals={
             render_confirmation_info.__name__: render_confirmation_info,
             render_upcoming_payment_text.__name__: render_upcoming_payment_text,
+            "show_payment_info": ctx.parsed_args.show_payment_info,
         },
     )
 
@@ -320,6 +357,11 @@ def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
         argument_parser=create_argument_parser(), argv=argv, __file__=__file__
     )
+    if ctx.parsed_args.show_payment_info:
+        if not ctx.parsed_args.collection_date:
+            raise RuntimeError(
+                "--collection-date is required unless --no-payment-info is given"
+            )
     person_id = int(ctx.parsed_args.id)
     print(flush=True)
     _LOGGER.info(f"Confirm person {person_id}")

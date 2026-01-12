@@ -22,10 +22,7 @@ content: |
 
   Willkommen im Kontingent – wir freuen uns auf die Zusammenarbeit mit dir und auf die nächsten Schritte auf dem Weg zum Jamboree!
 
-
   {{ render_upcoming_payment_text() }}
-
-
   Gut Pfad
   Dein HoC-Team
   (Caro, Fox, Ines)

@@ -46,10 +46,7 @@ content: |
 
   Wir freuen uns schon sehr darauf, dich im März persönlich kennenzulernen und gemeinsam in die Vorbereitung zu starten!
 
-
   {{ render_upcoming_payment_text() }}
-
-
   Gut Pfad
   Dein Contingent Management Team
 signature: "{{ EMAIL_SIGNATURE_CMT }}"

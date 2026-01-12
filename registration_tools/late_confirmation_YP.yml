@@ -27,10 +27,7 @@ content: |
 
   Willkommen im Kontingent – wir freuen uns schon sehr darauf, dich kennenzulernen und diese spannende Reise gemeinsam zu starten!
 
-
   {{ render_upcoming_payment_text() }}
-
-
   Gut Pfad
   Dein Contingent Management Team
 signature: "{{ EMAIL_SIGNATURE_CMT }}"
