@@ -37,6 +37,7 @@ from ._pg import (
     pg_insert_direct_debit_pre_notification as pg_insert_direct_debit_pre_notification,
     pg_insert_fin_account as pg_insert_fin_account,
     pg_insert_payment_initiation as pg_insert_payment_initiation,
+    pg_select_camt_tx_unique_db_key2row as pg_select_camt_tx_unique_db_key2row,
     pg_select_dataframe as pg_select_dataframe,
     pg_select_dict_rows as pg_select_dict_rows,
     pg_select_group_dict_for_where as pg_select_group_dict_for_where,
@@ -87,9 +88,13 @@ from ._util import (
 
 
 if _typing.TYPE_CHECKING:
-    from . import keycloak, mailbox
-    from ._camt import CamtMessage
-    from ._pain import PainMessage
+    from . import keycloak as keycloak, mailbox as mailbox
+    from ._camt import (
+        CamtMessage as CamtMessage,
+        CamtTransactionDetails as CamtTransactionDetails,
+        CamtTxUniqueDbKey as CamtTxUniqueDbKey,
+    )
+    from ._pain import PainMessage as PainMessage
 
 
 __all__ = [
@@ -107,6 +112,8 @@ __all__ = [
     #
     "BatchConfig",
     "CamtMessage",
+    "CamtTransactionDetails",
+    "CamtTxUniqueDbKey",
     "MailClient",
     "PainMessage",
     "PaymentRole",
@@ -129,12 +136,10 @@ __all__ = [
     "get_default_email_policy",
     "get_typst_font_paths",
     "insert_direct_debit_pre_notification_from_row",
-    "keycloak",
     "load_accounting_balance_in_cent",
     "load_payment_dataframe",
     "load_payment_dataframe_from_payment_initiation",
     "load_people_dataframe",
-    "mailbox",
     "merge_mail_addresses",
     "nan_to_none",
     "pg_add_person_tag",
@@ -143,6 +148,7 @@ __all__ = [
     "pg_insert_direct_debit_pre_notification",
     "pg_insert_fin_account",
     "pg_insert_payment_initiation",
+    "pg_select_camt_tx_unique_db_key2row",
     "pg_select_dataframe",
     "pg_select_dict_rows",
     "pg_select_group_dict_for_where",
@@ -268,6 +274,8 @@ This set was fixed before sending the Pre-Notification.
 
 __ALIASES__ = {
     "CamtMessage": (f"._camt", "CamtMessage"),
+    "CamtTransactionDetails": (f"._camt", "CamtTransactionDetails"),
+    "CamtTxUniqueDbKey": (f"._camt", "CamtTxUniqueDbKey"),
     "PainMessage": (f"._pain", "PainMessage"),
     "keycloak": (".keycloak", ""),
     "mailbox": (".mailbox", ""),

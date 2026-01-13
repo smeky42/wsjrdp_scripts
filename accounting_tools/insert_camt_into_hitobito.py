@@ -27,10 +27,15 @@ def _read_camt_and_write_to_db(
     *,
     account_identification2fin_account_id: dict[str, int],
 ) -> None:
-    from wsjrdp2027 import pg_insert_camt_transaction_from_tx
+    from wsjrdp2027 import (
+        pg_insert_camt_transaction_from_tx,
+        pg_select_camt_tx_unique_db_key2row,
+    )
 
     camt = wsjrdp2027.CamtMessage.load(path)
     _LOGGER.info(camt)
+
+    tx_unique_db_key2row = pg_select_camt_tx_unique_db_key2row(conn, show_result=False)
 
     for tx in camt.booked_transaction_details:
         _LOGGER.info("  %s", "-" * 40)
@@ -48,13 +53,27 @@ def _read_camt_and_write_to_db(
         fin_account_id = account_identification2fin_account_id[
             tx.account_identification
         ]
-        camt_tx_id = pg_insert_camt_transaction_from_tx(
-            conn,
-            tx,
-            fin_account_id=fin_account_id,
-            upsert=True,
-        )
-        _LOGGER.info(f"  ->  {camt_tx_id}")
+        if tx_row := tx_unique_db_key2row.get(tx.unique_db_key):
+            errors = []
+            for key in ["amount_cents", "amount_currency", "value_date"]:
+                row_val = tx_row[key]
+                tx_val = getattr(tx, key, None)
+                if row_val != tx_val:
+                    err_msg = f"Tx {tx.account_servicer_reference}: Mismatch of {key}: tx={tx_val!r} row={row_val!r}"
+                    errors.append(err_msg)
+                    _LOGGER.error(err_msg)
+            if errors:
+                raise RuntimeError("\n".join(errors))
+            else:
+                _LOGGER.info(f"  ->  {tx_row['id']} (already in DB)")
+        else:
+            camt_tx_id = pg_insert_camt_transaction_from_tx(
+                conn,
+                tx,
+                fin_account_id=fin_account_id,
+                upsert=True,
+            )
+            _LOGGER.info(f"  ->  {camt_tx_id} (newly inserted)")
 
 
 def create_argument_parser():
