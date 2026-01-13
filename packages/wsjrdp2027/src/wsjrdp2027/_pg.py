@@ -1128,6 +1128,37 @@ def pg_insert_accounting_entry(
     return _execute_query_fetch_id(cursor, query)
 
 
+def pg_select_camt_tx_unique_db_key2row(
+    conn: _psycopg.Connection,
+    *,
+    where: str | _string_templatelib.Template | None = None,
+    show_result: bool | None = None,
+) -> dict[_camt.CamtTxUniqueDbKey, dict]:
+    from . import _camt
+
+    if not where:
+        where = t"TRUE"
+    rows = pg_select_dict_rows(
+        conn,
+        t"""SELECT
+  id,
+  camt_type, account_identification, account_servicer_reference, transaction_details_index,
+  amount_cents, amount_currency, value_date
+FROM wsjrdp_camt_transactions
+WHERE {where:q}""",
+        show_result=show_result,
+    )
+    return {
+        _camt.CamtTxUniqueDbKey(
+            row["camt_type"],
+            row["account_identification"],
+            row["account_servicer_reference"],
+            row["transaction_details_index"],
+        ): row
+        for row in rows
+    }
+
+
 def pg_insert_camt_transaction(
     cursor,
     *,

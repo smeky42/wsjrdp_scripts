@@ -19,6 +19,13 @@ if _typing.TYPE_CHECKING:
     from . import _file
 
 
+class CamtTxUniqueDbKey(_typing.NamedTuple):
+    camt_type: str
+    account_identification: str
+    account_servicer_reference: str
+    transaction_details_index: int = 0
+
+
 @_dataclasses.dataclass(kw_only=True)
 class CamtTransactionDetails:
     entry_details = _weakref_util.WeakrefAttr["CamtEntryDetails"]()
@@ -235,6 +242,15 @@ class CamtTransactionDetails:
     @property
     def return_reason(self) -> str | None:
         return self.RtrInf.get("Rsn", {}).get("Cd")
+
+    @property
+    def unique_db_key(self) -> CamtTxUniqueDbKey:
+        return CamtTxUniqueDbKey(
+            camt_type=self.camt_type,
+            account_identification=self.account_identification,
+            account_servicer_reference=self.account_servicer_reference,
+            transaction_details_index=self.transaction_details_index,
+        )
 
 
 @_dataclasses.dataclass(kw_only=True)
