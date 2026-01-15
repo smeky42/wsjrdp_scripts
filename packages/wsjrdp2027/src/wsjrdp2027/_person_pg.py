@@ -128,7 +128,7 @@ class _ScalarChange:
     ) -> _typing.Any:
         """Compute value for *row* in column *column* for user provided *value*."""
         if self.render_jinja2:
-            return _util.render_template(value, {"row": row})
+            return _util.render_template(value or "", {"row": row})
         else:
             return value
 
@@ -186,7 +186,7 @@ class _StrListChange:
         remove_tag_set = set(_util.to_str_list(row.get(self.remove_col)))
 
         old_tag_set = set(_util.to_str_list(self.get_old_val(row)))
-        add_tag_set = set(_util.to_str_list(row[self.add_col]))
+        add_tag_set = set(_util.to_str_list(row.get(self.add_col)))
         return sorted(
             tag for tag in (old_tag_set | add_tag_set) if tag not in remove_tag_set
         )

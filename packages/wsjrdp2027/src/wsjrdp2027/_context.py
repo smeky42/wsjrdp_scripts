@@ -1017,6 +1017,7 @@ class WsjRdpContext:
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
         df_cb: _collections_abc.Callable[[_pandas.DataFrame], _pandas.DataFrame]
         | None = None,
+        log_resulting_data_frame: bool | None = None,
     ) -> _batch.PreparedBatch:
         from . import _util
 
@@ -1032,6 +1033,7 @@ class WsjRdpContext:
             extra_mailing_bcc=extra_mailing_bcc,
             now=now,
             df_cb=df_cb,
+            log_resulting_data_frame=log_resulting_data_frame,
         )
         if not out_dir:
             prepared_batch.out_dir = self.__compute_batch_out_dir(prepared_batch)
