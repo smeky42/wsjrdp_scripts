@@ -49,6 +49,16 @@ class Test_Update_DataFrame_For_Updates:
         assert list(df["db_changes"]) == [True] * len(df)
         assert list(df["person_changes"]) == [{}] * len(df)
 
+    @pytest.mark.parametrize("note", [None, ""])
+    def test_add_empty_note(self, df, note):
+        updates = {"add_note": note}
+
+        update_dataframe_for_updates(df, updates=updates)
+        assert "add_note" in df.columns
+        assert list(df["add_note"]) == [""] * len(df)
+        assert list(df["db_changes"]) == [False] * len(df)
+        assert list(df["person_changes"]) == [{}] * len(df)
+
     def test_add_tags(self, df):
         updates = {"add_tags": "bar"}
 

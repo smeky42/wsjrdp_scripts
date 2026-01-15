@@ -1,7 +1,3 @@
-updates:
-  new_status: confirmed
-  add_tags: CMT-Confirmation-Mail
-  remove_tags: Warteliste
 query:
   include_sepa_mail_in_mailing_to: true
   where:

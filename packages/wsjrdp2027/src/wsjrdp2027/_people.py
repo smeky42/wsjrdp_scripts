@@ -896,8 +896,9 @@ def update_dataframe_for_updates(
             object_changes = {}
             for chg in used_changes:
                 if not chg.old_col:
-                    changed = True
                     new_val = chg.get_new_val(row)
+                    if new_val or (chg.new_col != "add_note"):
+                        changed = True
                     _LOGGER.debug("{%s} %s", id, chg.col_name)
                     _LOGGER.debug("{%s} + %s", id, new_val)
                     continue
