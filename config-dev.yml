@@ -23,7 +23,8 @@ mail_accounts:
     smtp_port: 1025
 
 # Mailcow API
-mail_api_key:
+mail_api_url: http://localhost:3082
+mail_api_key: mailcow123
 
 keycloak_url: "http://localhost:3081"
 keycloak_admin: admin

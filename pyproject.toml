@@ -95,6 +95,7 @@ norecursedirs = ["integration-tests", "2023"]
 [tool.ruff]
 extend-exclude = [
     "2023",
+    "integration-tests/mailcow",
 ]
 
 [tool.ruff.lint]
@@ -114,4 +115,5 @@ lines-after-imports = 2
 [tool.ty.src]
 exclude = [
     "2023",
+    "integration-tests/mailcow",
 ]

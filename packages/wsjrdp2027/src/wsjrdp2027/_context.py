@@ -63,6 +63,7 @@ class WsjRdpContextConfig:
     geo_api_key: str = ""
     hitobito_url: str = ""
 
+    mail_api_url: str = ""
     mail_api_key: str = ""
 
     keycloak_url: str = "https://login.worldscoutjamboree.de"
@@ -153,6 +154,7 @@ class WsjRdpContextConfig:
                 config.get("hitobito_url", "https://anmeldung.worldscoutjamboree.de")
             ),
             mail_accounts=mail_accounts,
+            mail_api_url=config.get("mail_api_url", ""),
             mail_api_key=config.get("mail_api_key", ""),
             keycloak_url=config.get("keycloak_url", ""),
             keycloak_admin=config.get("keycloak_admin", ""),
@@ -336,7 +338,7 @@ class WsjRdpContext:
         p: _pathlib.Path | str | None = None,
         *,
         env=None,
-        dunder_file: str | None,
+        dunder_file: str | None = None,
     ) -> _pathlib.Path:
         import os as _os
         import pathlib as _pathlib

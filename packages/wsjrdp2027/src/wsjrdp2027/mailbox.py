@@ -1,7 +1,46 @@
 import logging
+
 import requests
 
+
 _LOGGER = logging.getLogger(__name__)
+
+
+def get_all_domains(ctx):
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": ctx._config.mail_api_key,
+    }
+    base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
+    url = f"{base_url}/api/v1/get/domain/all"
+    resp = requests.get(
+        url,
+        # json=payload,
+        headers=headers,
+        timeout=30,
+    )
+    print(resp)
+    print(resp.text)
+
+
+def create_domain(ctx, domain: str):
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": ctx._config.mail_api_key,
+    }
+
+    payload = {"domain": domain}
+    base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
+    print(f"{payload=}")
+    print(f"{headers=}")
+    resp = requests.post(
+        f"{base_url}/api/v1/add/domain",
+        json=payload,
+        headers=headers,
+        timeout=30,
+    )
+    # resp.raise_for_status()  # optional: raise exception for HTTP error codes
+    _LOGGER.info("Add Domain Response: %s", resp.text)
 
 
 def add_mailbox(ctx, local_part, domain, name, password):
@@ -19,13 +58,16 @@ def add_mailbox(ctx, local_part, domain, name, password):
         "password2": password,
         "active": "1",
         "force_pw_update": "0",
-        "authsource": "keycloak",  # Only Keycloak login
+        # "authsource": "keycloak",  # Only Keycloak login
         "tls_enforce_in": "1",
         "tls_enforce_out": "1",
     }
 
+    base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
+    print(f"{payload=}")
+    print(f"{headers=}")
     resp = requests.post(
-        "https://mail.worldscoutjamboree.de/api/v1/add/mailbox",
+        f"{base_url}/api/v1/add/mailbox",
         json=payload,
         headers=headers,
         timeout=30,
