@@ -102,7 +102,11 @@ class PreparedBatch:
             return _pathlib.Path("data") / "batch"
 
     def write_data(
-        self, *, out_dir: _pathlib.Path | None = None, zip_eml: bool | None = None
+        self,
+        *,
+        out_dir: _pathlib.Path | None = None,
+        zip_eml: bool | None = None,
+        silent_skip_email: bool | None = None,
     ) -> _pathlib.Path:
         from . import _people
 
@@ -113,13 +117,15 @@ class PreparedBatch:
         self.__collect_default_results()
 
         out_dir.mkdir(exist_ok=True, parents=True)
-        _LOGGER.info("  mailing output directory: %s", out_dir)
+        _LOGGER.info("  batch output directory: %s", out_dir)
 
         xlsx_path = out_dir / f"{self.name}.xlsx"
         unfiltered_xlsx_path = out_dir / f"{self.name}.unfiltered.xlsx"
         yml_path = out_dir / f"{self.name}.yml"
 
-        self.__write_eml(out_dir=out_dir, zip_eml=zip_eml)
+        self.__write_eml(
+            out_dir=out_dir, zip_eml=zip_eml, silent_skip_email=silent_skip_email
+        )
 
         _people.write_people_dataframe_to_xlsx(
             self.df, xlsx_path, log_level=_logging.DEBUG
@@ -153,32 +159,40 @@ class PreparedBatch:
         skipped_ids_set = unfiltered_ids_set - ids_set - email_only_ids_set
         self.results["skipped_ids"] = sorted(skipped_ids_set)
 
-    def __write_eml(self, *, out_dir: _pathlib.Path, zip_eml: bool) -> None:
+    def __write_eml(
+        self,
+        *,
+        out_dir: _pathlib.Path,
+        zip_eml: bool,
+        silent_skip_email: bool | None = None,
+    ) -> None:
         import io
         import zipfile
+
+        skipped_messages = [pm for pm in self.messages if not pm.message]
+        prepared_messages = [pm for pm in self.messages if pm.message]
+        if not silent_skip_email:
+            for prep_msg in skipped_messages:
+                _LOGGER.debug("  skip empty email message - %s", prep_msg.summary)
+        if not prepared_messages:
+            if not silent_skip_email:
+                _LOGGER.info("  only empty messages - no eml output")
+            return
 
         if zip_eml:
             zip_buf = io.BytesIO()
             with zipfile.ZipFile(zip_buf, "w") as zf:
-                for prep_msg in self.messages:
-                    if prep_msg.message is None:
-                        _LOGGER.debug(
-                            "  skip empty email message - %s", prep_msg.summary
-                        )
-                    else:
-                        zf.writestr(prep_msg.eml_name, data=prep_msg.eml)
+                for prep_msg in prepared_messages:
+                    zf.writestr(prep_msg.eml_name, data=prep_msg.eml)
             eml_zip_path = out_dir / f"{self.name}.zip"
             with open(eml_zip_path, "wb") as f:
                 f.write(zip_buf.getvalue())
             _LOGGER.info("  wrote eml zip %s", eml_zip_path)
         else:
-            for prep_msg in self.messages:
-                if prep_msg.message is None:
-                    _LOGGER.debug("  skip empty email message - %s", prep_msg.summary)
-                else:
-                    eml_path = out_dir / prep_msg.eml_name
-                    eml_path.write_bytes(prep_msg.eml)
-                    _LOGGER.info("  wrote eml %s", eml_path)
+            for prep_msg in prepared_messages:
+                eml_path = out_dir / prep_msg.eml_name
+                eml_path.write_bytes(prep_msg.eml)
+                _LOGGER.info("  wrote eml %s", eml_path)
 
     def write_results(
         self, *, out_dir: _pathlib.Path | None = None, json_indent: int | None = None
@@ -192,6 +206,16 @@ class PreparedBatch:
             json_d = {"results": self.results}
             json.dump(json_d, f, indent=json_indent)
         _LOGGER.info("  wrote json %s", json_path)
+
+    def get_skip_email_reasons(self, *, dry_run: bool | None = None) -> list[str]:
+        reasons = []
+        if dry_run:
+            reasons.append(dry_run)
+        if self.skip_email:
+            reasons.append("skip_email=True")
+        if all(m.message is None for m in self.messages):
+            reasons.append("no message")
+        return reasons
 
     def send(self, mail_client: _mail_client.MailClient, /) -> None:
         import pprint
@@ -807,7 +831,8 @@ class BatchConfig:
         df = self.update_dataframe_for_updates(df, now=now, inplace=False)
         if unfiltered_df_is_df:
             unfiltered_df = df
-        _LOGGER.info("Prepare mailing...")
+        if len(df) > 1:
+            _LOGGER.info("Prepare mailing...")
         tic = time.monotonic()
         messages = tuple(
             self.prepare_email_message_for_row(
@@ -819,7 +844,8 @@ class BatchConfig:
             for _, row in df.iterrows()
         )
         toc = time.monotonic()
-        _LOGGER.info("  finished preparation of mailing (%g seconds)", toc - tic)
+        if len(df) > 5 or (toc - tic) > 0.1:
+            _LOGGER.info("  finished preparation of mailing (%g seconds)", toc - tic)
         config_yaml = self.__to_yaml__().encode("utf-8")
         return PreparedBatch(
             name=self.name,
@@ -1036,6 +1062,7 @@ def write_data_and_send_mailing(
     dry_run: bool | None = None,
     out_dir: str | _pathlib.Path | None = None,
     zip_eml: bool | None = True,
+    silent_skip_email: bool | None = None,
 ) -> None:
     if zip_eml is None:
         zip_eml = True
@@ -1051,7 +1078,9 @@ def write_data_and_send_mailing(
         ).replace("\\", "/")
         out_dir = ctx.make_out_path(out_dir_tpl)
 
-    mailing.write_data(out_dir=out_dir, zip_eml=zip_eml)
+    mailing.write_data(
+        out_dir=out_dir, zip_eml=zip_eml, silent_skip_email=silent_skip_email
+    )
 
     with ctx.mail_login(
         from_addr=mailing.from_addr,

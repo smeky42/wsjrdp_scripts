@@ -926,7 +926,7 @@ class WsjRdpContext:
     ) -> _batch.BatchConfig:
         from . import _batch
 
-        config = _batch.BatchConfig.from_yaml(
+        batch_config = _batch.BatchConfig.from_yaml(
             path,
             name=name,
             query=query,
@@ -936,7 +936,31 @@ class WsjRdpContext:
             skip_email=self.skip_email_or_none,
             skip_db_updates=self.skip_db_updates,
         )
-        return config
+        return batch_config
+
+    def new_batch_config(
+        self,
+        /,
+        *,
+        name: str | None = None,
+        config: dict | None = None,
+        query: _people_query.PeopleQuery | dict | None = None,
+        where: _people_query.PeopleWhere | dict | str | None = None,
+        jinja_extra_globals: dict | None = None,
+    ) -> _batch.BatchConfig:
+        from . import _batch
+
+        batch_config = _batch.BatchConfig.from_dict(
+            config or {},
+            name=name,
+            query=query,
+            where=where,
+            jinja_extra_globals=jinja_extra_globals,
+            dry_run=self.dry_run_or_none,
+            skip_email=self.skip_email_or_none,
+            skip_db_updates=self.skip_db_updates,
+        )
+        return batch_config
 
     def __compute_batch_out_dir(
         self,
@@ -961,6 +985,7 @@ class WsjRdpContext:
         *,
         zip_eml: bool | None = None,
         dry_run: bool | None = None,
+        silent_skip_email: bool | None = None,
     ) -> None:
         from . import _batch
 
@@ -972,6 +997,7 @@ class WsjRdpContext:
             dry_run=dry_run,
             out_dir=self.out_dir,
             zip_eml=zip_eml,
+            silent_skip_email=silent_skip_email,
         )
 
     def load_person_dataframe_for_batch(
@@ -1079,12 +1105,13 @@ class WsjRdpContext:
         conn: _psycopg.Connection | None = None,
         zip_eml: bool | None = None,
         dry_run: bool | None = None,
+        silent_skip_email: bool = False,
     ) -> None:
         if not prepared_batch.out_dir:
             prepared_batch.out_dir = self.__compute_batch_out_dir(prepared_batch)
         if dry_run is None:
             dry_run = self.dry_run
-        prepared_batch.write_data(zip_eml=zip_eml)
+        prepared_batch.write_data(zip_eml=zip_eml, silent_skip_email=silent_skip_email)
         self.update_db_for_dataframe(
             prepared_batch.df,
             conn=conn,
@@ -1093,10 +1120,14 @@ class WsjRdpContext:
             skip_db_updates=prepared_batch.skip_db_updates,
         )
 
-        with self.mail_login(
-            from_addr=prepared_batch.from_addr, dry_run=dry_run
-        ) as mail_client:
-            prepared_batch.send(mail_client)
+        if skip_email_reasons := prepared_batch.get_skip_email_reasons(dry_run=dry_run):
+            if not silent_skip_email:
+                _LOGGER.info(f"No email ({', '.join(skip_email_reasons)})")
+        else:
+            with self.mail_login(
+                from_addr=prepared_batch.from_addr, dry_run=dry_run
+            ) as mail_client:
+                prepared_batch.send(mail_client)
         prepared_batch.write_results()
 
     def render_template(
