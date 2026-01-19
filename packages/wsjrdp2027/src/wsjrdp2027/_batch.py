@@ -210,7 +210,7 @@ class PreparedBatch:
     def get_skip_email_reasons(self, *, dry_run: bool | None = None) -> list[str]:
         reasons = []
         if dry_run:
-            reasons.append(dry_run)
+            reasons.append("dry_run")
         if self.skip_email:
             reasons.append("skip_email=True")
         if all(m.message is None for m in self.messages):
