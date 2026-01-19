@@ -64,7 +64,7 @@ def load_docx(name: str) -> _docx.Document:  # type: ignore
     import docx as _docx
 
     p = os.path.join(os.path.dirname(__file__), name)
-    return _docx.Document(p)  # type: ignore
+    return _docx.Document(p)
 
 
 def convert_docx_to_pdf(docx_path, /, pdf_name=None) -> _pathlib.Path:

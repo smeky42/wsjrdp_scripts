@@ -77,7 +77,7 @@ class SepaDirectDebit:
     def add_payment(
         self, payment: SepaDirectDebitPayment, *, pedantic: bool = True
     ) -> SepaDirectDebitPayment:
-        raw_payment: SepaDirectDebitPayment = payment.copy()  # type: ignore
+        raw_payment: SepaDirectDebitPayment = payment.copy()
         raw_payment["amount"] = raw_payment.pop("amount")
 
         raw_payment["IBAN"] = raw_payment.get("IBAN", "").replace(" ", "").upper()

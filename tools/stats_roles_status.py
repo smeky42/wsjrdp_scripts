@@ -60,7 +60,7 @@ def main(argv=None):
 
     with ctx.psycopg_connect() as conn:
         cur = conn.cursor(row_factory=psycopg.rows.dict_row)
-        cur.execute(STATS_ROLES_STATUS_SQL_STMT)  # type: ignore
+        cur.execute(STATS_ROLES_STATUS_SQL_STMT)
         rows = cur.fetchall()
         cur.close()
         base_df = pd.DataFrame(rows)
@@ -113,8 +113,8 @@ def main(argv=None):
     # ul_row = df.loc["UL"]
     # df.loc["YP+UL"] = yp_row + ul_row
     # for col in df.columns:
-    #     yp_val = float(yp_row[col])  # type: ignore
-    #     ul_val = float(ul_row[col])  # type: ignore
+    #     yp_val = float(yp_row[col])
+    #     ul_val = float(ul_row[col])
     #     if ul_val != 0:
     #         df.at["YP:UL", col] = yp_val / ul_val
 

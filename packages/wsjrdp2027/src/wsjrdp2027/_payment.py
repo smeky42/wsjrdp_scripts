@@ -660,7 +660,7 @@ def write_payment_dataframe_to_xlsx(
     df.to_excel(writer, engine="xlsxwriter", index=False, sheet_name=sheet_name)
     (max_row, max_col) = df.shape
 
-    # workbook: xlsxwriter.Workbook = writer.book  # type: ignore
+    # workbook: xlsxwriter.Workbook = writer.book
     worksheet = writer.sheets[sheet_name]
     worksheet.freeze_panes(1, 0)
     worksheet.autofilter(0, 0, max_row, max_col - 1)

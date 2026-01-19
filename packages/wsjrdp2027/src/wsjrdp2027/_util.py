@@ -1096,7 +1096,7 @@ def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
     # Excel does not support timestamps with timezones, so we remove
     # them here.
     df = df.copy()
-    datetime_cols = df.select_dtypes(include=["datetimetz"]).columns  # ty: ignore
+    datetime_cols = df.select_dtypes(include=["datetimetz"]).columns
     for col in datetime_cols:
         df[col] = df[col].dt.tz_localize(None)
 
@@ -1168,7 +1168,7 @@ def write_dataframe_to_xlsx(
     )
     (max_row, max_col) = df.shape
 
-    # workbook: xlsxwriter.Workbook = writer.book  # type: ignore
+    # workbook: xlsxwriter.Workbook = writer.book
     worksheet = writer.sheets[sheet_name]
     worksheet.freeze_panes(1, 0)
     if add_autofilter:

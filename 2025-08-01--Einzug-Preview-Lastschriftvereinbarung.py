@@ -84,7 +84,7 @@ ORDER BY last_name ASC, first_name ASC
         sheet_name=sheet_name,
     )
     (max_row, _) = df.shape
-    workbook: xlsxwriter.Workbook = writer.book  # type: ignore
+    workbook: xlsxwriter.Workbook = writer.book
     eur_format = workbook.add_format({"num_format": "#,##0.00 [$€-407]"})
     left_align = workbook.add_format({"align": "left"})
 

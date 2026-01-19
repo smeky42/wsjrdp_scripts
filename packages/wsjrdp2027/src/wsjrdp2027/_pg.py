@@ -235,7 +235,7 @@ def _execute_query_fetchall_dicts(
 
     with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
         return _execute_query_fetchall(
-            cursor,  # type: ignore
+            cursor,
             query,
             show_result=show_result,
         )
@@ -349,7 +349,7 @@ def pg_select_dict_rows(
     else:
         composed_query = query
     rows = _execute_query_fetchall_dicts(conn, composed_query, show_result=show_result)
-    return list(rows)  # type: ignore
+    return list(rows)
 
 
 def pg_select_dataframe(
@@ -556,7 +556,7 @@ def _normalize_updates(updates: _UpdatesType, /) -> list[tuple[str, _typing.Any]
     if isinstance(updates, _collections_abc.Mapping):
         return [(k, v) for k, v in updates.items()]  # type: ignore
     else:
-        return [tuple(x) for x in updates]  # type: ignore
+        return [tuple(x) for x in updates]
 
 
 def _pg_update_table(

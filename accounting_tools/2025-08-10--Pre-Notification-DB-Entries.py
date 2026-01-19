@@ -46,7 +46,7 @@ def main():
         "Do you want to store pre-notification data in the PRODUCTION Hitobito database?"
     )
 
-    sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig = (  # noqa  # type: ignore
+    sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig = (  # noqa
         wsjrdp2027.WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG
     )
 

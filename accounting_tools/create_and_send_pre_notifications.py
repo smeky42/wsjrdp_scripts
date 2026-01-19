@@ -343,7 +343,7 @@ def main(argv=None):
         argv=argv,
         out_dir="data/sepa_direct_debit_pre_notifications_{{ filename_suffix }}",
     )
-    sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig = (  # type: ignore
+    sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig = (
         wsjrdp2027.WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG
     )
     batch_config = wsjrdp2027.BatchConfig.from_yaml(

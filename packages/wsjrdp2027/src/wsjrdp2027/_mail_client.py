@@ -390,7 +390,7 @@ def _imap_append(
     logger.debug("APPEND %s", " ".join(append_args))
     ret = imap.append(mailbox, imap_flags, imap_date_time, message)
     logger.debug("  -> %s", str(ret))
-    return ret  # type: ignore
+    return ret
 
 
 _AMPERSAND_ORD = ord("&")

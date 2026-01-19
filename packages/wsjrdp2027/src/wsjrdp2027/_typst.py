@@ -34,7 +34,7 @@ def typst_compile(
     font_paths = list(font_paths)
     font_paths.extend(get_typst_font_paths())
 
-    typst.compile(
+    typst.compile(  # type: ignore
         input,
         output,
         font_paths=font_paths,
