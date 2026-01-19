@@ -268,7 +268,7 @@ def main(argv=None):
 
     del df
 
-    sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig = (  # type: ignore
+    sepa_dd_config: wsjrdp2027.SepaDirectDebitConfig = (
         wsjrdp2027.WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG
     )
 
