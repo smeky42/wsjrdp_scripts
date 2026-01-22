@@ -52,6 +52,7 @@ def attach_cancellation_request(ctx, prepared: wsjrdp2027.PreparedEmailMessage) 
 
     sys_inputs = {
         "hitobitoid": str(row["id"]),
+        "role_id_name": row['role_id_name'],
         "full_name": row["full_name"],
         "birthday_de": row["birthday_de"],
         "deregistration_issue": (row["deregistration_issue"] or ""),

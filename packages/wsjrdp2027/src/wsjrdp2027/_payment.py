@@ -53,6 +53,8 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "greeting_name",
     "full_name",
     "short_full_name",
+    "id_and_name",
+    "role_id_name",
     "street",
     "housenumber",
     "town",
