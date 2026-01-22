@@ -437,7 +437,12 @@ class BatchConfig:
 
         missing = object()
         try:
-            query = _normalize_query_where_or_none(query, where, logger=None)
+            if query is None:
+                query =  _people_query.PeopleQuery.normalize(config.get("query"))
+                if where is not None:
+                    query = query.replace(where=_people_query.PeopleWhere.normalize(where))
+            else:
+                query = _normalize_query_where_or_none(query, where, logger=None)
             if query:
                 config["query"] = query
             if jinja_extra_globals is not None:
@@ -525,7 +530,6 @@ class BatchConfig:
         effective_base_dir: _pathlib.Path | str | None = None,
     ) -> _typing.Self:
         path = _pathlib.Path(path)
-        query = _normalize_query_where_or_none(query, where)
         _LOGGER.info("Read batch config %s", str(path))
         try:
             with open(path, "r", encoding="utf-8", newline="\n") as f:
@@ -538,6 +542,7 @@ class BatchConfig:
             raw_yaml,
             name=name,
             query=query,
+            where=where,
             jinja_extra_globals=jinja_extra_globals,
             dry_run=dry_run,
             skip_email=skip_email,
