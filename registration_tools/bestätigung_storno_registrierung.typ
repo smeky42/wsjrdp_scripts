@@ -1,4 +1,5 @@
 #let contract_names = json(bytes(sys.inputs.at("contract_names", default: "[\"\", \"\", \"\"]")))
+#let role_id_name = sys.inputs.at("role_id_name", default: "")
 #let hitobitoid = sys.inputs.at("hitobitoid", default: "")
 #let deregistration_issue = sys.inputs.at("deregistration_issue", default: "")
 #let full_name = sys.inputs.at("full_name", default: [#box(align(bottom, line(length: 10cm, stroke: 0.4pt)))])
@@ -9,18 +10,21 @@
 
 #import "wsjrdp2027.typ": *
 
-#set document(title: [Bestätigung der Stornierung der Registrierung – World Scout Jamboree 2027])
-
-#show: wsjrdp2027_letter.with()
+#show: wsjrdp2027_letter.with(
+    body-size: 10pt,
+    title-text: [Bestätigung der Stornierung der Registrierung – World Scout Jamboree 2027],
+    footer-text: [Bestätigung der \ Stornierung der Registrierung],
+    role-id-name: role_id_name,
+)
 
 Hiermit bestätigen wir die Stornierung der Registrierung
 beim Ring deutscher Pfadfinder*innenverbände e.V. (rdp),
 Chausseestraße 128/129, 10115 Berlin die Registrierung für das
-deutsche Kontingent zum 26. World Scout Jamboree 2027 in Polen von
+deutsche Kontingent zum 26.~World Scout Jamboree 2027 in Polen von
 
 #par(first-line-indent: 1.25cm, [#box(height: form_line_height)#full_name])
 #par(first-line-indent: 1.25cm, [#box(height: form_line_height)geboren am #birthday_de])
-#box(height: form_line_height)#person_id_line(hitobitoid: hitobitoid, issue: deregistration_issue)
+#box(height: form_line_height)#person_id_line(hitobitoid: hitobitoid, issue: deregistration_issue, ticket-type: "Stornierung")
 
 #v(2em)
 

@@ -44,15 +44,18 @@ def attach_cancellation_confirmation(
     pdf_filename = f"{prepared.mailing_name}.pdf"
     pdf_path = ctx.make_out_path(pdf_filename)
 
+    sys_inputs = {
+        "hitobitoid": str(row["id"]),
+        "role_id_name": row['role_id_name'],
+        "full_name": row["full_name"],
+        "birthday_de": row["birthday_de"],
+        "deregistration_issue": (row["deregistration_issue"] or ""),
+    }
+
     wsjrdp2027.typst_compile(
         SELFDIR / "bestätigung_storno_registrierung.typ",
         output=pdf_path,
-        sys_inputs={
-            "hitobitoid": str(row["id"]),
-            "full_name": row["full_name"],
-            "birthday_de": row["birthday_de"],
-            "deregistration_issue": (row["deregistration_issue"] or ""),
-        },
+        sys_inputs=sys_inputs,
     )
     _LOGGER.info(f"Wrote {pdf_path}")
     pdf_bytes = pdf_path.read_bytes()

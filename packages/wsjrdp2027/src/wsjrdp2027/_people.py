@@ -41,6 +41,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "full_name",
     "short_full_name",
     "id_and_name",
+    "role_id_name",
     "street",
     "housenumber",
     "town",
@@ -466,6 +467,19 @@ def _filtered_join(*args, sep=" "):
     )
 
 
+def _compute_short_full_name(row) -> str:
+    maybe_short_last_name = row.get("additional_info", {}).get("short_last_name")
+    if maybe_short_last_name:
+        return _filtered_join(row["short_first_name"], str(maybe_short_last_name))
+    else:
+        return _filtered_join(row["short_first_name"], row["last_name"])
+
+
+def _compure_role_id_name(row) -> str:
+    short_role_name = getattr(row.get("payment_role"), "short_role_name", None)
+    return _filtered_join(short_role_name, row["id"], row["short_full_name"])
+
+
 def _enrich_people_dataframe(
     df: _pandas.DataFrame,
     *,
@@ -488,12 +502,11 @@ def _enrich_people_dataframe(
     df["full_name"] = df.apply(
         lambda r: _filtered_join(r["first_name"], r["last_name"]), axis=1
     )
-    df["short_full_name"] = df.apply(
-        lambda r: _filtered_join(r["short_first_name"], r["last_name"]), axis=1
-    )
+    df["short_full_name"] = df.apply(_compute_short_full_name, axis=1)
     df["id_and_name"] = df.apply(
         lambda r: _filtered_join(r["id"], r["short_full_name"]), axis=1
     )
+    df["role_id_name"] = df.apply(_compure_role_id_name, axis=1)
     df["today"] = today
     df["age"] = df["birthday"].map(
         lambda bday: _util.compute_age(bday, today) if bday is not None else None
