@@ -1041,6 +1041,7 @@ class WsjRdpContext:
         collection_date: _datetime.date | str | None = None,
         limit: int | None | _types.MissingType = _types.MISSING,
         out_dir: _pathlib.Path | str | None = None,
+        extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
         df_cb: _collections_abc.Callable[[_pandas.DataFrame], _pandas.DataFrame]
@@ -1058,6 +1059,7 @@ class WsjRdpContext:
             limit=limit,
             collection_date=collection_date,
             out_dir=(_pathlib.Path(out_dir) if out_dir else self.out_dir),
+            extra_static_df_cols=extra_static_df_cols,
             extra_mailing_bcc=extra_mailing_bcc,
             now=now,
             df_cb=df_cb,
