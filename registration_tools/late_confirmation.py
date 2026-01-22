@@ -298,7 +298,7 @@ def _confirm_person(
         _LOGGER.error(f"Missing --group for confirmation of {role_id_name}")
         raise SystemExit(1)
     unit_code: str | None = new_group.unit_code if new_group else None
-    confirmation_email_bcc = new_group.additional_info.get("confirmation_email_bcc")
+    support_cmt_mail_addresses = new_group.additional_info.get("support_cmt_mail_addresses")
     if skip_status_update:
         _LOGGER.warning(f"Skipping status update (--skip-status-update given)")
         new_status = old_status
@@ -345,11 +345,11 @@ def _confirm_person(
     if bcc := ctx.parsed_args.bcc:
         _LOGGER.info(f"Add extra_email_bcc (from --bcc): {bcc}")
         batch_config.extend_extra_email_bcc(bcc)
-    if confirmation_email_bcc:
+    if support_cmt_mail_addresses:
         _LOGGER.info(
-            f"Add extra_email_bcc (from additional_info['confirmation_email_bcc'] of group): {confirmation_email_bcc}",
+            f"Add extra_email_bcc (from additional_info['support_cmt_mail_addresses'] of group): {support_cmt_mail_addresses}",
         )
-        batch_config.extend_extra_email_bcc(confirmation_email_bcc)
+        batch_config.extend_extra_email_bcc(support_cmt_mail_addresses)
 
     batch_config.query.where = wsjrdp2027.PeopleWhere(id=person_id)
     if ctx.parsed_args.collection_date:
