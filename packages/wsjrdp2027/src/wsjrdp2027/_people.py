@@ -475,7 +475,7 @@ def _compute_short_full_name(row) -> str:
         return _filtered_join(row["short_first_name"], row["last_name"])
 
 
-def _compure_role_id_name(row) -> str:
+def _compute_role_id_name(row) -> str:
     short_role_name = getattr(row.get("payment_role"), "short_role_name", None)
     return _filtered_join(short_role_name, row["id"], row["short_full_name"])
 
@@ -506,7 +506,6 @@ def _enrich_people_dataframe(
     df["id_and_name"] = df.apply(
         lambda r: _filtered_join(r["id"], r["short_full_name"]), axis=1
     )
-    df["role_id_name"] = df.apply(_compure_role_id_name, axis=1)
     df["today"] = today
     df["age"] = df["birthday"].map(
         lambda bday: _util.compute_age(bday, today) if bday is not None else None
@@ -543,6 +542,7 @@ def _enrich_people_dataframe(
 
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
     df["payment_role"] = df["payment_role"].map(lambda s: PaymentRole(s) if s else None)  # fmt: skip
+    df["role_id_name"] = df.apply(_compute_role_id_name, axis=1)
     df["regular_full_fee_cents"] = df.apply(_compute_regular_full_fee_cents, axis=1)
 
     def col_from_fee_rules(

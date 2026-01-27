@@ -33,17 +33,19 @@
     doc
 }
 
+#let fill-in-box(length, height: 1.5em) = [#box(height: height)#box(align(bottom, line(length: length, stroke: 0.4pt)))]
+
 #let person_id_line(hitobitoid: "", issue: "", ticket-type: "Stornierung") = {
     if hitobitoid != "" and issue != "" [
         (Anmeldungs-ID #hitobitoid / Vorgang #ticket-type: #issue)
     ] else if hitobitoid != "" [
         (Anmeldungs-ID #hitobitoid)
     ] else [
-        (Anmeldungs-ID #box(align(bottom, line(length: 8cm, stroke: 0.4pt))))
+        (Anmeldungs-ID #box(height: 1.5em)#box(align(bottom, line(length: 8cm, stroke: 0.4pt))))
     ]
 }
 
-#let signature_line(name, columns: (10em, 20em), signature-height: 5em) = {
+#let signature_line(name, columns: (10em, 20em), signature-height: 3.5em) = {
     grid(
       columns: columns,
       rows: (signature-height, auto),
@@ -55,7 +57,7 @@
   )
 }
 
-#let signature_lines(names, columns: (10em, 20em), signature-height: 6em) = {
+#let signature_lines(names, columns: (10em, 20em), signature-height: 3.5em) = {
     for name in names {
         signature_line(if name != "" { name } else [Unterschrift], columns: columns, signature-height: signature-height)
     }

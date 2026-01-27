@@ -218,7 +218,7 @@ def _select_group(
 
     if isinstance(group_arg, int):
         return _select_group_for_group_id(conn, group_arg)
-    elif re.fullmatch(group_arg, "[0-9]+"):
+    elif re.fullmatch("[0-9]+", str(group_arg)):
         return _select_group_for_group_id(conn, int(group_arg, base=10))
     elif group_arg == "auto":
         if auto_group_id is None:
