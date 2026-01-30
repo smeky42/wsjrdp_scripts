@@ -184,10 +184,11 @@ def _row_to_mailing_to(
 ) -> list[str] | None:
     from . import _util
 
+    wsjrdp_email = row.get("additional_info", {}).get("wsjrdp_email")
     if query.include_sepa_mail_in_mailing_to:
-        candidates = [row.get("email"), row.get("sepa_mail")]
+        candidates = [row.get("email"), wsjrdp_email, row.get("sepa_mail")]
     else:
-        candidates = [row.get("email")]
+        candidates = [row.get("email"), wsjrdp_email]
     return _util.merge_mail_addresses(*candidates)
 
 

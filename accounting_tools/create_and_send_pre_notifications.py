@@ -251,7 +251,7 @@ def handle_df(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> pd.DataFrame:
     _LOGGER.info("")
     df_no_updates = df[df["skip_db_updates"] == True].copy()
     df_updates = df[df["skip_db_updates"] == False]
-    if not len(df) == len(df_no_updates) + len(df_updates):
+    if len(df) != len(df_no_updates) + len(df_updates):
         _LOGGER.error("len(df) = %s", len(df))
         _LOGGER.error("len(df_no_updates) = %s", len(df_no_updates))
         _LOGGER.error("len(df_updates) = %s", len(df_updates))
