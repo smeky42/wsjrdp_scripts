@@ -69,14 +69,11 @@ def add_user(
     password: str,
     username: str | None = None,
     enabled: bool = True,
+    # attributes: map | None = None,
 ) -> None:
     keycloak_admin = admin_login(ctx)
-    _LOGGER.info(
-        "add_user: trying to create user with: mail=%s, firstname=%s, lastname=%s",
-        email,
-        first_name,
-        last_name,
-    )
+    _LOGGER.info("add_user: trying to create user with: mail=%s, firstname=%s, lastname=%s", email, first_name, last_name)
+
     try:
         keycloak_admin.create_user(
             {
@@ -86,6 +83,7 @@ def add_user(
                 "firstName": first_name,
                 "lastName": last_name,
                 "credentials": [{"type": "password", "value": password}],
+                # "attributes": attributes or [],
             }
         )
     except Exception as e:

@@ -86,3 +86,27 @@ def add_mailbox(ctx, local_part, domain, name, password):
     # }
     # edit_resp = requests.post("https://mail.worldscoutjamboree.de/api/v1/edit/mailbox", json=edit_payload, headers=headers, timeout=30)
     # _LOGGER.info("Update Response: %s", edit_resp.text)
+
+def add_alias(ctx, email, goto):
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": ctx._config.mail_api_key,
+    }
+
+    payload = {
+        "address": email,
+        "goto": goto,
+        "active": "1"
+    }
+    
+    base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
+    print(f"{payload=}")
+    print(f"{headers=}")
+    resp = requests.post(
+        f"{base_url}/api/v1/add/alias",
+        json=payload,
+        headers=headers,
+        timeout=30,
+    )
+    # resp.raise_for_status()  # optional: raise exception for HTTP error codes
+    _LOGGER.info("Add Alias Response: %s", resp.text)

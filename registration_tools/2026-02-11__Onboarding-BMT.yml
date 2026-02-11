@@ -1,0 +1,45 @@
+updates:
+  new_status: confirmed
+  add_tags: 'Onboarding-BMT'
+query:
+  include_sepa_mail_in_mailing_to: false
+  where:
+    role: IST
+    primary_group_id: 45 # BMT
+    # id: [141, 203, 204, 352, 1000, 1189, 1395, 2145, 2147, 2279]
+  # email_only_where:
+  #   id: [142, 482]  # Test-Accounts
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: helpdesk@worldscoutjamboree.de
+email_subject: "Onboarding als BMT zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.new_status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  auch von mir herzlich Willkommen im Team!
+
+  Wir vom Orga Team machen das Onboarding fürs WSJ.
+
+  All unsere Zugänge werden von einer zentralen Instanz Keycloak verwaltet.
+  D.h. für dich, dass du dich überall mit dem Button "WSJ Login" oder "Single Sign On" anmeldest.
+  Von dort wirst du weiter auf login.worldscoutjamboree.de geleitet wo du deinen Username und Passwort angibst.
+
+  Nutzer: {{ row.email_alias }}
+  Passwort: {{ row.password }} 
+
+  Für das BMT könnt ihr damit auf folgende Tools zugreifen:
+
+  Wiki: https://wiki.worldscoutjamboree.de/
+  Cloud: https://cloud.worldscoutjamboree.de
+
+  Die Mailadresse {{ row.email_alias }} ist auch schon angelegt und leitet an deine private Mailadresse weiter. 
+  
+  Falls es Probleme gibt, schreib gerne an helpdesk@worldscoutjamboree.de 
+
+  Weitere Infos kommen direkt von Flo und Markus. 
+
+  Viele Grüße und Gut Pfad!
+
+  Peter
+
