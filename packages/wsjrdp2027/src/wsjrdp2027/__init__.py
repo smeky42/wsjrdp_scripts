@@ -27,6 +27,7 @@ from ._payment import (
 from ._payment_role import PaymentRole as PaymentRole
 from ._people import (
     load_people_dataframe as load_people_dataframe,
+    load_person_row as load_person_row,
     write_people_dataframe_to_xlsx as write_people_dataframe_to_xlsx,
 )
 from ._people_query import PeopleQuery as PeopleQuery, PeopleWhere as PeopleWhere
@@ -94,6 +95,9 @@ if _typing.TYPE_CHECKING:
         CamtTransactionDetails as CamtTransactionDetails,
         CamtTxUniqueDbKey as CamtTxUniqueDbKey,
     )
+    from ._groups import (
+        Group as Group,
+    )
     from ._pain import PainMessage as PainMessage
 
 
@@ -114,6 +118,7 @@ __all__ = [
     "CamtMessage",
     "CamtTransactionDetails",
     "CamtTxUniqueDbKey",
+    "Group",
     "MailClient",
     "PainMessage",
     "PaymentRole",
@@ -140,6 +145,7 @@ __all__ = [
     "load_payment_dataframe",
     "load_payment_dataframe_from_payment_initiation",
     "load_people_dataframe",
+    "load_person_row",
     "merge_mail_addresses",
     "nan_to_none",
     "pg_add_person_tag",
@@ -279,6 +285,7 @@ __ALIASES__ = {
     "PainMessage": (f"._pain", "PainMessage"),
     "keycloak": (".keycloak", ""),
     "mailbox": (".mailbox", ""),
+    "Group": ("._groups", "Group"),
 }
 
 

@@ -139,7 +139,8 @@ PEOPLE_DATAFRAME_COLUMNS = [
 
 
 def is_minor_or_yp(row: _pandas.Series) -> bool:
-    is_minor = row["age"] < 18
+    age = int(row['age'])
+    is_minor = age < 18
     payment_role = row["payment_role"]
     if payment_role is None:
         is_yp = None
@@ -147,7 +148,7 @@ def is_minor_or_yp(row: _pandas.Series) -> bool:
         is_yp = payment_role.endswith("::Group::Unit::Member")
     else:
         is_yp = payment_role.is_yp
-    return is_yp or (row.get("primary_group_id", 0) in (3, 6)) or is_minor
+    return is_yp or is_minor
 
 
 def get_contract_additional_names(row: _pandas.Series) -> list[str]:
@@ -1182,3 +1183,19 @@ def _update_roles(
                 event="create",
                 created_at=now,
             )
+
+
+def load_person_row(conn: _psycopg.Connection, person_id: int) -> _pandas.Series:
+    from . import _people_query
+
+    df = load_people_dataframe(
+        conn,
+        where=_people_query.PeopleWhere(id=person_id),
+        log_resulting_data_frame=False,
+    )
+    if df.empty:
+        err_msg = f"Could not load person with id {person_id}"
+        _LOGGER.error(err_msg)
+        raise RuntimeError(err_msg)
+    row = df.iloc[0]
+    return row
