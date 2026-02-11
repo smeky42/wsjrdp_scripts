@@ -1,18 +1,14 @@
 updates:
-  new_status: confirmed
   add_tags: 'Onboarding-BMT'
 query:
   include_sepa_mail_in_mailing_to: false
   where:
-    role: IST
-    primary_group_id: 45 # BMT
-    # id: [141, 203, 204, 352, 1000, 1189, 1395, 2145, 2147, 2279]
-  # email_only_where:
-  #   id: [142, 482]  # Test-Accounts
+    role: IST 
+    primary_group_id: 45 # BMT using Dataframe from script, not filtering via query --- IGNORE ---
 from_addr: anmeldung@worldscoutjamboree.de
 email_from: helpdesk@worldscoutjamboree.de
 email_subject: "Onboarding als BMT zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
-summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.new_status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
 signature: "{{ EMAIL_SIGNATURE_CMT }}"
 content: |
   Hallo {{ row.greeting_name }},
