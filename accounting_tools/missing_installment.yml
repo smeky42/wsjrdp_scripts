@@ -1,17 +1,17 @@
 query:
-  collection_date: 2026-02-05
+  collection_date: 2026-03-05  # Datum des nächsten Einzugs!
   where:
     id: []
 from_addr: finanzen@worldscoutjamboree.de
 email_from: finanzen@worldscoutjamboree.de
-extra_email_bcc: finanzen@worldscoutjamboree.de
+extra_email_bcc: ["finanzen@worldscoutjamboree.de", "finance-team@worldscoutjamboree.de"]
 email_subject: WSJ27 Einzug {{ missing_installment_year_month }} Retoure {{ role_id_name }} {{ missing_installment_issue }}
 content: |
   Hallo {{ row.greeting_name }},
 
-  wir haben festgestellt, dass der Januar-Lastschrifteinzug bei dir fehlgeschlagen ist. Bei uns ist eine Rücklastschrift in Höhe von {{ retoure_cents | format_cents_as_eur_de }} eingegangen. Davon sind {{ bank_fees_cents | format_cents_as_eur_de }} Gebühren, die wir auf den zu zahlenden Betrag aufschlagen müssen.
+  wir haben festgestellt, dass der {{ estimated_collection_date | month_de }}-Lastschrifteinzug bei dir fehlgeschlagen ist. Bei uns ist eine Rücklastschrift in Höhe von {{ retoure_cents | format_cents_as_eur_de }} eingegangen. Davon sind {{ bank_fees_cents | format_cents_as_eur_de }} Gebühren, die wir auf den zu zahlenden Betrag aufschlagen müssen.
 
-  Wir bitten dich, uns bis spätestens 27.01.2026 zu bestätigen, dass wir den fehlenden Betrag im Februar (mit der Februar-Rate) einziehen können. Das ergibt dann einen Einzug in Höhe von {{ row.open_amount_cents | format_cents_as_eur_de }}.
+  Wir bitten dich, uns bis spätestens {{ response_due_date | date_de }} zu bestätigen, dass wir den fehlenden Betrag im {{ upcoming_collection_date | month_de }} (mit der {{ upcoming_collection_date | month_de }}-Rate) einziehen können. Das ergibt dann einen Einzug in Höhe von {{ row.open_amount_cents | format_cents_as_eur_de }}.
 
   Nimm bitte sofort mit uns Kontakt auf, wenn dir das finanziell nicht möglich ist. Wir können auch über eine Anpassung des Zahlungsplans reden und wollen weitere Rücklastschrift-Gebühren vermeiden.
 

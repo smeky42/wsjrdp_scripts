@@ -1,24 +1,14 @@
 #!/usr/bin/env -S uv run
 from __future__ import annotations
 
-import dataclasses as _dataclasses
 import datetime as _datetime
 import logging
 import pathlib as _pathlib
-import pprint
-import sys
-import typing as _typing
+import textwrap
 
 import pandas as _pandas
 import psycopg as _psycopg
-import psycopg.sql as _psycopg_sql
 import wsjrdp2027
-
-
-if _typing.TYPE_CHECKING:
-    import string.templatelib as _string_templatelib
-
-    import psycopg.sql as _psycopg_sql
 
 
 _SELF_NAME = _pathlib.Path(__file__).stem
@@ -27,103 +17,87 @@ _SELFDIR = _pathlib.Path(__file__).parent
 _LOGGER = logging.getLogger(__name__)
 
 
-@_dataclasses.dataclass(kw_only=True)
-class Group:
-    id: int
-    parent_id: int | None = None
-    short_name: str | None = None
-    name: str
-    type: str | None = None
-    email: str | None = None
-    description: str
-    additional_info: dict
-
-    @property
-    def unit_code(self) -> str | None:
-        return self.additional_info.get("unit_code")
-
-    @property
-    def group_code(self) -> str | None:
-        return self.additional_info.get("group_code")
-
-    def __getitem__(self, key: str) -> _typing.Any:
-        try:
-            return getattr(self, key)
-        except AttributeError:
-            raise KeyError(key) from None
-
-
-def _select_group_for_where(
-    conn, where: _psycopg_sql.Composable | _string_templatelib.Template
-) -> Group:
-    return Group(**wsjrdp2027.pg_select_group_dict_for_where(conn, where=where))
-
-
-def _select_group_for_group_name(conn, group_name: str) -> Group:
-    return _select_group_for_where(
-        conn,
-        t'"name" = {group_name} OR "short_name" = {group_name} OR "additional_info"->>\'group_code\' = {group_name}',
-    )
-
-
-def _select_group_for_group_id(conn, group_id: int) -> Group:
-    return _select_group_for_where(conn, t'"id" = {group_id}')
-
-
-def _select_group(
-    conn, group_arg: str | int, *, auto_group_id: int | None = None
-) -> Group:
-    import re
-
-    if isinstance(group_arg, int):
-        return _select_group_for_group_id(conn, group_arg)
-    elif re.fullmatch(group_arg, "[0-9]+"):
-        return _select_group_for_group_id(conn, int(group_arg, base=10))
-    elif group_arg == "auto":
-        if auto_group_id is None:
-            raise RuntimeError("group='auto' and auto_group_id=None not supported")
-        return _select_group_for_group_id(conn, auto_group_id)
-    else:
-        return _select_group_for_group_name(conn, group_arg)
-
-
-def _load_person_row(
-    ctx: wsjrdp2027.WsjRdpContext,
-    conn: _psycopg.Connection,
-    person_id: int,
-    collection_date=None,
-) -> _pandas.Series:
-    df = wsjrdp2027.load_people_dataframe(
-        conn,
-        query=wsjrdp2027.PeopleQuery(
-            where=wsjrdp2027.PeopleWhere(id=person_id), collection_date=collection_date
-        ),
-        log_resulting_data_frame=False,
-    )
-    if df.empty:
-        _LOGGER.error(f"Could not load person with id {person_id}")
-        raise SystemExit(1)
-    row = df.iloc[0]
-    if row["status"] not in ("reviewed", "confirmed"):
-        _LOGGER.error(
-            f"Person {row['id_and_name']} has status {row['status']!r}, expected 'reviewed' or 'confirmed'"
-        )
-        if ctx.is_production:
-            raise SystemExit(1)
-        else:
-            _LOGGER.error("NOT IN PROD => continue")
-    return row
-
-
 def create_argument_parser():
     import argparse
 
     p = argparse.ArgumentParser()
     p.add_argument("--skip-db-updates", action="store_true", default=None)
     p.add_argument("--skip-email", action="store_true", default=None)
-    # p.add_argument("--issue", required=True)
     p.add_argument("id", type=int)
     return p
+
+
+def _find_retoure_row(
+    conn: _psycopg.Connection,
+    *,
+    person_id: int,
+    retoure_cents: int,
+    estimated_collection_date: _datetime.date,
+) -> _pandas.Series | None:
+    start_date = estimated_collection_date.replace(day=1)
+    end_date = (estimated_collection_date + _datetime.timedelta(days=31)).replace(
+        day=1
+    ) - _datetime.timedelta(days=1)
+    df = wsjrdp2027.pg_select_dataframe(
+        conn,
+        t"""SELECT * FROM accounting_entries
+WHERE subject_id = {person_id}
+  AND value_date >= {start_date} AND value_date <= {end_date}
+  AND amount_cents = {-retoure_cents}
+""",
+    )
+    if len(df) == 1:
+        return df.iloc[0]
+    else:
+        return None
+
+
+def _find_tx_row(conn: _psycopg.Connection, *, id: int | None) -> _pandas.Series | None:
+    if id is None:
+        return None
+    df = wsjrdp2027.pg_select_dataframe(
+        conn, t"SELECT * FROM wsjrdp_camt_transactions WHERE id = {id}"
+    )
+    if len(df) == 1:
+        return df.iloc[0]
+    else:
+        return None
+
+
+def _create_fin_issue(
+    *,
+    ctx: wsjrdp2027.WsjRdpContext,
+    conn: _psycopg.Connection,
+    person_row: _pandas.Series,
+    estimated_collection_date: _datetime.date,
+    upcoming_collection_date: _datetime.date,
+    batch_config: wsjrdp2027.BatchConfig,
+) -> str:
+    from wsjrdp2027 import _pg
+
+    person_id = person_row["id"]
+
+    collection_year_month = estimated_collection_date.strftime("%Y-%m")
+    summary = f"Einzug {collection_year_month} Retoure {person_row['role_id_name']}"
+    description = f"""{person_row["greeting_name"]} in Hitobito: [https://anmeldung.worldscoutjamboree.de/people/{person_id}]
+"""
+    labels = ["Retoure", "Rücklastschrift", f"Einzug-{collection_year_month}"]
+
+    with ctx.login_helpdesk() as helpdesk:
+        customer_request = helpdesk.create_fin_customer_request(
+            summary=summary,
+            description=description,
+            labels=labels,
+        )
+
+        missing_installment_issue = customer_request["issueKey"]
+        _LOGGER.info(f"Created customer request {missing_installment_issue}")
+
+    _pg._execute_query_fetch_id(
+        conn,
+        t"UPDATE people SET additional_info['missing_installment_issue'] = to_jsonb({missing_installment_issue}::text) WHERE id = {person_id} RETURNING id;",
+    )
+    return missing_installment_issue
 
 
 def _send_missing_installment_notification(
@@ -134,9 +108,11 @@ def _send_missing_installment_notification(
     wsj_role: str,
     batch_name: str,
 ) -> None:
+    from wsjrdp2027 import _pg
+
     person_id: int = int(person_row["id"])
     primary_group_id = int(person_row["primary_group_id"])
-    group = _select_group(conn, group_arg=primary_group_id)
+    group = wsjrdp2027.Group.db_load(conn, group_arg=primary_group_id)
     role_id_name = f"{wsj_role} {person_row['id_and_name']}"
 
     # create new batch config
@@ -150,56 +126,101 @@ def _send_missing_installment_notification(
         jinja_extra_globals={
             "role_id_name": role_id_name,
             "missing_installment_issue": missing_installment_issue,
+            "response_due_date": ctx.today + _datetime.timedelta(days=7),
         },
     )
     assert batch_config.jinja_extra_globals is not None
-    collection_date = batch_config.query.collection_date
-    assert collection_date is not None
-    person_row = _load_person_row(
-        ctx, conn, person_id=person_id, collection_date=collection_date
+    upcoming_collection_date = batch_config.query.collection_date
+    assert upcoming_collection_date is not None
+    person_row = wsjrdp2027.load_person_row(
+        conn, person_id=person_id, collection_date=upcoming_collection_date
     )
-    prev_month_person_row = _load_person_row(
-        ctx,
+
+    estimated_collection_date = (
+        upcoming_collection_date - _datetime.timedelta(days=30)
+    ).replace(day=5)
+
+    prev_month_person_row = wsjrdp2027.load_person_row(
         conn,
         person_id=person_id,
-        collection_date=collection_date - _datetime.timedelta(days=30),
+        collection_date=estimated_collection_date,
     )
     retoure_cents = prev_month_person_row["open_amount_cents"]
     missing_installment_cents = prev_month_person_row[
         "amount_due_in_collection_date_month_cents"
     ]
     bank_fees_cents = retoure_cents - missing_installment_cents
+
     batch_config.jinja_extra_globals.update(
         {
-            "missing_installment_year_month": prev_month_person_row[
-                "collection_date"
-            ].strftime("%Y-%m"),
+            "missing_installment_year_month": estimated_collection_date.strftime(
+                "%Y-%m"
+            ),
             "retoure_cents": retoure_cents,
             "missing_installment_cents": missing_installment_cents,
             "bank_fees_cents": bank_fees_cents,
+            "upcoming_collection_date": upcoming_collection_date,
+            "estimated_collection_date": estimated_collection_date,
         }
     )
 
-    support_cmt_mail_addresses = group.additional_info.get("support_cmt_mail_addresses")
-    batch_config.extend_extra_email_bcc(support_cmt_mail_addresses)
+    ae_row = _find_retoure_row(
+        conn,
+        person_id=person_id,
+        retoure_cents=retoure_cents,
+        estimated_collection_date=estimated_collection_date,
+    )
+    tx_row = _find_tx_row(
+        conn, id=(ae_row["camt_transaction_id"] if ae_row is not None else None)
+    )
 
-    if missing_installment_issue == "FIN-000":
-        from wsjrdp2027 import _pg
-
-        prep = ctx.load_people_and_prepare_batch(
-            batch_config, log_resulting_data_frame=False
+    print(flush=True)
+    if ae_row is not None:
+        _LOGGER.info(
+            "retoure accounting entry:\n%s", textwrap.indent(ae_row.to_string(), "  | ")
         )
-        assert prep.messages
-        msg = prep.messages[0].message
-        assert msg
-        _LOGGER.info("Subject:\n\n%s\n\n", msg["Subject"])
+    if tx_row is not None:
+        _LOGGER.info(
+            "retoure camt tx:\n%s", textwrap.indent(tx_row.to_string(), "  | ")
+        )
+    _LOGGER.info(f"retoure_cents: {retoure_cents} (prev month open_amount_cents)")
+    _LOGGER.info(f"missing_installment_cents: {missing_installment_cents} (prev month)")
+    print(flush=True)
 
-        actual_issue = input("Actual FIN issue: ")
-        missing_installment_issue = actual_issue
-        batch_config.jinja_extra_globals["missing_installment_issue"] = actual_issue
+    ctx.require_approval_to_run_in_prod()
+
+    # support_cmt_mail_addresses = group.additional_info.get("support_cmt_mail_addresses")
+    # batch_config.extend_extra_email_bcc(support_cmt_mail_addresses)
+
+    if missing_installment_issue in (None, "", "FIN-000"):
+        missing_installment_issue = _create_fin_issue(
+            ctx=ctx,
+            conn=conn,
+            batch_config=batch_config,
+            estimated_collection_date=estimated_collection_date,
+            upcoming_collection_date=upcoming_collection_date,
+            person_row=person_row,
+        )
+        batch_config.jinja_extra_globals["missing_installment_issue"] = (
+            missing_installment_issue
+        )
+
+    if ae_row is not None and not ae_row["comment"]:
         _pg._execute_query_fetch_id(
             conn,
-            t"UPDATE people SET additional_info['missing_installment_issue'] = to_jsonb({missing_installment_issue}::text) WHERE id = {person_id} RETURNING id;",
+            t"""UPDATE accounting_entries SET comment = {missing_installment_issue} WHERE id = {ae_row["id"]} RETURNING id;""",
+        )
+        _LOGGER.info(
+            f"Updated comment of accounting_entry {ae_row['id']} to {missing_installment_issue!r}"
+        )
+
+    if tx_row is not None and not tx_row["comment"]:
+        _pg._execute_query_fetch_id(
+            conn,
+            t"""UPDATE wsjrdp_camt_transactions SET comment = {missing_installment_issue} WHERE id = {tx_row["id"]} RETURNING id;""",
+        )
+        _LOGGER.info(
+            f"Updated comment of camt tx {tx_row['id']} to {missing_installment_issue!r}"
         )
 
     prepared_batch = ctx.load_people_and_prepare_batch(
@@ -220,7 +241,7 @@ def main(argv=None):
     print(flush=True)
     _LOGGER.info(f"Send missing installment notification to {person_id}")
     with ctx.psycopg_connect() as conn:
-        person_row = _load_person_row(ctx, conn, person_id=person_id)
+        person_row = wsjrdp2027.load_person_row(conn, person_id=person_id)
         short_role_name = person_row["payment_role"].short_role_name
         role_id_name = "-".join(
             [
@@ -251,4 +272,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    __import__("sys").exit(main())

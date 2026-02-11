@@ -139,7 +139,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
 
 
 def is_minor_or_yp(row: _pandas.Series) -> bool:
-    age = int(row['age'])
+    age = int(row["age"])
     is_minor = age < 18
     payment_role = row["payment_role"]
     if payment_role is None:
@@ -1185,12 +1185,20 @@ def _update_roles(
             )
 
 
-def load_person_row(conn: _psycopg.Connection, person_id: int) -> _pandas.Series:
+def load_person_row(
+    conn: _psycopg.Connection,
+    person_id: int,
+    *,
+    collection_date: _datetime.date | str | None = None,
+) -> _pandas.Series:
     from . import _people_query
 
     df = load_people_dataframe(
         conn,
-        where=_people_query.PeopleWhere(id=person_id),
+        query=_people_query.PeopleQuery(
+            where=_people_query.PeopleWhere(id=person_id),
+            collection_date=collection_date,
+        ),
         log_resulting_data_frame=False,
     )
     if df.empty:
