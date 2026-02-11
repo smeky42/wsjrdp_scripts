@@ -1,0 +1,14 @@
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: IST-Support <ist@worldscoutjamboree.de>
+email_subject: "WSJ27 Bestätigung der Abmeldung {{ row.role_id_name }}{% if row.deregistration_issue %} {{ row.deregistration_issue }}{% endif %}"
+extra_email_bcc: ist@worldscoutjamboree.de
+signature: "{{ EMAIL_SIGNATURE_DAVID_FRITZSCHE }}"
+content: |
+  {% for name in row.contract_names %}Hallo {{ name }}{% if not loop.last %}, {% endif %}{% endfor %},
+
+  {% set num_names = row.contract_names | length %}schade, dass {% if num_names > 1 %}{{ row.greeting_name }}{% else %}Du{% endif %} nicht mit zum Jamboree {% if num_names > 1 %}kommt{% else %}kommst{% endif %}.
+  Anbei die Bestätigung deiner Abmeldung.
+  Wir wünschen {% if num_names > 1 %}{{ row.greeting_name }}{% else %}dir{% endif %} viel Spaß bei allen anderen Pfadi-Abenteuern!
+
+  Liebe Grüße und Gut Pfad
+  Daffi

@@ -1111,6 +1111,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-editor"
+version = "1.0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0a/85/78f4a216d28343a67b7397c99825cff336330893f00601443f7c7b2f2234/python-editor-1.0.4.tar.gz", hash = "sha256:51fda6bcc5ddbbb7063b2af7509e43bd84bfc32a4ff71349ec7847713882327b", size = 7132, upload-time = "2019-02-01T07:33:13.653Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c6/d3/201fc3abe391bbae6606e6f1d598c15d367033332bd54352b12f35513717/python_editor-1.0.4-py3-none-any.whl", hash = "sha256:1bf6e860a8ad52a14c3ee1252d5dc25b2030618ed80c022598f00176adc8367d", size = 4877, upload-time = "2019-02-01T07:33:12.47Z" },
+]
+
+[[package]]
 name = "python-keycloak"
 version = "7.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1310,6 +1319,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/76/3a/24325baaf9cbc6ee9f6b8c66fe8079e0b8a85c0f21876c0ef52a8c8ddc95/sepaxml-2.7.0.tar.gz", hash = "sha256:77c6ea8c4ea59e53dcabed1d5d8bb79559a0aac47cf25c8e78b06ff5fef6c2bd", size = 53222, upload-time = "2025-09-02T12:28:15.783Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1d/06/7128b1dee5d616587b5e83597d1e6a651c56668820c3b8f2d7e870c1ae76/sepaxml-2.7.0-py3-none-any.whl", hash = "sha256:6644f695c66c2bf8f49065d4d7b0814da42140d03292131ec08e09798ad07b5d", size = 60537, upload-time = "2025-09-02T12:28:14.702Z" },
+]
+
+[[package]]
+name = "setuptools"
+version = "82.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/f3/748f4d6f65d1756b9ae577f329c951cda23fb900e4de9f70900ced962085/setuptools-82.0.0.tar.gz", hash = "sha256:22e0a2d69474c6ae4feb01951cb69d515ed23728cf96d05513d36e42b62b37cb", size = 1144893, upload-time = "2026-02-08T15:08:40.206Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e1/c6/76dc613121b793286a3f91621d7b75a2b493e0390ddca50f11993eadf192/setuptools-82.0.0-py3-none-any.whl", hash = "sha256:70b18734b607bd1da571d097d236cfcfacaf01de45717d59e6e04b96877532e0", size = 1003468, upload-time = "2026-02-08T15:08:38.723Z" },
 ]
 
 [[package]]
@@ -1746,10 +1764,12 @@ dependencies = [
     { name = "pandas" },
     { name = "paramiko" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "python-editor" },
     { name = "pyyaml" },
     { name = "saxonche" },
     { name = "schwifty" },
     { name = "sepaxml" },
+    { name = "setuptools" },
     { name = "sshtunnel" },
     { name = "typst" },
     { name = "xlsxwriter" },
@@ -1778,10 +1798,12 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "paramiko", specifier = "<4" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.2" },
+    { name = "python-editor" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "saxonche", specifier = ">=12.9.0" },
     { name = "schwifty", specifier = ">=2025.9.0" },
     { name = "sepaxml", specifier = ">=2.7.0" },
+    { name = "setuptools" },
     { name = "sshtunnel", specifier = ">=0.4.0" },
     { name = "typst", specifier = ">=0.14" },
     { name = "xlsxwriter", specifier = ">=3.2.5" },

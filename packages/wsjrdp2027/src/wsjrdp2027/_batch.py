@@ -31,10 +31,18 @@ __all__ = [
 _LOGGER = _logging.getLogger(__name__)
 
 
+class _MissingType:
+    pass
+
+
+_MISSING = _MissingType()
+
+
 @_dataclasses.dataclass(kw_only=True)
 class PreparedEmailMessage:
     mailing_name: str
     message: _email_message.EmailMessage | None = None
+    content: str | None = None
     row: _pandas.Series | None = None
     summary: str
     eml_name: str
@@ -45,6 +53,7 @@ class PreparedEmailMessage:
         *,
         mailing_name: str,
         message: _email_message.EmailMessage | None = None,
+        content: str | None = None,
         row: _pandas.Series | None = None,
         summary: str,
         eml_name: str | None = None,
@@ -52,6 +61,7 @@ class PreparedEmailMessage:
     ) -> None:
         self.mailing_name = mailing_name
         self.message = message
+        self.content = content
         self.row = row
         self.summary = summary
         self.eml_name = eml_name if eml_name else f"{self.mailing_name}.eml"
@@ -438,9 +448,11 @@ class BatchConfig:
         missing = object()
         try:
             if query is None:
-                query =  _people_query.PeopleQuery.normalize(config.get("query"))
+                query = _people_query.PeopleQuery.normalize(config.get("query"))
                 if where is not None:
-                    query = query.replace(where=_people_query.PeopleWhere.normalize(where))
+                    query = query.replace(
+                        where=_people_query.PeopleWhere.normalize(where)
+                    )
             else:
                 query = _normalize_query_where_or_none(query, where, logger=None)
             if query:
@@ -591,8 +603,17 @@ class BatchConfig:
         self.extra_email_bcc = _util.to_str_list_or_none(self.extra_email_bcc, *args)
         return self.extra_email_bcc
 
-    def __to_yaml__(self) -> str:
+    def __to_yaml__(
+        self,
+        content: str | None | _MissingType = _MISSING,
+        signature: str | None | _MissingType = _MISSING,
+    ) -> str:
         from . import _util
+
+        if content is _MISSING:
+            content = self.content
+        if signature is _MISSING:
+            signature = self.signature
 
         d = {
             "dry_run": self.dry_run,
@@ -608,9 +629,9 @@ class BatchConfig:
             "extra_email_to": self.extra_email_to,
             "extra_email_cc": self.extra_email_cc,
             "extra_email_bcc": self.extra_email_bcc,
-            "content": (None if self.content_file else self.content),
+            "content": (None if self.content_file else content),
             "html_content": (None if self.html_content_file else self.html_content),
-            "signature": self.signature,
+            "signature": signature,
             **{
                 k: str(v)
                 for k in ["base_dir", "content_file", "html_content_file"]
@@ -818,6 +839,7 @@ class BatchConfig:
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
+        open_editor: bool | None = None,
     ) -> PreparedBatch:
         import time
 
@@ -845,13 +867,20 @@ class BatchConfig:
                 msg_cb=msg_cb,
                 msgid_idstring=msgid_idstring,
                 msgid_domain=msgid_domain,
+                open_editor=open_editor,
             )
             for _, row in df.iterrows()
         )
         toc = time.monotonic()
         if len(df) > 5 or (toc - tic) > 0.1:
             _LOGGER.info("  finished preparation of mailing (%g seconds)", toc - tic)
-        config_yaml = self.__to_yaml__().encode("utf-8")
+        if len(messages) == 1 and messages[0].content:
+            new_content = messages[0].content
+            config_yaml = self.__to_yaml__(content=new_content, signature=None).encode(
+                "utf-8"
+            )
+        else:
+            config_yaml = self.__to_yaml__().encode("utf-8")
         return PreparedBatch(
             name=self.name,
             df=df,
@@ -877,13 +906,14 @@ class BatchConfig:
         policy: _email_policy.EmailPolicy | None = None,
         msgid_idstring: str | None = None,
         msgid_domain: str | None = None,
+        open_editor: bool | None = None,
     ) -> PreparedEmailMessage:
         from . import _util
 
         row_dict = _row_to_row_dict(row)
 
         id = row["id"]
-        msg = email_message_from_row(
+        msg_for_row = email_message_from_row(
             row_dict,
             content=self.content,
             html_content=self.html_content,
@@ -901,13 +931,17 @@ class BatchConfig:
             msgid_domain=msgid_domain,
             context={"query": self},
             extra_context=self.jinja_extra_globals,
+            open_editor=open_editor,
         )
         prepared = PreparedEmailMessage(
             mailing_name=self.name,
-            message=msg,
+            message=msg_for_row.msg,
+            content=msg_for_row.content,
             row=row,
             eml_name=f"{self.name}.{id}.eml",
-            summary=_util.render_template(self.summary, {"row": row_dict, "msg": msg}),
+            summary=_util.render_template(
+                self.summary, {"row": row_dict, "msg": msg_for_row.msg}
+            ),
         )
         if msg_cb:
             msg_cb(prepared)
@@ -953,6 +987,13 @@ def _strip_html_tags_html2text(html_content: str) -> str:
     return html2text.html2text(html_content)
 
 
+@_dataclasses.dataclass(kw_only=True)
+class EmailMessageForRow:
+    row: _pandas.Series | dict[str, _typing.Any]
+    content: str | None
+    msg: _email_message.EmailMessage | None
+
+
 def email_message_from_row(
     row: _pandas.Series | dict[str, _typing.Any],
     *,
@@ -972,7 +1013,8 @@ def email_message_from_row(
     msgid_domain: str | None = None,
     context: dict | None = None,
     extra_context: dict | None = None,
-) -> _email_message.EmailMessage | None:
+    open_editor: bool | None = None,
+) -> EmailMessageForRow:
     import email.message
     import email.utils
 
@@ -986,7 +1028,7 @@ def email_message_from_row(
     context = context or {}
 
     if content is None and html_content is None:
-        return None
+        return EmailMessageForRow(row=row, msg=None, content=None)
 
     email_to = _util.to_str_list_or_none(email_to)
     email_cc = _util.to_str_list_or_none(email_cc)
@@ -1044,20 +1086,41 @@ def email_message_from_row(
         if html_content:
             content = _strip_html_tags_html2text(html_content)
         else:
-            return None
+            return EmailMessageForRow(row=row, msg=None, content=None)
     content = render_template(content)
     if signature:
         signature = render_template(signature).lstrip()
         if not signature.startswith("-- \n"):
             signature = "-- \n" + signature
         content = content.rstrip() + "\n\n" + signature
+
+    content = _maybe_edit_content(content, open_editor=open_editor)
+
     msg.set_content(content)
 
     if html_content:
         html_content = render_template(html_content)
         msg.add_alternative(html_content, subtype="html")
 
-    return msg
+    return EmailMessageForRow(row=row, msg=msg, content=content)
+
+
+def _maybe_edit_content(content: str, *, open_editor: bool | None = None) -> str:
+    import textwrap
+
+    import editor as _editor
+
+    if open_editor:
+        new_content_bytes = _editor.edit(contents=content.encode("utf-8"))
+        new_content = new_content_bytes.decode("utf-8")
+        _LOGGER.info(
+            "Replace Email content:\nOLD:\n%s\nNEW:\n%s",
+            textwrap.indent(content, "  | "),
+            textwrap.indent(new_content, "  | "),
+        )
+        return new_content
+    else:
+        return content
 
 
 def write_data_and_send_mailing(
