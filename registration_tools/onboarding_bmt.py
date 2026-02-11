@@ -83,7 +83,7 @@ def create_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):
         password = row["password"]
         first_name = row["first_name"]
         last_name = row["last_name"]
-        role = row["payment_role"]
+        role = "BMT"
         email_alias = row["email_alias"]
         private_email = row["email"]
         moss_email = str("wsj27-" + str(row["id"]) + "@worldscoutjamboree.de")
@@ -106,6 +106,8 @@ def create_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):
         )
         wsjrdp2027.keycloak.add_user_to_group(ctx, username=email_alias, group_name=role)
         wsjrdp2027.mailbox.add_alias(ctx, email=email_alias, goto=private_email)
+        wsjrdp2027.mailbox.add_alias(ctx, email=moss_email, goto=private_email)
+
 
 
 def main(argv=None):
