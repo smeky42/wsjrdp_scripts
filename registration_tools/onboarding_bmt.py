@@ -63,15 +63,13 @@ def onboarding_and_mail(conn, pdf: _pandas.DataFrame, ctx: wsjrdp2027.WsjRdpCont
         ctx.parsed_args.yaml_file
     )
 
-    filtered = pdf[pdf["primary_group_id"].isin([45])] # BMT
-
     try:
-        # create_accounts(ctx, filtered)
+        create_accounts(ctx, pdf)
 
         update_and_mail(
                 batch_config=batch_config,
                 ctx=ctx,
-                df=filtered,
+                df=pdf,
             )
 
     except Exception as e:
@@ -88,7 +86,7 @@ def create_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):
         role = row["payment_role"]
         email_alias = row["email_alias"]
         private_email = row["email"]
-        moss_email = str("wsj2027" + str(row["id"]) + "@worldscoutjamboree.de")
+        moss_email = str("wsj27-" + str(row["id"]) + "@worldscoutjamboree.de")
 
         _LOGGER.info(
             "Creating account for %s %s (%s %s) - %s",
@@ -104,7 +102,7 @@ def create_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):
             first_name=first_name,
             last_name=last_name,
             password=password,
-            attributes={"mossEmail": moss_email},
+            attributes={"mossEmail": [moss_email]},
         )
         wsjrdp2027.keycloak.add_user_to_group(ctx, username=email_alias, group_name=role)
         wsjrdp2027.mailbox.add_alias(ctx, email=email_alias, goto=private_email)
@@ -125,7 +123,7 @@ def main(argv=None):
         pdf = wsjrdp2027.load_people_dataframe(
             conn,
             query=wsjrdp2027.PeopleQuery(
-                where=wsjrdp2027.PeopleWhere(exclude_deregistered=True)
+                where=wsjrdp2027.PeopleWhere(exclude_deregistered=True, primary_group_id=45)
             ),
         )
         _LOGGER.info("Found %s people", len(pdf))
@@ -148,22 +146,7 @@ def main(argv=None):
             lambda r: wsjrdp2027._util.generate_password(), axis=1
         )
 
-
-
-        wsjrdp2027.keycloak.add_user(
-            ctx,
-            email="testbmt@bmt.worldscoutjamboree.de",
-            first_name="Test",
-            last_name="BMT",
-            password=wsjrdp2027._util.generate_password(),
-            username="testbmt@bmt.worldscoutjamboree.de",
-            enabled=True,
-            # attributes=[{"name": "mossEmail", "value": "wsjTest-2000@worldscoutjamboree.de"}],
-        )
-        wsjrdp2027.keycloak.add_user_to_group(ctx, username="testbmt@bmt.worldscoutjamboree.de", group_name="BMT")
-        wsjrdp2027.mailbox.add_alias(ctx, email="testbmt@bmt.worldscoutjamboree.de", goto="bmt@smeky.de")
-
-        # onboarding_and_mail(conn, pdf, ctx)
+        onboarding_and_mail(conn, pdf, ctx)
 
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)
