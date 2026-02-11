@@ -22,7 +22,7 @@ if _typing.TYPE_CHECKING:
     import psycopg as _psycopg
     import sshtunnel as _sshtunnel
 
-    from . import _batch, _mail_client, _mail_config, _people_query
+    from . import _batch, _helpdesk, _mail_client, _mail_config, _people_query
 
 
 __all__ = [
@@ -71,6 +71,12 @@ class WsjRdpContextConfig:
     keycloak_admin_password: str = ""
     keycloak_realm: str = ""
     keycloak_user_realm: str | None = None
+
+    helpdesk_url: str = "https://helpdesk.worldscoutjamboree.de"
+    helpdesk_username: str = "admin"
+    helpdesk_password: str = ""
+    helpdesk_fin_service_desk_id: str | int = 3
+    helpdesk_fin_request_type_id: str | int = 33
 
     @classmethod
     def from_file(cls, path: str | _pathlib.Path | None = None) -> _typing.Self:
@@ -161,6 +167,13 @@ class WsjRdpContextConfig:
             keycloak_admin_password=config.get("keycloak_admin_password", ""),
             keycloak_realm=config.get("keycloak_realm", ""),
             keycloak_user_realm=config.get("keycloak_user_realm", ""),
+            helpdesk_url=config.get(
+                "helpdesk_url", "https://helpdesk.worldscoutjamboree.de"
+            ),
+            helpdesk_username=config.get("helpdesk_username", "admin"),
+            helpdesk_password=config.get("helpdesk_password", ""),
+            helpdesk_fin_service_desk_id=config.get("helpdesk_fin_service_desk_id", 3),
+            helpdesk_fin_request_type_id=config.get("helpdesk_fin_request_type_id", 33),
             **kwargs,  # type: ignore
         )
         return self
@@ -913,6 +926,20 @@ class WsjRdpContext:
         )
         with client:
             yield client
+
+    @_contextlib.contextmanager
+    def login_helpdesk(self) -> _typing.Iterator[_helpdesk.Helpdesk]:
+        from . import _helpdesk
+
+        helpdesk = _helpdesk.Helpdesk(
+            url=self.config.helpdesk_url,
+            username=self.config.helpdesk_username,
+            password=self.config.helpdesk_password,
+            fin_service_desk_id=self.config.helpdesk_fin_service_desk_id,
+            fin_request_type_id=self.config.helpdesk_fin_request_type_id
+        )
+        with helpdesk:
+            yield helpdesk
 
     def load_batch_config_from_yaml(
         self,

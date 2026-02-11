@@ -21,6 +21,9 @@ mail_accounts:
   unit-management@worldscoutjamboree.de:
     smtp_server: localhost
     smtp_port: 1025
+  finanzen@worldscoutjamboree.de:
+    smtp_server: localhost
+    smtp_port: 1025
 
 # Mailcow API
 mail_api_url: http://localhost:3082
@@ -31,3 +34,10 @@ keycloak_admin: admin
 keycloak_admin_password: admin
 keycloak_realm: WSJ_development
 keycloak_user_realm: master
+
+
+helpdesk_url: "https://helpdesk.worldscoutjamboree.de"
+helpdesk_username: admin
+helpdesk_password: ""
+helpdesk_fin_service_desk_id: 3
+helpdesk_fin_request_type_id: 33
