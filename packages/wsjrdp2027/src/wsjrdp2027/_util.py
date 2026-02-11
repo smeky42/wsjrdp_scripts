@@ -726,7 +726,7 @@ def to_int_list_or_none(int_or_list, /) -> list[int] | None:
         return None
     if isinstance(int_or_list, (int, str)):
         int_or_list = [int_or_list]
-    return [int(x) for x in int_or_list if x]
+    return [int(x) for x in int_or_list if x or isinstance(x, int)]
 
 
 def _iter_nested_strings(*args) -> _typing.Iterator[str]:

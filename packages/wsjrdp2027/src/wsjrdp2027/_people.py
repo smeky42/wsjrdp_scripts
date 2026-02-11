@@ -612,6 +612,9 @@ def load_people_dataframe(
     extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
     extra_static_df_cols: dict[str, _typing.Any] | None = None,
     skip_db_updates: bool | None = None,
+    accounting_entry_exclude_payment_initiation_id: _collections_abc.Iterable[int]
+    | int
+    | None = None,
 ) -> _pandas.DataFrame:
     import re
     import textwrap
@@ -662,6 +665,20 @@ def load_people_dataframe(
     else:
         limit_clause = ""
 
+    accounting_entry_exclude_payment_initiation_id = _util.to_int_list_or_none(
+        accounting_entry_exclude_payment_initiation_id
+    )
+    if accounting_entry_exclude_payment_initiation_id:
+        accounting_entry_where_extra = (
+            ' AND ("e".payment_initiation_id IS NULL OR "e".'
+            + _util.not_in_expr(
+                "payment_initiation_id", accounting_entry_exclude_payment_initiation_id
+            )
+            + ")"
+        )
+    else:
+        accounting_entry_where_extra = ""
+
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
         sql_stmt = f"""
 WITH "people" AS (
@@ -675,7 +692,7 @@ WITH "people" AS (
           WHERE "a".contactable_type='Person' AND "a".contactable_id = people.id AND "a".mailings = TRUE
     ) AS additional_emails_for_mailings,
     ARRAY(SELECT COALESCE("e".amount_cents, 0) FROM accounting_entries AS "e"
-          WHERE "e".subject_type = 'Person' AND "e".subject_id = people."id" AND COALESCE("e".amount_currency, 'EUR') = 'EUR'
+          WHERE "e".subject_type = 'Person' AND "e".subject_id = people."id" AND COALESCE("e".amount_currency, 'EUR') = 'EUR'{accounting_entry_where_extra}
     ) AS accounting_entries_amounts_cents,
     ARRAY(SELECT "n".text FROM "notes" AS "n"
           WHERE "n".subject_type = 'Person' AND "n".subject_id = people."id"
