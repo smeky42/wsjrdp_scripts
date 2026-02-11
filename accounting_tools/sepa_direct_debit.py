@@ -326,14 +326,40 @@ def create_argument_parser():
     p.add_argument("--accounting", action="store_true", default=True)
     p.add_argument("--no-accounting", dest="accounting", action="store_false")
     p.add_argument(
-        "--collection-date", type=to_date_or_none, default=DEFAULT_COLLECTION_DATE
+        "--collection-date",
+        type=to_date_or_none,
+        default=None,
+        help="Collection date of the SEPA direct debit",
     )
     p.add_argument("--payment-initiation-id", type=int)
     p.add_argument(
         "--find-planned-payment-initiation", action="store_true", default=False
     )
+    p.add_argument(
+        "--allow-xml-generated",
+        action="store_true",
+        default=False,
+        help="""Allow pre notifications in status xml_generated when reading
+        from an existing payment initiation.""",
+    )
+    p.add_argument(
+        "--ignore-accounting-entries-for-payment-initiation",
+        action="store_true",
+        default=False,
+    )
+    p.add_argument("--exclude-id", action="append")
+    p.add_argument("--end-to-end-id-suffix", default=None)
     p.add_argument("--rollback-for-testing", action="store_true", default=False)
     return p
+
+
+def _excluded_ids_from_parsed_arg(arg: list[str] | None) -> list[int]:
+    if arg is None:
+        return []
+    excluded_ids = []
+    for a in arg:
+        excluded_ids.extend(int(x) for x in a.replace(" ", ",").split(",") if x)
+    return excluded_ids
 
 
 def main(argv=None):
@@ -361,6 +387,13 @@ def main(argv=None):
     pain_row: _pandas.Series | None = None
     pain_id: int | None = None
 
+    if ctx.parsed_args.allow_xml_generated:
+        allowed_pre_notification_status = ("pre_notified", "xml_generated")
+    else:
+        allowed_pre_notification_status = "pre_notified"
+
+    excluded_ids = _excluded_ids_from_parsed_arg(ctx.parsed_args.exclude_id)
+
     with ctx.psycopg_connect() as conn:
         if args.find_planned_payment_initiation:
             pain_row = _find_planned_payment_initiation(ctx, args, conn)
@@ -373,21 +406,39 @@ def main(argv=None):
             pain_row = pain_df.iloc[0]
 
         if pain_row is not None:
-            pain_id = pain_row["id"]
+            pain_id = int(pain_row["id"])
+            if ctx.parsed_args.ignore_accounting_entries_for_payment_initiation:
+                accounting_entry_exclude_payment_initiation_id = pain_id
+            else:
+                accounting_entry_exclude_payment_initiation_id = None
             df = wsjrdp2027.load_payment_dataframe_from_payment_initiation(
                 conn,
-                payment_initiation_id=pain_row["id"],
+                payment_initiation_id=pain_id,
                 pedantic=False,
                 report_amount_differences=False,
                 booking_at=ctx.start_time,
+                allowed_pre_notification_status=allowed_pre_notification_status,
+                accounting_entry_exclude_payment_initiation_id=accounting_entry_exclude_payment_initiation_id,
+                excluded_ids=excluded_ids,
             )
+            if args.collection_date is not None:
+                df["collection_date"] = args.collection_date
         else:
+            if args.collection_date is None:
+                collection_date = DEFAULT_COLLECTION_DATE
+            else:
+                collection_date = args.collection_date
             df = wsjrdp2027.load_payment_dataframe(
                 conn,
                 query=wsjrdp2027.PeopleQuery(
-                    collection_date=args.collection_date, now=ctx.start_time
+                    collection_date=collection_date, now=ctx.start_time
                 ),
                 booking_at=ctx.start_time,
+            )
+
+        if ctx.parsed_args.end_to_end_id_suffix:
+            df["sepa_dd_endtoend_id"] = df["sepa_dd_endtoend_id"].map(
+                lambda s: s + ctx.parsed_args.end_to_end_id_suffix
             )
 
         sum_amount = df["open_amount_cents"].sum()

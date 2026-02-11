@@ -324,7 +324,7 @@ def enrich_people_dataframe_for_payments(
             lambda row: _dd_endtoend_id_from_row(row, endtoend_ids=endtoend_ids), axis=1
         )
         df["payment_status_reason"] = df["open_amount_cents"].map(
-            lambda amt: "" if amt > 0 else "amount = 0"
+            lambda amt: "" if amt > 0 else f"amount = {amt!r}"
         )
         df["payment_status"] = df["payment_status_reason"].map(
             lambda rsn: "ok" if not rsn else "skipped"
@@ -735,6 +735,11 @@ def load_payment_dataframe_from_payment_initiation(
     report_amount_differences: bool = True,
     booking_at: _datetime.datetime | _datetime.date | str | int | None = None,
     now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    allowed_pre_notification_status: _collections_abc.Iterable[str] | str | None = None,
+    accounting_entry_exclude_payment_initiation_id: _collections_abc.Iterable[int]
+    | int
+    | None = None,
+    excluded_ids: list[int] | None = None,
 ) -> _pandas.DataFrame:
     import re
     import textwrap
@@ -744,6 +749,17 @@ def load_payment_dataframe_from_payment_initiation(
     from psycopg.sql import SQL, Literal
 
     from . import _people_query, _util
+
+    if allowed_pre_notification_status is None:
+        allowed_pre_notification_status = frozenset(["pre_notified"])
+    elif isinstance(allowed_pre_notification_status, str):
+        allowed_pre_notification_status = frozenset([allowed_pre_notification_status])
+    else:
+        allowed_pre_notification_status = frozenset(allowed_pre_notification_status)
+
+    accounting_entry_exclude_payment_initiation_id = _util.to_int_list_or_none(
+        accounting_entry_exclude_payment_initiation_id
+    )
 
     raw_query = """
 SELECT
@@ -793,6 +809,9 @@ WHERE
   AND wsjrdp_direct_debit_pre_notifications.subject_type = 'Person'
 """
 
+    if excluded_ids:
+        raw_query += "\n  AND " + _util.not_in_expr("people.id", excluded_ids)
+
     query = SQL(raw_query).format(
         payment_initiation_id=Literal(payment_initiation_id),
     )
@@ -824,6 +843,7 @@ WHERE
         pedantic=pedantic,
         endtoend_ids=pninf.endtoend_ids,
         booking_at=booking_at,
+        accounting_entry_exclude_payment_initiation_id=accounting_entry_exclude_payment_initiation_id,
     )
 
     if len(df):
@@ -864,12 +884,15 @@ WHERE
             report_direct_debit_amount_differences(df)
 
         # Skip payments in df if
-        # (a) the pn.payment_status is not pre_notified (e.g., already skipped or xml_generated)
+        # (a) the pn.payment_status is not a status in allowed_pre_notification_status.
+        #     By default, allowed_pre_notification_status is just {'pre_notified'},
+        #     i.e., payments are skipped if pn.payment_status is not pre_notified
+        #     (e.g., already skipped or xml_generated)
         # (b) the pn.try_skip flag is set, i.e., we are asked to skip the payment
         for idx, row in df.iterrows():
             pn_id = row.get("pn_id")
             pn_payment_status: str | None = row.get("pn_payment_status")
-            if pn_payment_status != "pre_notified":
+            if pn_payment_status not in allowed_pre_notification_status:
                 _LOGGER.info(
                     "Notice: Skip payment due to pn.payment_status=%s: people.id=%s pn.id=%s",
                     pn_payment_status,
@@ -978,6 +1001,9 @@ def load_payment_dataframe(
     fee_rules: str | _collections_abc.Iterable[str] = "active",
     endtoend_ids: dict[int, str] | None = None,
     now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    accounting_entry_exclude_payment_initiation_id: _collections_abc.Iterable[int]
+    | int
+    | None = None,
 ) -> _pandas.DataFrame:
     import textwrap
 
@@ -995,7 +1021,12 @@ def load_payment_dataframe(
     now = _util.to_datetime(now)
 
     df = _people.load_people_dataframe(
-        conn, query=query, fee_rules=fee_rules, log_resulting_data_frame=False, now=now
+        conn,
+        query=query,
+        fee_rules=fee_rules,
+        log_resulting_data_frame=False,
+        now=now,
+        accounting_entry_exclude_payment_initiation_id=accounting_entry_exclude_payment_initiation_id,
     )
     df = enrich_people_dataframe_for_payments(
         df,
