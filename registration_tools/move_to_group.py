@@ -1,23 +1,14 @@
 #!/usr/bin/env -S uv run
 from __future__ import annotations
 
-import dataclasses as _dataclasses
 import logging
 import pathlib as _pathlib
 import pprint
 import sys
-import typing as _typing
 
 import pandas as _pandas
 import psycopg as _psycopg
-import psycopg.sql as _psycopg_sql
 import wsjrdp2027
-
-
-if _typing.TYPE_CHECKING:
-    import string.templatelib as _string_templatelib
-
-    import psycopg.sql as _psycopg_sql
 
 
 _SELF_NAME = _pathlib.Path(__file__).stem
@@ -40,89 +31,11 @@ def create_argument_parser():
     return p
 
 
-def _load_person_row(
-    ctx: wsjrdp2027.WsjRdpContext, conn: _psycopg.Connection, person_id: int
-) -> _pandas.Series:
-    df = wsjrdp2027.load_people_dataframe(
-        conn, where=wsjrdp2027.PeopleWhere(id=person_id), log_resulting_data_frame=False
-    )
-    if df.empty:
-        _LOGGER.error(f"Could not load person with id {person_id}")
-        raise SystemExit(1)
-    row = df.iloc[0]
-    if row["status"] not in ("reviewed", "confirmed"):
-        _LOGGER.error(
-            f"Person {row['id_and_name']} has status {row['status']!r}, expected 'reviewed' or 'confirmed'"
-        )
-        if ctx.is_production:
-            raise SystemExit(1)
-        else:
-            _LOGGER.error("NOT IN PROD => continue")
-    return row
-
-
-@_dataclasses.dataclass(kw_only=True)
-class Group:
-    id: int
-    parent_id: int | None = None
-    short_name: str | None = None
-    name: str
-    type: str | None = None
-    email: str | None = None
-    description: str
-    additional_info: dict
-
-    @property
-    def unit_code(self) -> str | None:
-        return self.additional_info.get("unit_code")
-
-    @property
-    def group_code(self) -> str | None:
-        return self.additional_info.get("group_code")
-
-    def __getitem__(self, key: str) -> _typing.Any:
-        try:
-            return getattr(self, key)
-        except AttributeError:
-            raise KeyError(key) from None
-
-
-def _select_group_for_where(
-    conn, where: _psycopg_sql.Composable | _string_templatelib.Template
-) -> Group:
-    return Group(**wsjrdp2027.pg_select_group_dict_for_where(conn, where=where))
-
-
-def _select_group_for_group_name(conn, group_name: str) -> Group:
-    return _select_group_for_where(
-        conn,
-        t'"name" = {group_name} OR "short_name" = {group_name} OR "additional_info"->>\'group_code\' = {group_name}',
-    )
-
-
-def _select_group_for_group_id(conn, group_id: int) -> Group:
-    return _select_group_for_where(conn, t'"id" = {group_id}')
-
-
-def _select_group(
-    conn, group_arg: str | int, *, auto_group_id: int | None = None
-) -> Group:
-    import re
-
-    if isinstance(group_arg, int):
-        return _select_group_for_group_id(conn, group_arg)
-    elif re.fullmatch(group_arg, "[0-9]+"):
-        return _select_group_for_group_id(conn, int(group_arg, base=10))
-    elif group_arg == "auto":
-        if auto_group_id is None:
-            raise RuntimeError("group='auto' and auto_group_id=None not supported")
-        return _select_group_for_group_id(conn, auto_group_id)
-    else:
-        return _select_group_for_group_name(conn, group_arg)
-
-
 def _confirmation_note(
-    ctx: wsjrdp2027.WsjRdpContext, *, old_group: Group | None, new_group: Group
+    ctx: wsjrdp2027.WsjRdpContext,
+    *,
+    old_group: wsjrdp2027.Group | None,
+    new_group: wsjrdp2027.Group,
 ) -> str:
     date_str = ctx.today.strftime("%d.%m.%Y")
     old_group_name = (old_group.short_name or old_group.name) if old_group else ""
@@ -154,7 +67,7 @@ def _move_person(
     person_id: int = int(person_row["id"])
     old_primary_group_id = wsjrdp2027.to_int_or_none(person_row.get("primary_group_id"))
     old_group = (
-        _select_group(conn, group_arg=old_primary_group_id)
+        wsjrdp2027.Group.db_load(conn, group_arg=old_primary_group_id)
         if old_primary_group_id is not None
         else None
     )
@@ -164,7 +77,9 @@ def _move_person(
     if group_arg is None:
         _LOGGER.error(f"Missing --group to move to: {role_id_name}")
         raise SystemExit(1)
-    new_group = _select_group(conn, group_arg, auto_group_id=old_primary_group_id)
+    new_group = wsjrdp2027.Group.db_load(
+        conn, group_arg, auto_group_id=old_primary_group_id
+    )
     unit_code: str | None = new_group.unit_code if new_group else None
 
     # create new batch config
@@ -213,7 +128,7 @@ def main(argv=None):
     print(flush=True)
     _LOGGER.info(f"Move person {person_id}")
     with ctx.psycopg_connect() as conn:
-        person_row = _load_person_row(ctx, conn, person_id=person_id)
+        person_row = wsjrdp2027.load_person_row(conn, person_id=person_id)
         short_role_name = person_row["payment_role"].short_role_name
         role_id_name = "-".join(
             [
