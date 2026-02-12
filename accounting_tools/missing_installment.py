@@ -185,6 +185,7 @@ def _send_missing_installment_notification(
         )
     _LOGGER.info(f"retoure_cents: {retoure_cents} (prev month open_amount_cents)")
     _LOGGER.info(f"missing_installment_cents: {missing_installment_cents} (prev month)")
+    _LOGGER.info(f"missing_installment_issue: {missing_installment_issue}")
     print(flush=True)
 
     ctx.require_approval_to_run_in_prod()

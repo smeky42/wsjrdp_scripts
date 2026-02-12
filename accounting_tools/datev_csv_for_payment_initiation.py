@@ -1,7 +1,6 @@
 #!/usr/bin/env -S uv run
 from __future__ import annotations
 
-import io as _io
 import logging as _logging
 import pathlib as _pathlib
 
@@ -43,9 +42,11 @@ WHERE payment_status = 'xml_generated'
     ]
 
     row = df.iloc[0]
-    collection_date = row['collection_date']
+    collection_date = row["collection_date"]
 
-    csv_filename = ctx.make_out_path(f"sepa_direct_debit_datev_csv_{collection_date.strftime('%Y-%m')}_pain{pain_id}.csv")
+    csv_filename = ctx.make_out_path(
+        f"sepa_direct_debit_datev_csv_{collection_date.strftime('%Y-%m')}_pain{pain_id}.csv"
+    )
     with open(csv_filename, "w", encoding="utf-8", newline="") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=COLS, delimiter=";")
         writer.writeheader()
