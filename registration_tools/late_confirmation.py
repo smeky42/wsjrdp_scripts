@@ -1,7 +1,6 @@
 #!/usr/bin/env -S uv run
 from __future__ import annotations
 
-import dataclasses as _dataclasses
 import logging
 import pathlib as _pathlib
 import pprint
@@ -11,18 +10,12 @@ import typing as _typing
 import jinja2
 import pandas as _pandas
 import psycopg as _psycopg
-import psycopg.sql as _psycopg_sql
 import wsjrdp2027
 
 
 _SELFDIR = _pathlib.Path(__file__).parent
 
 _LOGGER = logging.getLogger(__name__)
-
-if _typing.TYPE_CHECKING:
-    import string.templatelib as _string_templatelib
-
-    import psycopg.sql as _psycopg_sql
 
 
 def create_argument_parser():
@@ -150,13 +143,7 @@ Teilnahmebetrag: {{ row.total_fee_cents | format_cents_as_eur_de }}
 def _load_person_row(
     ctx: wsjrdp2027.WsjRdpContext, conn: _psycopg.Connection, person_id: int
 ) -> _pandas.Series:
-    df = wsjrdp2027.load_people_dataframe(
-        conn, where=wsjrdp2027.PeopleWhere(id=person_id), log_resulting_data_frame=False
-    )
-    if df.empty:
-        _LOGGER.error(f"Could not load person with id {person_id}")
-        raise SystemExit(1)
-    row = df.iloc[0]
+    row = wsjrdp2027.load_person_row(conn, person_id=person_id)
     if row["status"] not in ("reviewed", "confirmed"):
         _LOGGER.error(
             f"Person {row['id_and_name']} has status {row['status']!r}, expected 'reviewed' or 'confirmed'"
@@ -168,72 +155,12 @@ def _load_person_row(
     return row
 
 
-@_dataclasses.dataclass(kw_only=True)
-class Group:
-    id: int
-    parent_id: int | None = None
-    short_name: str | None = None
-    name: str
-    type: str | None = None
-    email: str | None = None
-    description: str
-    additional_info: dict
-
-    @property
-    def unit_code(self) -> str | None:
-        return self.additional_info.get("unit_code")
-
-    @property
-    def group_code(self) -> str | None:
-        return self.additional_info.get("group_code")
-
-    def __getitem__(self, key: str) -> _typing.Any:
-        try:
-            return getattr(self, key)
-        except AttributeError:
-            raise KeyError(key) from None
-
-
-def _select_group_for_where(
-    conn, where: _psycopg_sql.Composable | _string_templatelib.Template
-) -> Group:
-    return Group(**wsjrdp2027.pg_select_group_dict_for_where(conn, where=where))
-
-
-def _select_group_for_group_name(conn, group_name: str) -> Group:
-    return _select_group_for_where(
-        conn,
-        t'"name" = {group_name} OR "short_name" = {group_name} OR "additional_info"->>\'group_code\' = {group_name}',
-    )
-
-
-def _select_group_for_group_id(conn, group_id: int) -> Group:
-    return _select_group_for_where(conn, t'"id" = {group_id}')
-
-
-def _select_group(
-    conn, group_arg: str | int, *, auto_group_id: int | None = None
-) -> Group:
-    import re
-
-    if isinstance(group_arg, int):
-        return _select_group_for_group_id(conn, group_arg)
-    elif re.fullmatch("[0-9]+", str(group_arg)):
-        return _select_group_for_group_id(conn, int(group_arg, base=10))
-    elif group_arg == "auto":
-        if auto_group_id is None:
-            raise RuntimeError("group='auto' and auto_group_id=None not supported")
-        return _select_group_for_group_id(conn, auto_group_id)
-    else:
-        return _select_group_for_group_name(conn, group_arg)
-
-
 def _confirmation_note(
     ctx: wsjrdp2027.WsjRdpContext,
     *,
     batch_config: wsjrdp2027.BatchConfig,
-    old_group: Group | None,
-    new_group: Group,
+    old_group: wsjrdp2027.Group | None,
+    new_group: wsjrdp2027.Group,
     old_status: str | None,
     new_status: str,
 ) -> str:
@@ -278,9 +205,13 @@ def _confirm_person(
     old_status = person_row["status"]
     old_primary_group_id = wsjrdp2027.to_int_or_none(person_row.get("primary_group_id"))
     old_group = (
-        _select_group(conn, group_arg=old_primary_group_id)
+        wsjrdp2027.Group.db_load(conn, group_arg=old_primary_group_id)
         if old_primary_group_id is not None
         else None
+    )
+    person_additional_info = person_row.get("additional_info", {}) or {}
+    late_confirmation_issue = person_additional_info.get(
+        "late_confirmation_issue", None
     )
 
     old_tag_list = person_row.get("tag_list") or []
@@ -291,14 +222,20 @@ def _confirm_person(
             _LOGGER.error(f"Missing --group for confirmation of {role_id_name}")
             raise SystemExit(1)
         else:
-            new_group = _select_group_for_group_id(conn, old_primary_group_id)
+            new_group = wsjrdp2027.Group.db_load_for_group_id(
+                conn, old_primary_group_id
+            )
     else:
-        new_group = _select_group(conn, group_arg, auto_group_id=old_primary_group_id)
+        new_group = wsjrdp2027.Group.db_load(
+            conn, group_arg, auto_group_id=old_primary_group_id
+        )
     if is_yp_or_ul and not new_group:
         _LOGGER.error(f"Missing --group for confirmation of {role_id_name}")
         raise SystemExit(1)
     unit_code: str | None = new_group.unit_code if new_group else None
-    support_cmt_mail_addresses = new_group.additional_info.get("support_cmt_mail_addresses")
+    support_cmt_mail_addresses = new_group.additional_info.get(
+        "support_cmt_mail_addresses"
+    )
     if skip_status_update:
         _LOGGER.warning(f"Skipping status update (--skip-status-update given)")
         new_status = old_status
@@ -350,6 +287,19 @@ def _confirm_person(
             f"Add extra_email_bcc (from additional_info['support_cmt_mail_addresses'] of group): {support_cmt_mail_addresses}",
         )
         batch_config.extend_extra_email_bcc(support_cmt_mail_addresses)
+
+    # Handle late_confirmation_issue
+    if late_confirmation_issue:
+        batch_config.email_subject += f" {late_confirmation_issue}"
+        match wsj_role:
+            case "YP" | "UL":
+                batch_config.extend_extra_email_bcc(
+                    "unit-management@worldscoutjamboree.de"
+                )
+            case "IST":
+                batch_config.extend_extra_email_bcc("ist@worldscoutjamboree.de")
+            case _:
+                batch_config.extend_extra_email_bcc("info@worldscoutjamboree.de")
 
     batch_config.query.where = wsjrdp2027.PeopleWhere(id=person_id)
     if ctx.parsed_args.collection_date:
