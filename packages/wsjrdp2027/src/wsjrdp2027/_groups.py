@@ -7,6 +7,7 @@ import typing as _typing
 if _typing.TYPE_CHECKING:
     import string.templatelib as _string_templatelib
 
+    import psycopg as _psycopg
     import psycopg.sql as _psycopg_sql
 
 
@@ -46,26 +47,36 @@ class Group:
 
     @classmethod
     def db_load_for_where(
-        cls, conn, where: _psycopg_sql.Composable | _string_templatelib.Template
+        cls,
+        conn: _psycopg.Connection,
+        where: _psycopg_sql.Composable | _string_templatelib.Template,
     ) -> _typing.Self:
         from . import _pg
 
         return cls(**_pg.pg_select_group_dict_for_where(conn, where=where))
 
     @classmethod
-    def db_load_for_group_name(cls, conn, group_name: str) -> _typing.Self:
+    def db_load_for_group_name(
+        cls, conn: _psycopg.Connection, group_name: str
+    ) -> _typing.Self:
         return cls.db_load_for_where(
             conn,
             t'"name" = {group_name} OR "short_name" = {group_name} OR "additional_info"->>\'group_code\' = {group_name}',
         )
 
     @classmethod
-    def db_load_for_group_id(cls, conn, group_id: int) -> _typing.Self:
+    def db_load_for_group_id(
+        cls, conn: _psycopg.Connection, group_id: int
+    ) -> _typing.Self:
         return cls.db_load_for_where(conn, t'"id" = {group_id}')
 
     @classmethod
     def db_load(
-        cls, conn, group_arg: str | int, *, auto_group_id: int | None = None
+        cls,
+        conn: _psycopg.Connection,
+        group_arg: str | int,
+        *,
+        auto_group_id: int | None = None,
     ) -> _typing.Self:
         import re
 
