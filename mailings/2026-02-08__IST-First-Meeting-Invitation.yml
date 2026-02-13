@@ -9,7 +9,8 @@ query:
     role: IST
     status: ['confirmed']
     primary_group_id: 4
-    # id: [2, 82, 386, 2085 ]  # Peter und IST Manager Accounts 
+    exclude_tag: 'IST-First-Meeting-Invitation'
+    # id: [2, 82, 386, 2085 ]  # Peter und IST Manager Accounts
 from_addr: anmeldung@worldscoutjamboree.de
 email_from: ist@worldscoutjamboree.de
 email_subject: "Das Abenteuer beginnt! ⛺ Infos zu unserem ersten IST-Treffen in Mainz - {{ row.short_full_name }} (id {{ row.id }})"
@@ -21,7 +22,7 @@ content: |
   das Abenteuer World Scout Jamboree geht los! Unser erstes gemeinsames IST-Treffen in Mainz vom 20.03. bis 22.03.2026 steht vor der Tür.
 
   Hier sind die wichtigsten Informationen für eure Planung:
-  
+
   == Warum du dabei sein solltest: ==
   Dieses Wochenende ist etwas ganz Besonderes, denn es ist das einzige Mal, dass wir uns als vollständiges IST-Team vor dem Kontingentslager 2027 an einem Ort treffen.
 
@@ -32,7 +33,7 @@ content: |
   - Dich vorzubereiten: Wir starten gemeinsam das Projekt „Abenteuer Jamboree“ mit wichtigen Vorbereitungen, die für deine spätere Teilnahme wertvoll sind.
 
   Kurz gesagt: Wir legen hier den Grundstein für 2027 – und dein Beitrag und dein Kennenlernen sind dabei unverzichtbar!
-  
+
   == Anmeldung & Verpflegung ==
   - Frist: Bitte bestätigt oder sagt eure Teilnahme ab bis zum 20.02.2026 im Anmeldesystem als auch wenn ihr leider nicht dabei sein könnt, bitte im Anmeldesystem das Rückmelden.
     -> https://anmeldung.worldscoutjamboree.de/groups/4/events/25?shared_access_token=UR6uwTy9VND278K5jGLg
@@ -43,18 +44,18 @@ content: |
   - Anreise: Freitag, 20.03., ab ca. 18:00 Uhr bis 20:30 Uhr. (Spätankömmlinge sind willkommen, bekommen noch etwas zu essen und verpassen keine Kernpunkte).
   - Abreise: Sonntag, 22.03., ab 12:30 Uhr. Ihr könnt euch vor Ort noch eine Mittagsbrotzeit schmecken lassen oder diese als Reiseverpflegung mitnehmen.
 
-  == Unterkunft == 
+  == Unterkunft ==
   Wir sind zu Gast im Gymnasium Theresianum in Mainz (https://maps.app.goo.gl/6MK7mEbe7iVxTiPJ6). Wir übernachten klassisch in den Klassenräumen – denkt also bitte an eure Isomatte und einen Schlafsack.
 
   == Anreise ==
   Bitte bucht eure Zugtickets sobald wie möglich und vernetzt euch Regional um eventuell auch Gruppentickets zu buchen.
-  
+
   == Fahrtkostenabrechnung ==
   === Bahn und weitere öffentliche Verkehrsmittel ===
   Erstattet werden die entstandenen und nachgewiesenen Kosten für die Bahnfahrt 2. Klasse (einschließlich der erforderlichen Zuschläge). Vorhandene Einsparmöglichkeiten wie Mitfahrerrabatt, Bahncard, Gruppenfahrten und andere Angebote der Bahn müssen umfassend genutzt werden, wobei Angebote mit Zug- und Terminbindung nicht unter diese Regelung fallen.
   - Nach BRKG können entstandene Kosten für Fahrten in der 1. Klasse bis zum Preis der gleichen Fahrt in der 2. Klasse erstattet werden, d.h. wenn eine Fahrt in der 1. Klasse günstiger ist als die günstigste Fahrt der 2. Klasse, dann können die vollen entstandenen Kosten erstattet werden. Bei der Abrechnung sind die tatsächlich entstandenen Kosten und der Fahrpreis 2. Klasse nachzuweisen.
 
-  Kosten für die Anschaffung einer Bahncard oder eines Deutschlandtickets können übernommen werden, wenn dies vor der Anschaffung durch einen HoC oder der*den Head of Finance genehmigt wurde. Das Finance Team muss vor der Anschaffung informiert worden sein. 
+  Kosten für die Anschaffung einer Bahncard oder eines Deutschlandtickets können übernommen werden, wenn dies vor der Anschaffung durch einen HoC oder der*den Head of Finance genehmigt wurde. Das Finance Team muss vor der Anschaffung informiert worden sein.
   - Im Regelfall sollte natürlich eine Bahncard Anschaffung nur genehmigt werden, wenn die voraussichtliche Wirtschaftlichkeit der Anschaffung der Bahncard nachgewiesen wurde. Es kann aber auch Ausnahmen geben, z.B. wenn ein Mitglied im German Contingent zusammen mit Fahrten im Rahmen des eigenen Verbandes genug Reisekosten für eine Bahncard produziert, aber nicht alleinig mit den Reisekosten fürs Jamboree.
 
   Bei Verwendung einer Bahncard 100 können nach Freigabe durch die*den Head of Finance die Kosten getragen werden, die beim Kauf einer Fahrkarte unter Verwendung einer Bahncard 50 angefallen wären.
@@ -75,8 +76,8 @@ content: |
 
   Wir freuen uns auf ein tolles Wochenende mit euch!
 
-  Weitere Detail Infos wie z.B. eine Packliste bekommt ihr in der nächste Info Email 
+  Weitere Detail Infos wie z.B. eine Packliste bekommt ihr in der nächste Info Email
 
-  Herzliche Grüße 
-  
+  Herzliche Grüße
+
   Euer IST-Support-Team
