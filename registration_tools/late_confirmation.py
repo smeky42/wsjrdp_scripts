@@ -94,11 +94,14 @@ Verwendungszweck: {{ row.sepa_dd_description }}
 """
 
 _ANNOUNCE_UPCOMING_INSTALLMENT = """
-{% set next_installment_year_month_de = (row.installments_cents_dict.keys() | sort | first | month_year_de) %}
+{% set next_installment_year_month_de = (row.upcoming_installments_cents_dict.keys() | sort | first | month_year_de) %}
 {% if row.early_payer or (row.installments_cents_dict | length) == 1 %}
-Deinen Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+{% if show_payment_info and (row.amount_paid_cents > 0) %}Deinen ausstehenden Teilnahmebetrag in Höhe von {{ row.amount_unpaid_cents | format_cents_as_eur_de }} ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
 {% else %}
-Die erste Rate deines Teilnahmebetrags ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+Deinen Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
+{% endif %}
+{% else %}
+Die nächste Rate deines Teilnahmebetrags ziehen wir im {{ next_installment_year_month_de }} per SEPA Lastschrift ein. Wir werden dir ein paar Tage vor dem Einzug eine E-Mail mit weiteren Details schicken.
 {% endif %}
 """
 
@@ -109,6 +112,23 @@ def render_upcoming_payment_text(env: jinja2.Environment) -> str:
     if not show_payment_info:
         return ""
     row = _typing.cast(dict, env.globals.get("row", {}))
+
+    class ReduceInstallments:
+        def __init__(self) -> None:
+            self.paid_cents = max(row["amount_paid_cents"], 0)
+
+        def __call__(self, installment_cents: int) -> int:
+            delta = min(self.paid_cents, max(installment_cents, 0))
+            self.paid_cents -= delta
+            return installment_cents - delta
+
+    reducer = ReduceInstallments()
+    row["upcoming_installments_cents_dict"] = {
+        year_month: remaining_cents
+        for year_month, cents in row["installments_cents_dict"].items()
+        if (remaining_cents := reducer(cents)) > 0
+    }
+
     if not row.get("collection_date"):
         raise RuntimeError("collection_date fehlt")
     if row.get("amount_unpaid_cents") == 0:
@@ -117,7 +137,7 @@ def render_upcoming_payment_text(env: jinja2.Environment) -> str:
         source = _SEPA_STATUS_NOT_OK
     elif (row.get("open_amount_cents") or 0) > 0:
         source = _NEXT_INSTALLMENT
-    elif row.get("installments_cents_dict"):
+    elif row.get("upcoming_installments_cents_dict"):
         source = _ANNOUNCE_UPCOMING_INSTALLMENT
     else:
         raise RuntimeError(
