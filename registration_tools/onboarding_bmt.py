@@ -111,7 +111,7 @@ def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
         argument_parser=create_argument_parser(),
         argv=argv,
-        out_dir="data/move_to_units{{ kind | omit_unless_prod | upper | to_ext }}",
+        out_dir="data/onboarding{{ kind | omit_unless_prod | upper | to_ext }}",
     )
 
     out_base = ctx.make_out_path("onboarding__{{ filename_suffix }}")
