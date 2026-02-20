@@ -5,7 +5,7 @@ query:
 from_addr: finanzen@worldscoutjamboree.de
 email_from: finanzen@worldscoutjamboree.de
 extra_email_bcc: ["finanzen@worldscoutjamboree.de", "finance-team@worldscoutjamboree.de"]
-email_subject: WSJ27 Einzug {{ missing_installment_year_month }} Retoure {{ role_id_name }} {{ missing_installment_issue }}
+email_subject: WSJ27 Einzug {{ missing_installment_year_month }} Retoure {{ role_id_name }} {{ debit_return_issue }}
 content: |
   Hallo {{ row.greeting_name }},
 
