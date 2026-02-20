@@ -90,14 +90,14 @@ def _create_fin_issue(
             labels=labels,
         )
 
-        missing_installment_issue = customer_request["issueKey"]
-        _LOGGER.info(f"Created customer request {missing_installment_issue}")
+        debit_return_issue = customer_request["issueKey"]
+        _LOGGER.info(f"Created customer request {debit_return_issue}")
 
     _pg._execute_query_fetch_id(
         conn,
-        t"UPDATE people SET additional_info['missing_installment_issue'] = to_jsonb({missing_installment_issue}::text) WHERE id = {person_id} RETURNING id;",
+        t"UPDATE people SET additional_info['debit_return_issue'] = to_jsonb({debit_return_issue}::text) WHERE id = {person_id} RETURNING id;",
     )
-    return missing_installment_issue
+    return debit_return_issue
 
 
 def _send_missing_installment_notification(
@@ -116,8 +116,8 @@ def _send_missing_installment_notification(
     role_id_name = f"{wsj_role} {person_row['id_and_name']}"
 
     # create new batch config
-    missing_installment_issue = person_row.get("additional_info", {}).get(
-        "missing_installment_issue", "FIN-000"
+    debit_return_issue = person_row.get("additional_info", {}).get(
+        "debit_return_issue", "FIN-000"
     )
     batch_config = ctx.load_batch_config_from_yaml(
         _SELFDIR / f"{_SELF_NAME}.yml",
@@ -125,7 +125,7 @@ def _send_missing_installment_notification(
         where=wsjrdp2027.PeopleWhere(id=person_id),
         jinja_extra_globals={
             "role_id_name": role_id_name,
-            "missing_installment_issue": missing_installment_issue,
+            "debit_return_issue": debit_return_issue,
             "response_due_date": ctx.today + _datetime.timedelta(days=7),
         },
     )
@@ -185,7 +185,7 @@ def _send_missing_installment_notification(
         )
     _LOGGER.info(f"retoure_cents: {retoure_cents} (prev month open_amount_cents)")
     _LOGGER.info(f"missing_installment_cents: {missing_installment_cents} (prev month)")
-    _LOGGER.info(f"missing_installment_issue: {missing_installment_issue}")
+    _LOGGER.info(f"debit_return_issue: {debit_return_issue}")
     print(flush=True)
 
     ctx.require_approval_to_run_in_prod()
@@ -193,8 +193,8 @@ def _send_missing_installment_notification(
     # support_cmt_mail_addresses = group.additional_info.get("support_cmt_mail_addresses")
     # batch_config.extend_extra_email_bcc(support_cmt_mail_addresses)
 
-    if missing_installment_issue in (None, "", "FIN-000"):
-        missing_installment_issue = _create_fin_issue(
+    if debit_return_issue in (None, "", "FIN-000"):
+        debit_return_issue = _create_fin_issue(
             ctx=ctx,
             conn=conn,
             batch_config=batch_config,
@@ -202,26 +202,26 @@ def _send_missing_installment_notification(
             upcoming_collection_date=upcoming_collection_date,
             person_row=person_row,
         )
-        batch_config.jinja_extra_globals["missing_installment_issue"] = (
-            missing_installment_issue
+        batch_config.jinja_extra_globals["debit_return_issue"] = (
+            debit_return_issue
         )
 
     if ae_row is not None and not ae_row["comment"]:
         _pg._execute_query_fetch_id(
             conn,
-            t"""UPDATE accounting_entries SET comment = {missing_installment_issue} WHERE id = {ae_row["id"]} RETURNING id;""",
+            t"""UPDATE accounting_entries SET comment = {debit_return_issue} WHERE id = {ae_row["id"]} RETURNING id;""",
         )
         _LOGGER.info(
-            f"Updated comment of accounting_entry {ae_row['id']} to {missing_installment_issue!r}"
+            f"Updated comment of accounting_entry {ae_row['id']} to {debit_return_issue!r}"
         )
 
     if tx_row is not None and not tx_row["comment"]:
         _pg._execute_query_fetch_id(
             conn,
-            t"""UPDATE wsjrdp_camt_transactions SET comment = {missing_installment_issue} WHERE id = {tx_row["id"]} RETURNING id;""",
+            t"""UPDATE wsjrdp_camt_transactions SET comment = {debit_return_issue} WHERE id = {tx_row["id"]} RETURNING id;""",
         )
         _LOGGER.info(
-            f"Updated comment of camt tx {tx_row['id']} to {missing_installment_issue!r}"
+            f"Updated comment of camt tx {tx_row['id']} to {debit_return_issue!r}"
         )
 
     prepared_batch = ctx.load_people_and_prepare_batch(
