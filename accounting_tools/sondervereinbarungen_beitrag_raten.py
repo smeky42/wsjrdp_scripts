@@ -153,6 +153,7 @@ def attach_sondervereinbarung_raten(
 
     id = row["id"]
     full_name = row["full_name"]
+    age = row["age"]
     issue = row["custom_installments_issue"]
     total_fee_cents = row["total_fee_cents"]
     installments_cents = row["installments_cents_dict"]
@@ -183,7 +184,10 @@ def attach_sondervereinbarung_raten(
     rdp_representative_town_date = f"{rdp_representative_town}, {row['today_de']}" if rdp_representative_town else ""  # fmt: skip
 
     if ctx.parsed_args.rdp_representative:
-        template_filename = f"WSJ27-Sondervereinbarung-Beitrag-Raten-{ctx.parsed_args.rdp_representative}.docx"
+        if age >= 18:
+            template_filename = f"WSJ27-Sondervereinbarung-Beitrag-Raten-{ctx.parsed_args.rdp_representative}-Adult.docx"
+        else:
+            template_filename = f"WSJ27-Sondervereinbarung-Beitrag-Raten-{ctx.parsed_args.rdp_representative}-YP.docx"
     else:
         template_filename = f"WSJ27-Sondervereinbarung-Beitrag-Raten.docx"
     doc = load_docx(template_filename)
@@ -267,7 +271,7 @@ def main(argv=None):
     row = df.iloc[0]
     id_and_name = f"{row['id']} {row['short_full_name']}"
     ctx.out_dir = ctx.out_dir / id_and_name
-    batch_config.name = f"WSJ27 Sondervereinbarung Ratenplan {id_and_name}"
+    batch_config.name = f"WSJ27 Sondervereinbarung Ratenplan {row['role_id_name']}"
     if row["custom_installments_issue"]:
         batch_config.extra_email_bcc = wsjrdp2027.merge_mail_addresses(
             batch_config.extra_email_bcc, "unit-management@worldscoutjamboree.de"
