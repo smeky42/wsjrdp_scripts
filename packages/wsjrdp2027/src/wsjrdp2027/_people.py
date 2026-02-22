@@ -368,6 +368,13 @@ def _iban_to_bank_name(iban: str) -> str | None:
     return None
 
 
+def _row_to_sepa_mandat_id(row: _pandas.Series) -> str:
+    if sepa_mandate_id := (row.get("additional_info") or {}).get("sepa_mandate_id"):
+        return sepa_mandate_id
+    else:
+        return _util.sepa_mandate_id_from_hitobito_id(row["id"])
+
+
 def _fetch_id2fee_rules(
     conn: _psycopg.Connection,
     fee_rules: str | _collections_abc.Iterable[str] = "active",
@@ -539,7 +546,7 @@ def _enrich_people_dataframe(
     df["sepa_mailing_reply_to"] = None
 
     df["sepa_bank_name"] = df["sepa_iban"].map(_iban_to_bank_name)
-    df["sepa_mandate_id"] = df["id"].map(_util.sepa_mandate_id_from_hitobito_id)
+    df["sepa_mandate_id"] = df.apply(_row_to_sepa_mandat_id, axis=1)
     df["sepa_mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
 
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
