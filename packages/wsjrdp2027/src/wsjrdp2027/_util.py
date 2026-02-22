@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections.abc as _collections_abc
 import logging as _logging
 import math as _math
+import re as _re
 import typing as _typing
 
 from . import _types
@@ -880,8 +881,43 @@ def get_default_email_policy() -> _email_policy.EmailPolicy:
 # ==============================================================================
 
 
+_WSJRDP2027_MANDATE_ID_REGEX = _re.compile("^wsjrdp2027-?([0-9]+)")
+
+
 def sepa_mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:
     return f"wsjrdp2027{hitobito_id}"
+
+
+def hitobito_id_from_sepa_mandate_id(mandate_id: str | None) -> int | None:
+    """Return Hitobito id from SEPA-mandate id.
+
+    >>> hitobito_id_from_sepa_mandate_id("wsjrdp20272")
+    2
+    >>> hitobito_id_from_sepa_mandate_id("wsjrdp2027-2")
+    2
+    >>> hitobito_id_from_sepa_mandate_id("wsjrdp2027-2b")
+    2
+    >>> hitobito_id_from_sepa_mandate_id("wsjrdp2027-2-b")
+    2
+    >>> hitobito_id_from_sepa_mandate_id("wsjrdp2027-0002-b")
+    2
+    >>> hitobito_id_from_sepa_mandate_id("wsjrdp20271250b")
+    1250
+    >>> hitobito_id_from_sepa_mandate_id("wsjrdp20271250b1234")
+    1250
+    >>> hitobito_id_from_sepa_mandate_id("foo") is None
+    True
+    >>> hitobito_id_from_sepa_mandate_id("") is None
+    True
+    >>> hitobito_id_from_sepa_mandate_id(None) is None
+    True
+    """
+    if not mandate_id:
+        return None
+    elif m := _WSJRDP2027_MANDATE_ID_REGEX.match(mandate_id):
+        return int(m.group(1), base=10)
+    else:
+        return None
 
 
 # ==============================================================================

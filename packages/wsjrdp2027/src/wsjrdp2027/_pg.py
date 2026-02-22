@@ -1331,16 +1331,17 @@ def pg_insert_camt_transaction_from_tx(
     additional_info: dict | None = None,
     upsert: bool | None = None,
 ) -> int:
-    wsjrdp2027_mandate_id_prefix = "wsjrdp2027"
+    from . import _util
+
     if (
-        tx.mandate_id
-        and tx.mandate_id.startswith(wsjrdp2027_mandate_id_prefix)
-        and subject_id is None
+        subject_id is None
         and subject_type in (None, "Person")
-    ):
-        subject_id = int(
-            tx.mandate_id.removeprefix(wsjrdp2027_mandate_id_prefix), base=10
+        and (
+            (hitobito_id := _util.hitobito_id_from_sepa_mandate_id(tx.mandate_id))
+            is not None
         )
+    ):
+        subject_id = hitobito_id
         subject_type = "Person"
     return pg_insert_camt_transaction(
         cursor,

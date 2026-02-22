@@ -69,6 +69,7 @@ from ._util import (
     generate_mail_username as generate_mail_username,
     generate_password as generate_password,
     get_default_email_policy as get_default_email_policy,
+    hitobito_id_from_sepa_mandate_id as hitobito_id_from_sepa_mandate_id,
     merge_mail_addresses as merge_mail_addresses,
     nan_to_none as nan_to_none,
     render_template as render_template,
@@ -90,7 +91,7 @@ from ._util import (
 
 
 if _typing.TYPE_CHECKING:
-    from . import keycloak as keycloak, mailbox as mailbox
+    from . import keycloak as keycloak, mailbox as mailbox, pydatev as pydatev
     from ._camt import (
         CamtMessage as CamtMessage,
         CamtTransactionDetails as CamtTransactionDetails,
@@ -141,6 +142,7 @@ __all__ = [
     "generate_password",
     "get_default_email_policy",
     "get_typst_font_paths",
+    "hitobito_id_from_sepa_mandate_id",
     "insert_direct_debit_pre_notification_from_row",
     "load_accounting_balance_in_cent",
     "load_payment_dataframe",
@@ -284,10 +286,11 @@ __ALIASES__ = {
     "CamtMessage": (f"._camt", "CamtMessage"),
     "CamtTransactionDetails": (f"._camt", "CamtTransactionDetails"),
     "CamtTxUniqueDbKey": (f"._camt", "CamtTxUniqueDbKey"),
+    "Group": ("._groups", "Group"),
     "PainMessage": (f"._pain", "PainMessage"),
     "keycloak": (".keycloak", ""),
     "mailbox": (".mailbox", ""),
-    "Group": ("._groups", "Group"),
+    "pydatev": (".pydatev", ""),
 }
 
 
