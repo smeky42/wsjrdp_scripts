@@ -41,3 +41,6 @@ helpdesk_username: admin
 helpdesk_password: ""
 helpdesk_fin_service_desk_id: 3
 helpdesk_fin_request_type_id: 33
+
+datev_beraternummer: ""
+datev_mandantennummer: ""

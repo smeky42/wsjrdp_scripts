@@ -91,7 +91,7 @@ from ._util import (
 
 
 if _typing.TYPE_CHECKING:
-    from . import keycloak as keycloak, mailbox as mailbox, pydatev as pydatev
+    from . import _datev as datev, keycloak as keycloak, mailbox as mailbox
     from ._camt import (
         CamtMessage as CamtMessage,
         CamtTransactionDetails as CamtTransactionDetails,
@@ -289,8 +289,8 @@ __ALIASES__ = {
     "Group": ("._groups", "Group"),
     "PainMessage": (f"._pain", "PainMessage"),
     "keycloak": (".keycloak", ""),
+    "datev": ("._datev", ""),
     "mailbox": (".mailbox", ""),
-    "pydatev": (".pydatev", ""),
 }
 
 

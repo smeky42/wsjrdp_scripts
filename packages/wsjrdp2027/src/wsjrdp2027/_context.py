@@ -78,6 +78,9 @@ class WsjRdpContextConfig:
     helpdesk_fin_service_desk_id: str | int = 3
     helpdesk_fin_request_type_id: str | int = 33
 
+    datev_beraternummer: str | None = None
+    datev_mandantennummer: str|None=None
+
     @classmethod
     def from_file(cls, path: str | _pathlib.Path | None = None) -> _typing.Self:
         import yaml as _yaml
@@ -174,6 +177,8 @@ class WsjRdpContextConfig:
             helpdesk_password=config.get("helpdesk_password", ""),
             helpdesk_fin_service_desk_id=config.get("helpdesk_fin_service_desk_id", 3),
             helpdesk_fin_request_type_id=config.get("helpdesk_fin_request_type_id", 33),
+            datev_beraternummer=config.get("datev_beraternummer")
+            datev_mandantennummer=config.get("datev_mandantennummer")
             **kwargs,  # type: ignore
         )
         return self
