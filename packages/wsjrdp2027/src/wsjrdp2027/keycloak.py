@@ -61,6 +61,17 @@ def __get_user_id(ctx: _context.WsjRdpContext, username: str) -> str:
     return user_id
 
 
+@log_and_reraise
+def __get_group_id(ctx: _context.WsjRdpContext, groupname: str) -> str:
+    keycloak_admin = admin_login(ctx)
+    group = keycloak_admin.get_group_by_path(groupname)
+    _LOGGER.info(f"{group=}")
+    group_id = group["id"]
+    if not group_id:
+        raise RuntimeError(f"Failed to get a group_id for {groupname=}")
+    return group_id
+
+
 def add_user(
     ctx: _context.WsjRdpContext,
     email: str,
@@ -69,10 +80,15 @@ def add_user(
     password: str,
     username: str | None = None,
     enabled: bool = True,
-    attributes: list[dict[str, str]] | None = None,
+    attributes: dict[str, list[str]] | None = None,
 ) -> None:
     keycloak_admin = admin_login(ctx)
-    _LOGGER.info("add_user: trying to create user with: mail=%s, firstname=%s, lastname=%s", email, first_name, last_name)
+    _LOGGER.info(
+        "add_user: trying to create user with: mail=%s, firstname=%s, lastname=%s",
+        email,
+        first_name,
+        last_name,
+    )
 
     try:
         keycloak_admin.create_user(
@@ -173,6 +189,39 @@ def edit_user(
 
 
 @log_and_reraise
+def update_user(
+    ctx: _context.WsjRdpContext, username: str, payload: dict[str, _typing.Any]
+) -> None:
+    """High-level user update. Merges with existing values."""
+
+    def _dict_merge(key, old, new):
+        d = old.copy() if old else {}
+        d.update(new)
+        return {k: v for k, v in d.items() if v is not None}
+
+    def _merge(key, old, new):
+        if isinstance(old, dict) or key in ("access", "attributes"):
+            return _dict_merge(key, old, new)
+        else:
+            return new
+
+    original_payload = get_user(ctx, username)
+    user_id = original_payload["id"]
+    keycloak_admin = admin_login(ctx)
+
+    new_payload = {k: _merge(k, original_payload.get(k), v) for k, v in payload.items()}
+
+    _LOGGER.info(f"keycloak.update_user({username!r}, payload={new_payload!r})")
+
+    new_payload = original_payload.copy()
+    new_payload.update(payload)
+    # payload = {"firstName": first_name, "lastName": last_name, "email": email}
+    # payload = {k: v for k, v in payload.items() if v is not None}
+    if new_payload:
+        keycloak_admin.update_user(user_id=user_id, payload=new_payload)
+
+
+@log_and_reraise
 def is_user_enabled(ctx: _context.WsjRdpContext, username: str) -> bool:
     user_dict = get_user(ctx, username, user_profile_metadata=False)
     return user_dict["enabled"]
@@ -202,6 +251,13 @@ def delete_user(ctx: _context.WsjRdpContext, user_id):
 def get_users(ctx: _context.WsjRdpContext):
     keycloak_admin = admin_login(ctx)
     return keycloak_admin.get_users({})
+
+
+@log_and_reraise
+def get_users_in_group(ctx: _context.WsjRdpContext, groupname: str) -> list:
+    group_id = __get_group_id(ctx, groupname)
+    keycloak_admin = admin_login(ctx)
+    return keycloak_admin.get_group_members(group_id)
 
 
 def is_admin(ctx, userID):

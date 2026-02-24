@@ -1,9 +1,16 @@
-import logging
+from __future__ import annotations
+
+import logging as _logging
+import typing as _typing
 
 import requests
 
 
-_LOGGER = logging.getLogger(__name__)
+if _typing.TYPE_CHECKING:
+    from . import _context
+
+
+_LOGGER = _logging.getLogger(__name__)
 
 
 def get_all_domains(ctx):
@@ -13,14 +20,10 @@ def get_all_domains(ctx):
     }
     base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
     url = f"{base_url}/api/v1/get/domain/all"
-    resp = requests.get(
-        url,
-        # json=payload,
-        headers=headers,
-        timeout=30,
-    )
-    print(resp)
-    print(resp.text)
+    response = requests.get(url, headers=headers, timeout=30)
+    _LOGGER.debug(f"GET {url} -> {response}")
+    response.raise_for_status()
+    return response.json()
 
 
 def create_domain(ctx, domain: str):
@@ -64,8 +67,8 @@ def add_mailbox(ctx, local_part, domain, name, password):
     }
 
     base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
-    print(f"{payload=}")
-    print(f"{headers=}")
+    _LOGGER.info(f"{payload=}")
+    _LOGGER.info(f"{headers=}")
     resp = requests.post(
         f"{base_url}/api/v1/add/mailbox",
         json=payload,
@@ -87,21 +90,18 @@ def add_mailbox(ctx, local_part, domain, name, password):
     # edit_resp = requests.post("https://mail.worldscoutjamboree.de/api/v1/edit/mailbox", json=edit_payload, headers=headers, timeout=30)
     # _LOGGER.info("Update Response: %s", edit_resp.text)
 
+
 def add_alias(ctx, email, goto):
     headers = {
         "Content-Type": "application/json",
         "X-API-Key": ctx._config.mail_api_key,
     }
 
-    payload = {
-        "address": email,
-        "goto": goto,
-        "active": "1"
-    }
-    
+    payload = {"address": email, "goto": goto, "active": "1"}
+
     base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
-    print(f"{payload=}")
-    print(f"{headers=}")
+    _LOGGER.info(f"{payload=}")
+    _LOGGER.info(f"{headers=}")
     resp = requests.post(
         f"{base_url}/api/v1/add/alias",
         json=payload,
@@ -110,3 +110,28 @@ def add_alias(ctx, email, goto):
     )
     # resp.raise_for_status()  # optional: raise exception for HTTP error codes
     _LOGGER.info("Add Alias Response: %s", resp.text)
+
+
+def get_aliases(ctx: _context.WsjRdpContext) -> list[dict]:
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": ctx._config.mail_api_key,
+    }
+    base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
+    _LOGGER.info(f"{headers=}")
+    url = f"{base_url}/api/v1/get/alias/all"
+    response = requests.get(url, headers=headers, timeout=30)
+    _LOGGER.debug(f"GET {url} -> {response}")
+    response.raise_for_status()
+    return response.json()
+
+
+def get_mailboxes(ctx: _context.WsjRdpContext) -> list[dict]:
+    headers = {"Content-Type": "application/json", "X-API-Key": ctx.config.mail_api_key}
+    base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
+    _LOGGER.info(f"{headers=}")
+    url = f"{base_url}/api/v1/get/mailbox/all"
+    response = requests.get(url, headers=headers, timeout=30)
+    _LOGGER.debug(f"GET {url} -> {response}")
+    response.raise_for_status()
+    return response.json()
