@@ -1,0 +1,11 @@
+updates:
+  new_status: confirmed
+  remove_tags: eFZ-Einsicht-fehlt
+query:
+  where:
+    role: IST
+    primary_group_id: 4
+    exclude_primary_group_id: [7, 45]  # Warteliste, BMT
+    status: reviewed
+    tag: IST-Confirmation-Mail
+    raw_sql: "upload_good_conduct_pdf IS NOT NULL"
