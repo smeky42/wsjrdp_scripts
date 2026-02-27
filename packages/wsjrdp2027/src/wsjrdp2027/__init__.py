@@ -91,7 +91,13 @@ from ._util import (
 
 
 if _typing.TYPE_CHECKING:
-    from . import _datev as datev, keycloak as keycloak, mailbox as mailbox
+    from . import (
+        _datev as datev,
+        _pg as pg,
+        bank_accounts as bank_accounts,
+        keycloak as keycloak,
+        mailbox as mailbox,
+    )
     from ._camt import (
         CamtMessage as CamtMessage,
         CamtTransactionDetails as CamtTransactionDetails,
@@ -185,6 +191,12 @@ __all__ = [
     "write_payment_dataframe_to_html",
     "write_payment_dataframe_to_xlsx",
     "write_people_dataframe_to_xlsx",
+    #
+    "bank_accounts",
+    "datev",
+    "keycloak",
+    "mailbox",
+    "pg",
 ]
 
 EMAIL_SIGNATURE_CMT = (
@@ -288,9 +300,11 @@ __ALIASES__ = {
     "CamtTxUniqueDbKey": (f"._camt", "CamtTxUniqueDbKey"),
     "Group": ("._groups", "Group"),
     "PainMessage": (f"._pain", "PainMessage"),
-    "keycloak": (".keycloak", ""),
+    "bank_accounts": (".bank_accounts", ""),
     "datev": ("._datev", ""),
+    "keycloak": (".keycloak", ""),
     "mailbox": (".mailbox", ""),
+    "pg": ("._pg", ""),
 }
 
 
