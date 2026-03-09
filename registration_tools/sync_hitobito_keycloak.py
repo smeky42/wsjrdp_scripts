@@ -39,7 +39,9 @@ def load_people_dataframe_for_groupname(
         conn,
         where=wsjrdp2027.PeopleWhere(
             role=role,
-            # id=484,
+            # tag="Finanzverantwortlich",
+            # role=role,
+            # id=486,
             exclude_deregistered=True,
             primary_group_id=primary_group_id,
             exclude_primary_group_id=exclude_primary_group_id,
@@ -78,9 +80,9 @@ def update_additional_info(
         if key in ("wsjrdp_email", "moss_email"):
             _LOGGER.info(f"Update {key} for {len(values)} people")
             wsjrdp2027.pg.pg_update_people_additional_info_email(conn, key, values)
-        elif key in ("keycloak_username",):
+        elif key in ("keycloak_username", "wsjrdp_email_is_mailbox"):
             _LOGGER.info(f"Update {key} for {len(values)} people")
-            wsjrdp2027.pg.pg_update_people_additional_info_strings(conn, values)
+            wsjrdp2027.pg.pg_update_people_additional_info(conn, values)
         else:
             raise RuntimeError(f"Unsupported {key=} to update")
 
@@ -175,8 +177,9 @@ def sync(
             ("keycloak_username", keycloak_username),
             ("wsjrdp_email", p.wsjrdp_email),
             ("moss_email", p.moss_email),
+            ("wsjrdp_email_is_mailbox", p.is_cmt or p.is_ul),
         ]:
-            if key not in p.additional_info:
+            if key not in p.additional_info and val is not None:
                 additional_info_updates.append({"id": p.id, key: val})
 
     if errors:
@@ -200,7 +203,7 @@ def main():
     ctx.configure_log_file(log_filename)
 
     with ctx.psycopg_connect() as conn:
-        for groupname in ["IST"]:
+        for groupname in ["CMT", "UL", "IST", "BMT"]:
             _LOGGER.info(f"Load keycloak {groupname=} users")
             keycloak_users = ctx.keycloak.get_users_in_group(groupname, enabled=True)
             _LOGGER.info(

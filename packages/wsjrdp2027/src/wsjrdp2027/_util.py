@@ -84,14 +84,18 @@ _CONSOLE_CONFIRM_INPUT_TO_VALUE = {
 def console_confirm(question, *, default: bool | None = False) -> bool:
     allowed_choices = _CONSOLE_CONFIRM_DEFAULT_TO_CHOICE_DISPLAY.get(default, "y/n")
     while True:
-        raw_user_input = input(f"{question} [{allowed_choices}] ")
+        prompt = f"{question} [{allowed_choices}] "
+        raw_user_input = input(prompt)
+        _LOGGER.debug(f"{prompt}{raw_user_input.strip()}")
         user_input = raw_user_input.strip().lower()
         if not user_input and default is not None:
             return default
         elif (val := _CONSOLE_CONFIRM_INPUT_TO_VALUE.get(user_input, None)) is not None:
             return val
         else:
-            print("Please respond with 'yes' or 'no' (or 'y' or 'n').\n", flush=True)
+            msg = "Please respond with 'yes' or 'no' (or 'y' or 'n')."
+            _LOGGER.debug(msg)
+            print(f"{msg}\n", flush=True)
 
 
 def create_dir(
@@ -1259,12 +1263,12 @@ def print_progress_message(count, size, message, *, logger=_LOGGER) -> None:
 # ==============================================================================
 
 
-def generate_password():
+def generate_password(*, length: int = 20) -> str:
     import secrets
     import string
 
     alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(20))
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def generate_mail_username(first_name, last_name):

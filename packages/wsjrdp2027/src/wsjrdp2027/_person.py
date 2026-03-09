@@ -154,6 +154,14 @@ class Person:
         return self.short_role_name == "IST" and self.primary_group_id == 45
 
     @property
+    def is_cmt(self) -> bool:
+        return self.short_role_name == "CMT"
+
+    @property
+    def is_ul(self) -> bool:
+        return self.short_role_name == "UL"
+
+    @property
     def helpdesk_email(self) -> str:
         match self.short_role_name:
             case "YP" | "UL":
