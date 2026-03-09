@@ -110,7 +110,7 @@ def main(argv=None):
             extra_static_df_cols={"deregistration_issue": deregistration_issue},
         )
 
-        mailing = batch_config.prepare_batch_for_dataframe(
+        mailing = batch_config.prepare(
             df,
             msg_cb=lambda p: attach_cancellation_confirmation(ctx, p),
             out_dir=ctx.out_dir,

@@ -1572,3 +1572,27 @@ WHERE id = %(id)s"""
         with conn.cursor() as cur:
             print(query)
             cur.executemany(query, values)
+
+
+def pg_update_people_additional_info_strings(
+    conn: _psycopg.Connection,
+    values: _collections_abc.Iterable[dict],
+    *,
+    now=None,
+) -> None:
+    from . import _util
+
+    now = _util.to_datetime(now)
+
+    values = [
+        {"id": d["id"], "key": k, "value": v}
+        for d in values
+        for k, v in d.items()
+        if k != "id"
+    ]
+
+    if values:
+        query = f"""UPDATE people SET additional_info[%(key)s] = to_jsonb(%(value)s::text) WHERE id = %(id)s"""
+        with conn.cursor() as cur:
+            print(query)
+            cur.executemany(query, values)

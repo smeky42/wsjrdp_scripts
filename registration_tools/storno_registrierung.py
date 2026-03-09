@@ -107,7 +107,7 @@ def main(argv=None):
     ctx.configure_log_file(out_base.with_suffix(".log"))
 
     with ctx.psycopg_connect() as conn:
-        mailing = batch_config.prepare_batch_for_dataframe(
+        mailing = batch_config.prepare(
             df,
             msg_cb=lambda p: attach_cancellation_request(ctx, p),
             out_dir=ctx.out_dir,

@@ -29,6 +29,7 @@ if _typing.TYPE_CHECKING:
         _mail_client,
         _mail_config,
         _people_query,
+        _person,
     )
 
 
@@ -1079,6 +1080,53 @@ class WsjRdpContext:
             silent_skip_email=silent_skip_email,
         )
 
+    def load_person_for_batch(
+        self,
+        batch_config: _batch.BatchConfig,
+        /,
+        *,
+        extra_static_df_cols: dict[str, _typing.Any] | None = None,
+        extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
+        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        conn: _psycopg.Connection | None = None,
+    ) -> _person.Person:
+        from . import _person
+
+        df = self.load_person_dataframe_for_batch(
+            batch_config,
+            extra_static_df_cols=extra_static_df_cols,
+            extra_mailing_bcc=extra_mailing_bcc,
+            now=now,
+            conn=conn,
+        )
+        return next(iter(_person.iter_people_dataframe(df)))
+
+    def load_person_for_id(
+        self,
+        id: str | int,
+        /,
+        *,
+        exclude_deregistered: bool = False,
+        extra_static_df_cols: dict[str, _typing.Any] | None = None,
+        extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
+        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        conn: _psycopg.Connection | None = None,
+    ) -> _person.Person:
+        from . import _batch, _people_query
+
+        batch_config = _batch.BatchConfig(
+            where=_people_query.PeopleWhere(
+                id=id, exclude_deregistered=exclude_deregistered
+            )
+        )
+        return self.load_person_for_batch(
+            batch_config,
+            extra_static_df_cols=extra_static_df_cols,
+            extra_mailing_bcc=extra_mailing_bcc,
+            now=now,
+            conn=conn,
+        )
+
     def load_person_dataframe_for_batch(
         self,
         batch_config: _batch.BatchConfig,
@@ -1087,6 +1135,7 @@ class WsjRdpContext:
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        conn: _psycopg.Connection | None = None,
     ) -> _pandas.DataFrame:
         import textwrap
 
@@ -1094,6 +1143,7 @@ class WsjRdpContext:
             now = self.start_time
         df = batch_config.load_people_dataframe(
             ctx=self,
+            conn=conn,
             extra_static_df_cols=extra_static_df_cols,
             extra_mailing_bcc=extra_mailing_bcc,
             log_resulting_data_frame=False,

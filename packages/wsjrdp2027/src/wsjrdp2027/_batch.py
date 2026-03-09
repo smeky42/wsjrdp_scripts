@@ -18,7 +18,7 @@ if _typing.TYPE_CHECKING:
     import pandas as _pandas
     import psycopg as _psycopg
 
-    from . import _context, _mail_client, _people_query
+    from . import _context, _mail_client, _people_query, _person
 
 
 __all__ = [
@@ -43,7 +43,8 @@ class PreparedEmailMessage:
     mailing_name: str
     message: _email_message.EmailMessage | None = None
     content: str | None = None
-    row: _pandas.Series | None = None
+    person: _person.Person | None = None
+    _row: _pandas.Series | None = None
     summary: str
     eml_name: str
     _eml: bytes | None = None
@@ -54,6 +55,7 @@ class PreparedEmailMessage:
         mailing_name: str,
         message: _email_message.EmailMessage | None = None,
         content: str | None = None,
+        person: _person.Person | None = None,
         row: _pandas.Series | None = None,
         summary: str,
         eml_name: str | None = None,
@@ -62,7 +64,8 @@ class PreparedEmailMessage:
         self.mailing_name = mailing_name
         self.message = message
         self.content = content
-        self.row = row
+        self.person = person
+        self._row = row
         self.summary = summary
         self.eml_name = eml_name if eml_name else f"{self.mailing_name}.eml"
         self._eml = eml
@@ -79,6 +82,18 @@ class PreparedEmailMessage:
     @eml.setter
     def eml(self, value: bytes) -> None:
         self._eml = value
+
+    @property
+    def row(self) -> _pandas.Series | None:
+        if (row := self._row) is not None:
+            return row
+        elif (p := self.person) is not None:
+            try:
+                return p.row
+            except Exception:
+                return None
+        else:
+            return None
 
 
 @_dataclasses.dataclass(kw_only=True)
@@ -662,6 +677,13 @@ class BatchConfig:
             raw_yaml = raw_yaml.encode("utf-8")
         self.raw_yaml = raw_yaml
 
+    @property
+    def person_updates(self) -> dict:
+        from . import _person_pg
+
+        keys_set = set(self.updates) & _person_pg.VALID_PERSON_UPDATE_KEYS
+        return {k: v for k, v in self.updates.items() if k in keys_set}
+
     def update_dataframe_for_updates(
         self,
         df: _pandas.DataFrame,
@@ -670,17 +692,12 @@ class BatchConfig:
         inplace: bool = True,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
     ) -> _pandas.DataFrame:
-        from . import _people, _person_pg
+        from . import _people
 
         if not inplace:
             df = df.copy(deep=True)
 
-        keys_set = set(self.updates) & _person_pg.VALID_PERSON_UPDATE_KEYS
-        _people.update_dataframe_for_updates(
-            df,
-            updates={k: v for k, v in self.updates.items() if k in keys_set},
-            now=now,
-        )
+        _people.update_dataframe_for_updates(df, updates=self.person_updates, now=now)
         return df
 
     def load_people_dataframe(
@@ -816,7 +833,7 @@ class BatchConfig:
                 df = df_cb(df)
             if out_dir is None:
                 out_dir = ctx.out_dir
-            return self.prepare_batch_for_dataframe(
+            return self.prepare(
                 df,
                 unfiltered_df=unfiltered_df,
                 msg_cb=msg_cb,
@@ -826,9 +843,10 @@ class BatchConfig:
                 now=now,
             )
 
-    def prepare_batch_for_dataframe(
+    def prepare(
         self,
-        df: _pandas.DataFrame,
+        data: _pandas.DataFrame | _person.Person | _typing.Iterable[_person.Person],
+        /,
         *,
         unfiltered_df: _pandas.DataFrame | None = None,
         msg_cb: _collections_abc.Callable[[PreparedEmailMessage], None] | None = None,
@@ -843,7 +861,21 @@ class BatchConfig:
     ) -> PreparedBatch:
         import time
 
-        from . import _util
+        import pandas as _pandas
+
+        from . import _person, _util
+
+        data_is_dataframe = False
+        if isinstance(data, _person.Person):
+            df = data.df
+            people = [data]
+        elif isinstance(data, _pandas.DataFrame):
+            df = data
+            people = list(_person.iter_people_dataframe(data))
+            data_is_dataframe = True
+        else:
+            people = list(data)
+            df = next(iter(people)).df
 
         if dry_run is None:
             dry_run = self.dry_run
@@ -855,24 +887,29 @@ class BatchConfig:
         now = _util.to_datetime(now)
         _LOGGER.info("Update dataframe for updates and action arguments...")
         unfiltered_df_is_df = unfiltered_df is df
-        df = self.update_dataframe_for_updates(df, now=now, inplace=False)
+        if self.person_updates:
+            if not data_is_dataframe:
+                raise RuntimeError(
+                    "Updates only possible when data is a Pandas DataFrame"
+                )
+            df = self.update_dataframe_for_updates(df, now=now, inplace=False)
         if unfiltered_df_is_df:
             unfiltered_df = df
-        if len(df) > 1:
+        if len(people) > 1:
             _LOGGER.info("Prepare mailing...")
         tic = time.monotonic()
         messages = tuple(
-            self.prepare_email_message_for_row(
-                row,
+            self._prepare_email_message_for_person(
+                p,
                 msg_cb=msg_cb,
                 msgid_idstring=msgid_idstring,
                 msgid_domain=msgid_domain,
                 open_editor=open_editor,
             )
-            for _, row in df.iterrows()
+            for p in people
         )
         toc = time.monotonic()
-        if len(df) > 5 or (toc - tic) > 0.1:
+        if len(people) > 5 or (toc - tic) > 0.1:
             _LOGGER.info("  finished preparation of mailing (%g seconds)", toc - tic)
         if len(messages) == 1 and messages[0].content:
             new_content = messages[0].content
@@ -898,9 +935,9 @@ class BatchConfig:
             skip_db_updates=bool(_util.coalesce(skip_db_updates, False)),
         )
 
-    def prepare_email_message_for_row(
+    def _prepare_email_message_for_person(
         self,
-        row: _pandas.Series,
+        person: _person.Person,
         *,
         msg_cb: _collections_abc.Callable[[PreparedEmailMessage], None] | None = None,
         policy: _email_policy.EmailPolicy | None = None,
@@ -910,22 +947,23 @@ class BatchConfig:
     ) -> PreparedEmailMessage:
         from . import _util
 
-        row_dict = _row_to_row_dict(row)
-
-        id = row["id"]
-        msg_for_row = email_message_from_row(
-            row_dict,
+        msg_for_row = _email_message_from_person(
+            person,
             content=self.content,
             html_content=self.html_content,
             signature=self.signature,
             email_subject=self.email_subject,
-            email_from=self.email_from or row["mailing_from"],
-            email_to=_util.merge_mail_addresses(row["mailing_to"], self.extra_email_to),
-            email_cc=_util.merge_mail_addresses(row["mailing_cc"], self.extra_email_cc),
-            email_bcc=_util.merge_mail_addresses(
-                row["mailing_bcc"], self.extra_email_bcc
+            email_from=self.email_from or person["mailing_from"],
+            email_to=_util.merge_mail_addresses(
+                person["mailing_to"], self.extra_email_to
             ),
-            email_reply_to=self.email_reply_to or row["mailing_reply_to"],
+            email_cc=_util.merge_mail_addresses(
+                person["mailing_cc"], self.extra_email_cc
+            ),
+            email_bcc=_util.merge_mail_addresses(
+                person["mailing_bcc"], self.extra_email_bcc
+            ),
+            email_reply_to=self.email_reply_to or person["mailing_reply_to"],
             policy=policy,
             msgid_idstring=msgid_idstring,
             msgid_domain=msgid_domain,
@@ -937,10 +975,12 @@ class BatchConfig:
             mailing_name=self.name,
             message=msg_for_row.msg,
             content=msg_for_row.content,
-            row=row,
-            eml_name=f"{self.name}.{id}.eml",
+            person=person,
+            row=person.row,
+            eml_name=f"{self.name}.{person.id}.eml",
             summary=_util.render_template(
-                self.summary, {"row": row_dict, "msg": msg_for_row.msg}
+                self.summary,
+                {"p": person, "person": person, "row": person, "msg": msg_for_row.msg},
             ),
         )
         if msg_cb:
@@ -988,14 +1028,15 @@ def _strip_html_tags_html2text(html_content: str) -> str:
 
 
 @_dataclasses.dataclass(kw_only=True)
-class EmailMessageForRow:
+class EmailMessageForPerson:
+    person: _person.Person
     row: _pandas.Series | dict[str, _typing.Any]
     content: str | None
     msg: _email_message.EmailMessage | None
 
 
-def email_message_from_row(
-    row: _pandas.Series | dict[str, _typing.Any],
+def _email_message_from_person(
+    person: _person.Person,
     *,
     email_subject: str,
     content: str | None = None,
@@ -1014,7 +1055,7 @@ def email_message_from_row(
     context: dict | None = None,
     extra_context: dict | None = None,
     open_editor: bool | None = None,
-) -> EmailMessageForRow:
+) -> EmailMessageForPerson:
     import email.message
     import email.utils
 
@@ -1027,8 +1068,10 @@ def email_message_from_row(
     }
     context = context or {}
 
+    row = _row_to_row_dict(person.row)
+
     if content is None and html_content is None:
-        return EmailMessageForRow(row=row, msg=None, content=None)
+        return EmailMessageForPerson(person=person, row=row, msg=None, content=None)
 
     email_to = _util.to_str_list_or_none(email_to)
     email_cc = _util.to_str_list_or_none(email_cc)
@@ -1038,7 +1081,9 @@ def email_message_from_row(
     def render_template(template):
         local_context = context.copy()
         local_context |= {
-            "row": row,
+            "p": person,
+            "person": person,
+            "row": person,
             "email_from": email_from,
             "email_to": email_to,
             "email_cc": email_cc,
@@ -1086,7 +1131,7 @@ def email_message_from_row(
         if html_content:
             content = _strip_html_tags_html2text(html_content)
         else:
-            return EmailMessageForRow(row=row, msg=None, content=None)
+            return EmailMessageForPerson(person=person, row=row, msg=None, content=None)
     content = render_template(content)
     if signature:
         signature = render_template(signature).lstrip()
@@ -1102,7 +1147,7 @@ def email_message_from_row(
         html_content = render_template(html_content)
         msg.add_alternative(html_content, subtype="html")
 
-    return EmailMessageForRow(row=row, msg=msg, content=content)
+    return EmailMessageForPerson(person=person, row=row, msg=msg, content=content)
 
 
 def _maybe_edit_content(content: str, *, open_editor: bool | None = None) -> str:
