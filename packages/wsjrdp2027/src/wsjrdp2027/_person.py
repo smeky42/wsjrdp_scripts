@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math as _math
 import typing as _typing
 
 from . import _weakref_util
@@ -12,8 +13,12 @@ if _typing.TYPE_CHECKING:
 
 
 class Person:
+    _KEEP_NAN_KEYS = {"amount_paid_cents", "amount_unpaid_cents", "open_amount_cents"}
+
     _df = _weakref_util.OptionalWeakrefAttr["_pandas.DataFrame"]()
+    _df_ref: _pandas.DataFrame | None
     _index = None
+    _row: _pandas.Series | None = None
     _data: dict[str, _typing.Any] = _typing.cast(dict, None)
     _cls_keys: frozenset[str]
     _data_keys: frozenset[str] = frozenset([])
@@ -42,22 +47,69 @@ class Person:
         self = cls(**d)
         if dataframe is not None:
             self._df = dataframe
+            self._df_ref = dataframe
+            self._index = index
+        return self
+
+    @classmethod
+    def from_pandas_row(
+        cls,
+        row: _pandas.Series,
+        *,
+        dataframe: _pandas.DataFrame | None = None,
+        index=None,
+    ) -> _typing.Self:
+        d = row.to_dict()
+        self = cls(**d)  # type: ignore
+        self._row = row
+        if dataframe is not None and index is not None:
+            self._df = dataframe
+            self._df_ref = dataframe
             self._index = index
         return self
 
     id: int
     primary_group_id: int
-    role_id_name: str
+
+    @property
+    def df(self) -> _pandas.DataFrame:
+        if (dataframe := self._df) is not None:
+            return dataframe
+        else:
+            raise RuntimeError("This Person object has no underlying Pandas dataframe")
+
+    @property
+    def row(self) -> _pandas.Series:
+        if (row := self._row) is not None:
+            return row
+        elif self._df is None or self._index is None:
+            raise RuntimeError(
+                "This Person object has no underlying Pandas dataframe row"
+            )
+        else:
+            return self._df.iloc[self._index]  # type: ignore
+
+    def __normalize_val(self, key, val) -> _typing.Any:
+        if (
+            (key in self._KEEP_NAN_KEYS)
+            or not isinstance(val, float)
+            or not _math.isnan(val)
+        ):
+            return val
+        else:
+            return None
 
     def __getattr__(self, key, /):
         data = self.__dict__.get("_data", {})
         try:
-            return data[key]
+            val = data[key]
+            return self.__normalize_val(key, val)
         except KeyError:
             raise AttributeError(name=key, obj=self) from None
 
     def get(self, key, default=None, /):
-        return self._data.get(key, default)
+        val = self._data.get(key, default)
+        return self.__normalize_val(key, val)
 
     def __setattr__(self, name: str, value: _typing.Any, /) -> None:
         if name == "_data" or name in Person._cls_keys:
@@ -70,7 +122,9 @@ class Person:
                 object.__setattr__(self, name, value)
 
     def __getitem__(self, key, /):
-        return self._data[key]
+        data = self.__dict__.get("_data", {})
+        val = data[key]
+        return self.__normalize_val(key, val)
 
     def __str__(self) -> str:
         cls_name = self.__class__.__qualname__
@@ -98,6 +152,24 @@ class Person:
     @property
     def is_bmt(self) -> bool:
         return self.short_role_name == "IST" and self.primary_group_id == 45
+
+    @property
+    def helpdesk_email(self) -> str:
+        match self.short_role_name:
+            case "YP" | "UL":
+                return "unit-management@worldscoutjamboree.de"
+            case "IST":
+                return "ist@worldscoutjamboree.de"
+            case _:
+                return "info@worldscoutjamboree.de"
+
+    @property
+    def id_and_name(self) -> str:
+        return _filtered_join(self.id, self.short_full_name)
+
+    @property
+    def role_id_name(self) -> str:
+        return _filtered_join(self.short_role_name, self.id, self.short_full_name)
 
     @property
     def additional_info(self) -> dict[str, _typing.Any]:
@@ -147,6 +219,30 @@ class Person:
             case _:
                 return None
 
+    @property
+    def deregistration_issue(self) -> str | None:
+        return self.additional_info.get("deregistration_issue")
+
+    @deregistration_issue.setter
+    def deregistration_issue(self, value: str | None) -> None:
+        if not value:
+            self.additional_info.pop("deregistration_issue", None)
+        else:
+            additional_info = self._data.setdefault("additional_info", {})
+            additional_info["deregistration_issue"] = value
+
+    @property
+    def keycloak_username(self) -> str | None:
+        return self.additional_info.get("keycloak_username")
+
+    @keycloak_username.setter
+    def keycloak_username(self, value: str | None) -> None:
+        if not value:
+            self.additional_info.pop("keycloak_username", None)
+        else:
+            additional_info = self._data.setdefault("additional_info", {})
+            additional_info["keycloak_username"] = value
+
 
 Person._cls_keys = frozenset(Person.__dict__.keys())
 
@@ -154,5 +250,18 @@ Person._cls_keys = frozenset(Person.__dict__.keys())
 def iter_people_dataframe(
     df: _pandas.DataFrame,
 ) -> _collections_abc.Iterator[Person]:
-    for row in df.itertuples():
-        yield Person.from_pandas_row_tuple(row, dataframe=df)
+    for idx, row in df.iterrows():
+        yield Person.from_pandas_row(row, dataframe=df, index=idx)
+
+
+def _filtered_join(*args, sep=" "):
+    import math
+
+    return sep.join(
+        str(a)
+        for a in args
+        if not (
+            a is None  # filter out None
+            or (isinstance(a, float) and math.isnan(a))  # filter out NaN
+        )
+    )

@@ -78,6 +78,9 @@ def update_additional_info(
         if key in ("wsjrdp_email", "moss_email"):
             _LOGGER.info(f"Update {key} for {len(values)} people")
             wsjrdp2027.pg.pg_update_people_additional_info_email(conn, key, values)
+        elif key in ("keycloak_username",):
+            _LOGGER.info(f"Update {key} for {len(values)} people")
+            wsjrdp2027.pg.pg_update_people_additional_info_strings(conn, values)
         else:
             raise RuntimeError(f"Unsupported {key=} to update")
 
@@ -87,7 +90,7 @@ def sync(
     conn: _psycopg.Connection,
     groupname: str,
     keycloak_users: list[wsjrdp2027.keycloak.KeycloakUserDict],
-) -> None:
+) -> bool:
     errors = []
     email2row = {}
 
@@ -168,17 +171,22 @@ def sync(
                     )
                     continue
 
-        for key in ("wsjrdp_email", "moss_email"):
+        for key, val in [
+            ("keycloak_username", keycloak_username),
+            ("wsjrdp_email", p.wsjrdp_email),
+            ("moss_email", p.moss_email),
+        ]:
             if key not in p.additional_info:
-                additional_info_updates.append({"id": p.id, key: getattr(p, key)})
+                additional_info_updates.append({"id": p.id, key: val})
 
     if errors:
         for err in errors:
             _LOGGER.error(err)
-        return
+        return False
 
     update_additional_info(conn, additional_info_updates, console_confirm=True)
     ctx.keycloak.update_users(keycloak_updates, console_confirm=True)
+    return True
 
 
 def main():
@@ -192,7 +200,7 @@ def main():
     ctx.configure_log_file(log_filename)
 
     with ctx.psycopg_connect() as conn:
-        for groupname in ["BMT"]:
+        for groupname in ["IST"]:
             _LOGGER.info(f"Load keycloak {groupname=} users")
             keycloak_users = ctx.keycloak.get_users_in_group(groupname, enabled=True)
             _LOGGER.info(
