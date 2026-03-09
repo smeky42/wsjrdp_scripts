@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as _datetime
 import logging
 import pathlib as _pathlib
+import pprint
 import textwrap
 
 import pandas as _pandas
@@ -79,19 +80,41 @@ def _create_fin_issue(
 
     collection_year_month = estimated_collection_date.strftime("%Y-%m")
     summary = f"Einzug {collection_year_month} Retoure {person_row['role_id_name']}"
+    email_addrs = wsjrdp2027.merge_mail_addresses(
+        person_row.get("sepa_mailing_to"), person_row.get("sepa_mailing_cc"), default=[]
+    )
+    email_addrs_list_text = "\n".join(
+        f"* [{addr}|mailto:{addr}]" for addr in email_addrs
+    )
     description = f"""{person_row["greeting_name"]} in Hitobito: [https://anmeldung.worldscoutjamboree.de/people/{person_id}]
-"""
+
+E-Mail Adressen:
+{email_addrs_list_text}
+""".strip()
+
     labels = ["Retoure", "Rücklastschrift", f"Einzug-{collection_year_month}"]
 
+    reporter = person_row.get("sepa_mail") or person_row["email"]
+    participants = [addr for addr in email_addrs if addr != reporter]
+
     with ctx.login_helpdesk() as helpdesk:
+        for email in email_addrs:
+            helpdesk.create_customer(email, email)
+
         customer_request = helpdesk.create_fin_customer_request(
             summary=summary,
             description=description,
             labels=labels,
+            raise_on_behalf_of=reporter,
+            request_participants=participants,
         )
 
         debit_return_issue = customer_request["issueKey"]
-        _LOGGER.info(f"Created customer request {debit_return_issue}")
+
+        _LOGGER.info(
+            f"Created customer request {debit_return_issue}\n"
+            f"{textwrap.indent(pprint.pformat(helpdesk.get_customer_request(debit_return_issue)), '  | ')}"
+        )
 
     _pg._execute_query_fetch_id(
         conn,
@@ -183,6 +206,8 @@ def _send_missing_installment_notification(
         _LOGGER.info(
             "retoure camt tx:\n%s", textwrap.indent(tx_row.to_string(), "  | ")
         )
+    _LOGGER.info("")
+    _LOGGER.info(f"role_id_name: {role_id_name}")
     _LOGGER.info(f"retoure_cents: {retoure_cents} (prev month open_amount_cents)")
     _LOGGER.info(f"missing_installment_cents: {missing_installment_cents} (prev month)")
     _LOGGER.info(f"debit_return_issue: {debit_return_issue}")
@@ -202,9 +227,7 @@ def _send_missing_installment_notification(
             upcoming_collection_date=upcoming_collection_date,
             person_row=person_row,
         )
-        batch_config.jinja_extra_globals["debit_return_issue"] = (
-            debit_return_issue
-        )
+        batch_config.jinja_extra_globals["debit_return_issue"] = debit_return_issue
 
     if ae_row is not None and not ae_row["comment"]:
         _pg._execute_query_fetch_id(

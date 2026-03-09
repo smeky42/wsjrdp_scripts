@@ -185,7 +185,11 @@ def _row_to_mailing_to(
 ) -> list[str] | None:
     from . import _util
 
-    wsjrdp_email = row.get("additional_info", {}).get("wsjrdp_email")
+    short_role_name = getattr(row.get("payment_role"), "short_role_name", None)
+    if short_role_name in ("CMT", "UL"):
+        wsjrdp_email = row.get("additional_info", {}).get("wsjrdp_email")
+    else:
+        wsjrdp_email = None
     if query.include_sepa_mail_in_mailing_to:
         candidates = [row.get("email"), wsjrdp_email, row.get("sepa_mail")]
     else:

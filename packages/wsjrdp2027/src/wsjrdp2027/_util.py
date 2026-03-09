@@ -154,11 +154,37 @@ def configure_file_logging(
 def log_exception_decorator[F: _collections_abc.Callable[..., _typing.Any]](
     func: F,
 ) -> F:
+    import functools
+
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception as exc:
             _LOGGER.exception("%s failed: %s", func.__name__, str(exc))
+            raise
+
+    return _typing.cast(F, wrapper)
+
+
+def log_call[F: _collections_abc.Callable[..., _typing.Any]](
+    func: F,
+) -> F:
+    import functools
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        call_args = [repr(a) for a in args]
+        call_args.extend(f"{k}={v!r}" for k, v in kwargs.items())
+        call_s = f"{func.__qualname__}({', '.join(call_args)})"
+
+        try:
+            _LOGGER.debug(call_s)
+            result = func(*args, **kwargs)
+            _LOGGER.debug(f"{call_s} result: {result!r}")
+            return result
+        except Exception as exc:
+            _LOGGER.exception(f"{call_s} raised: {exc}")
             raise
 
     return _typing.cast(F, wrapper)
