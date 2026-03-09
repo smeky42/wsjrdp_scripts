@@ -1548,6 +1548,8 @@ def pg_update_people_additional_info_email(
     *,
     now=None,
 ) -> None:
+    from psycopg.types.json import Jsonb
+
     from . import _util
 
     now = _util.to_datetime(now)
@@ -1555,8 +1557,8 @@ def pg_update_people_additional_info_email(
     values = [
         {
             "id": d["id"],
-            "value": email,
-            "now": _util.to_datetime(d.get("now"), now=now).isoformat(),
+            "value": Jsonb(email),
+            "now": Jsonb(_util.to_datetime(d.get("now"), now=now).isoformat()),
         }
         for d in values
         if (email := d[key])
@@ -1565,34 +1567,36 @@ def pg_update_people_additional_info_email(
     if values:
         query = f"""UPDATE people
 SET
-   additional_info['{key}'] = to_jsonb(%(value)s::text),
-   additional_info['{key}_created_at'] = COALESCE(additional_info['{key}_created_at'], to_jsonb(%(now)s::text)),
-   additional_info['{key}_updated_at'] = to_jsonb(%(now)s::text)
+   additional_info['{key}'] = %(value)s,
+   additional_info['{key}_created_at'] = COALESCE(additional_info['{key}_created_at'], %(now)s),
+   additional_info['{key}_updated_at'] = %(now)s
 WHERE id = %(id)s"""
         with conn.cursor() as cur:
             print(query)
             cur.executemany(query, values)
 
 
-def pg_update_people_additional_info_strings(
+def pg_update_people_additional_info(
     conn: _psycopg.Connection,
     values: _collections_abc.Iterable[dict],
     *,
     now=None,
 ) -> None:
+    from psycopg.types.json import Jsonb
+
     from . import _util
 
     now = _util.to_datetime(now)
 
     values = [
-        {"id": d["id"], "key": k, "value": v}
+        {"id": d["id"], "key": k, "value": Jsonb(v)}
         for d in values
         for k, v in d.items()
         if k != "id"
     ]
 
     if values:
-        query = f"""UPDATE people SET additional_info[%(key)s] = to_jsonb(%(value)s::text) WHERE id = %(id)s"""
+        query = f"""UPDATE people SET additional_info[%(key)s] = %(value)s WHERE id = %(id)s"""
         with conn.cursor() as cur:
-            print(query)
+            _LOGGER.debug(f"{query}" + "".join(f"\n  | {d!r}" for d in values))
             cur.executemany(query, values)
