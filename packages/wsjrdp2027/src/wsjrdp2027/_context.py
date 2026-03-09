@@ -22,7 +22,14 @@ if _typing.TYPE_CHECKING:
     import psycopg as _psycopg
     import sshtunnel as _sshtunnel
 
-    from . import _batch, _helpdesk, _mail_client, _mail_config, _people_query
+    from . import (
+        _batch,
+        _helpdesk,
+        _keycloak_wsjrdp_adapter,
+        _mail_client,
+        _mail_config,
+        _people_query,
+    )
 
 
 __all__ = [
@@ -79,7 +86,7 @@ class WsjRdpContextConfig:
     helpdesk_fin_request_type_id: str | int = 33
 
     datev_beraternummer: str | None = None
-    datev_mandantennummer: str|None=None
+    datev_mandantennummer: str | None = None
 
     @classmethod
     def from_file(cls, path: str | _pathlib.Path | None = None) -> _typing.Self:
@@ -177,8 +184,8 @@ class WsjRdpContextConfig:
             helpdesk_password=config.get("helpdesk_password", ""),
             helpdesk_fin_service_desk_id=config.get("helpdesk_fin_service_desk_id", 3),
             helpdesk_fin_request_type_id=config.get("helpdesk_fin_request_type_id", 33),
-            datev_beraternummer=config.get("datev_beraternummer")
-            datev_mandantennummer=config.get("datev_mandantennummer")
+            datev_beraternummer=config.get("datev_beraternummer"),
+            datev_mandantennummer=config.get("datev_mandantennummer"),
             **kwargs,  # type: ignore
         )
         return self
@@ -214,6 +221,8 @@ class WsjRdpContext:
     _skip_email: bool | None = None
     _skip_db_updates: bool | None = None
     _parsed_args: _argparse.Namespace | None = None
+    _approved_categories: set[str] = _typing.cast(set, frozenset([]))
+    _keycloak_adapter: _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter | None = None
 
     def __init__(
         self,
@@ -268,6 +277,8 @@ class WsjRdpContext:
         'data/foo_20250815-103027_PROD'
         """
         from . import _util
+
+        self._approved_categories = set()
 
         # Default basic logging config
         if setup_logging:
@@ -604,27 +615,53 @@ class WsjRdpContext:
             _logging.getLogger().removeHandler(buffering_handler)
         return file_handler
 
-    def require_approval_to_run_in_prod(self, prompt: str | None = None) -> None:
-        from ._util import console_confirm
+    def is_action_approved_for_prod(self, category: str, action: str | None) -> bool:
+        return category in self._approved_categories
 
-        if self._config.is_production:
-            _LOGGER.warning(
-                "[ctx] Running in production - asking for user consent in console"
-            )
-            if not prompt:
-                prompt = "Do you want to continue running this script in a PRODUCTION environment?"
-            print()
-            print(flush=True)
-            if not console_confirm(prompt, default=False):
-                _LOGGER.info("[ctx] Ending script: No user approval given")
-                raise SystemExit(0)
-            else:
-                _LOGGER.debug("[ctx] User approved to continue")
-                return
-        else:
+    def approve_action_for_prod(self, category: str, action: str | None) -> None:
+        self._approved_categories.add(category)
+
+    def console_confirm(self, prompt: str, default=False) -> bool:
+        from . import _util
+
+        return _util.console_confirm(prompt, default=default)
+
+    def require_approval_to_run_in_prod(
+        self,
+        prompt: str | None = None,
+        *,
+        category: str | None = None,
+        action: str | None = None,
+        description: str | None = None,
+    ) -> None:
+        if not self._config.is_production:
             _LOGGER.debug(
                 "[ctx] Not running in production - no special approval required"
             )
+            return
+
+        if category is not None and self.is_action_approved_for_prod(category, action):
+            _LOGGER.debug(f"[ctx] action {category}.{action or ''} already approved")
+            if description:
+                _LOGGER.debug(f"        continue to {description}")
+            return
+
+        from . import _util
+
+        _LOGGER.warning(
+            "[ctx] Running in production - asking for user consent in console"
+        )
+        if not prompt:
+            prompt = "Do you want to continue running this script in a PRODUCTION environment?"
+        print()
+        print(flush=True)
+        if not _util.console_confirm(prompt, default=False):
+            _LOGGER.info("[ctx] Ending script: No user approval given")
+            raise SystemExit(0)
+        else:
+            if category is not None:
+                self.approve_action_for_prod(category, action=action)
+            _LOGGER.debug("[ctx] User approved to continue")
             return
 
     def require_approval_to_send_email_in_prod(self) -> None:
@@ -633,6 +670,16 @@ class WsjRdpContext:
             f"via SMTP server {self.config.smtp_server}:{self.config.smtp_port}?"
         )
         self.require_approval_to_run_in_prod(prompt=prompt)
+
+    @property
+    def keycloak(self) -> _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter:
+        if not self._keycloak_adapter:
+            from . import _keycloak_wsjrdp_adapter
+
+            self._keycloak_adapter = _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter(
+                self
+            )
+        return self._keycloak_adapter
 
     def __create_ssh_forwarder(
         self, *, remote_bind_address: tuple[str, int]
@@ -941,7 +988,7 @@ class WsjRdpContext:
             username=self.config.helpdesk_username,
             password=self.config.helpdesk_password,
             fin_service_desk_id=self.config.helpdesk_fin_service_desk_id,
-            fin_request_type_id=self.config.helpdesk_fin_request_type_id
+            fin_request_type_id=self.config.helpdesk_fin_request_type_id,
         )
         with helpdesk:
             yield helpdesk

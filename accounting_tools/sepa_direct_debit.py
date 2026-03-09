@@ -380,7 +380,6 @@ def main(argv=None):
     xml_filename = out_base.with_suffix(".xml")
     xlsx_filename = out_base.with_suffix(".xlsx")
     mail_txt_filename = out_base.with_suffix(".mail.txt")
-    datev_csv_filename = out_base.with_suffix(".datev.csv")
 
     ctx.configure_log_file(log_filename)
 
@@ -472,7 +471,6 @@ def main(argv=None):
             pain_message = wsjrdp2027.PainMessage.load(xml_filename)
             _LOGGER.info("Parsed %s", xml_filename)
             _write_mail_txt(mail_txt_filename, pain_message)
-            _write_datev_csv(datev_csv_filename, pain_message=pain_message, df=df)
             _report_pain_message(pain_message)
             _report_df(df, pain_message=pain_message)
             wsjrdp2027.report_direct_debit_amount_differences(df, logger=_LOGGER)
@@ -507,6 +505,13 @@ def main(argv=None):
             conn.rollback()
             _LOGGER.warning("")
             print(flush=True)
+
+        if pain_id is not None:
+            datev_csv_filename = wsjrdp2027.datev.write_datev_csv_for_pain_id(
+                ctx=ctx, conn=conn, pain_id=pain_id
+            )
+        else:
+            datev_csv_filename = None
 
     _LOGGER.info("finish writing output")
 

@@ -106,7 +106,12 @@ if _typing.TYPE_CHECKING:
     from ._groups import (
         Group as Group,
     )
+    from ._keycloak_client import KeycloakClient as KeycloakClient
     from ._pain import PainMessage as PainMessage
+    from ._person import (
+        Person as Person,
+        iter_people_dataframe as iter_people_dataframe,
+    )
 
 
 __all__ = [
@@ -127,11 +132,13 @@ __all__ = [
     "CamtTransactionDetails",
     "CamtTxUniqueDbKey",
     "Group",
+    "KeycloakClient",
     "MailClient",
     "PainMessage",
     "PaymentRole",
     "PeopleQuery",
     "PeopleWhere",
+    "Person",
     "PreparedBatch",
     "PreparedEmailMessage",
     "SepaDirectDebit",
@@ -150,6 +157,7 @@ __all__ = [
     "get_typst_font_paths",
     "hitobito_id_from_sepa_mandate_id",
     "insert_direct_debit_pre_notification_from_row",
+    "iter_people_dataframe",
     "load_accounting_balance_in_cent",
     "load_payment_dataframe",
     "load_payment_dataframe_from_payment_initiation",
@@ -299,9 +307,12 @@ __ALIASES__ = {
     "CamtTransactionDetails": (f"._camt", "CamtTransactionDetails"),
     "CamtTxUniqueDbKey": (f"._camt", "CamtTxUniqueDbKey"),
     "Group": ("._groups", "Group"),
+    "KeycloakClient": ("._keycloak_client", "KeycloakClient"),
     "PainMessage": (f"._pain", "PainMessage"),
+    "Person": ("._person", "Person"),
     "bank_accounts": (".bank_accounts", ""),
     "datev": ("._datev", ""),
+    "iter_people_dataframe": ("._person", "iter_people_dataframe"),
     "keycloak": (".keycloak", ""),
     "mailbox": (".mailbox", ""),
     "pg": ("._pg", ""),

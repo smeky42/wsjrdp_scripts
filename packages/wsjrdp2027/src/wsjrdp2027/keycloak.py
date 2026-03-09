@@ -1,15 +1,16 @@
+from __future__ import annotations
+
 import collections.abc as _collections_abc
-import logging
 import typing as _typing
 
-import keycloak as _keycloak
-from keycloak.exceptions import KeycloakAuthenticationError
+import keycloak as _keycloak_python
 
 
 if _typing.TYPE_CHECKING:
-    from . import _context
+    from . import _context, _keycloak_client
 
-_LOGGER = logging.getLogger(__name__)
+
+_LOGGER = __import__("logging").getLogger(__name__)
 
 
 def log_and_reraise[F: _collections_abc.Callable[..., _typing.Any]](func: F) -> F:
@@ -31,8 +32,8 @@ def log_and_reraise[F: _collections_abc.Callable[..., _typing.Any]](func: F) -> 
 @log_and_reraise
 def admin_login(
     ctx: _context.WsjRdpContext, *, verify: bool = True
-) -> _keycloak.KeycloakAdmin:
-    return _keycloak.KeycloakAdmin(
+) -> _keycloak_python.KeycloakAdmin:
+    return _keycloak_python.KeycloakAdmin(
         server_url=ctx.config.keycloak_url,
         username=ctx.config.keycloak_admin,
         password=ctx.config.keycloak_admin_password,
@@ -43,8 +44,8 @@ def admin_login(
 
 
 @log_and_reraise
-def __get_realm(ctx: _context.WsjRdpContext) -> _keycloak.KeycloakOpenID:
-    return _keycloak.KeycloakOpenID(
+def __get_realm(ctx: _context.WsjRdpContext) -> _keycloak_python.KeycloakOpenID:
+    return _keycloak_python.KeycloakOpenID(
         server_url=ctx.config.keycloak_url,
         client_id="",
         realm_name=ctx.config.keycloak_realm,
@@ -52,24 +53,33 @@ def __get_realm(ctx: _context.WsjRdpContext) -> _keycloak.KeycloakOpenID:
     )
 
 
-@log_and_reraise
-def __get_user_id(ctx: _context.WsjRdpContext, username: str) -> str:
-    keycloak_admin = admin_login(ctx)
-    user_id = keycloak_admin.get_user_id(username)
-    if not user_id:
-        raise RuntimeError(f"Failed to get a user_id for {username=}")
-    return user_id
+def _get_keycloak_client(
+    c: _keycloak_client.KeycloakClient | _context.WsjRdpContext, /
+) -> _keycloak_client.KeycloakClient:
+    from . import _keycloak_client
+
+    if isinstance(c, _keycloak_client.KeycloakClient):
+        return c
+    else:
+        return _keycloak_client.KeycloakClient.from_wsjrdp_context(c)
 
 
 @log_and_reraise
-def __get_group_id(ctx: _context.WsjRdpContext, groupname: str) -> str:
-    keycloak_admin = admin_login(ctx)
-    group = keycloak_admin.get_group_by_path(groupname)
-    _LOGGER.info(f"{group=}")
-    group_id = group["id"]
-    if not group_id:
-        raise RuntimeError(f"Failed to get a group_id for {groupname=}")
-    return group_id
+def __get_user_id(
+    client_or_context: _keycloak_client.KeycloakClient | _context.WsjRdpContext,
+    /,
+    username: str,
+) -> str:
+    return _get_keycloak_client(client_or_context).get_user_id(username)
+
+
+@log_and_reraise
+def __get_group_id(
+    client_or_context: _keycloak_client.KeycloakClient | _context.WsjRdpContext,
+    /,
+    groupname: str,
+) -> str:
+    return _get_keycloak_client(client_or_context).get_group_id(groupname)
 
 
 def add_user(
@@ -165,11 +175,14 @@ def set_user_password(
 
 @log_and_reraise
 def get_user(
-    ctx: _context.WsjRdpContext, username: str, user_profile_metadata: bool = False
-) -> dict:
-    keycloak_admin = admin_login(ctx)
-    user_id = __get_user_id(ctx, username)
-    return keycloak_admin.get_user(user_id, user_profile_metadata=user_profile_metadata)
+    client_or_context: _keycloak_client.KeycloakClient | _context.WsjRdpContext,
+    /,
+    username: str,
+    user_profile_metadata: bool = False,
+) -> _keycloak_client.KeycloakUserDict:
+    return _get_keycloak_client(client_or_context).get_user(
+        username, user_profile_metadata=user_profile_metadata
+    )
 
 
 @log_and_reraise
@@ -186,39 +199,6 @@ def edit_user(
     payload = {k: v for k, v in payload.items() if v is not None}
     if payload:
         keycloak_admin.update_user(user_id=user_id, payload=payload)
-
-
-@log_and_reraise
-def update_user(
-    ctx: _context.WsjRdpContext, username: str, payload: dict[str, _typing.Any]
-) -> None:
-    """High-level user update. Merges with existing values."""
-
-    def _dict_merge(key, old, new):
-        d = old.copy() if old else {}
-        d.update(new)
-        return {k: v for k, v in d.items() if v is not None}
-
-    def _merge(key, old, new):
-        if isinstance(old, dict) or key in ("access", "attributes"):
-            return _dict_merge(key, old, new)
-        else:
-            return new
-
-    original_payload = get_user(ctx, username)
-    user_id = original_payload["id"]
-    keycloak_admin = admin_login(ctx)
-
-    new_payload = {k: _merge(k, original_payload.get(k), v) for k, v in payload.items()}
-
-    _LOGGER.info(f"keycloak.update_user({username!r}, payload={new_payload!r})")
-
-    new_payload = original_payload.copy()
-    new_payload.update(payload)
-    # payload = {"firstName": first_name, "lastName": last_name, "email": email}
-    # payload = {k: v for k, v in payload.items() if v is not None}
-    if new_payload:
-        keycloak_admin.update_user(user_id=user_id, payload=new_payload)
 
 
 @log_and_reraise
@@ -281,7 +261,7 @@ def verify_token(ctx, headers):
         tokenInfo = keycloak_openid.decode_token(headers["Authorization"][7:])
         return 200
 
-    except KeycloakAuthenticationError as e:
+    except _keycloak_python.KeycloakAuthenticationError as e:
         _LOGGER.error("verify_token(headers=%s) failed: %s", headers, e)
         return 401
 

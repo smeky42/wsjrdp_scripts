@@ -812,7 +812,7 @@ WHERE
     if excluded_ids:
         raw_query += "\n  AND " + _util.not_in_expr("people.id", excluded_ids)
 
-    query = SQL(raw_query).format(
+    query = SQL(raw_query).format(  # type: ignore
         payment_initiation_id=Literal(payment_initiation_id),
     )
 
@@ -960,9 +960,12 @@ def report_direct_debit_amount_differences(
         logger = _LOGGER
 
     amount_changed_df = df[
-        (df["calculated_open_amount_cents"] != df["pn_amount_cents"])
-        | (df["pn_pre_notified_amount_cents"] != df["pn_amount_cents"])
-        | (df["pn_debit_sequence_type"] != df["calculated_sepa_dd_sequence_type"])
+        (df["payment_status"] == "ok")
+        & (
+            (df["calculated_open_amount_cents"] != df["pn_amount_cents"])
+            | (df["pn_pre_notified_amount_cents"] != df["pn_amount_cents"])
+            | (df["pn_debit_sequence_type"] != df["calculated_sepa_dd_sequence_type"])
+        )
     ]
     print(flush=True)
     if amount_changed_df.empty:
@@ -972,7 +975,7 @@ def report_direct_debit_amount_differences(
         return
 
     _LOGGER.info(
-        "==== Found %s payments with differences between amounts:",
+        "==== Found %s payments with payment_status == 'ok' and differences between amounts:",
         len(amount_changed_df),
     )
     for _, row in amount_changed_df.iterrows():

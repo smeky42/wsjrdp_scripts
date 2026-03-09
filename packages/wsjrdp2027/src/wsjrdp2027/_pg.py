@@ -1527,3 +1527,48 @@ def pg_upsert_fin_account(
         returning="id",
     )
     return _execute_query_fetch_id(cursor_or_connection, query)
+
+
+def pg_update_people_wsjrdp_emails(
+    conn: _psycopg.Connection, values: _collections_abc.Iterable[dict], *, now=None
+) -> None:
+    return pg_update_people_additional_info_email(conn, "wsjrdp_email", values, now=now)
+
+
+def pg_update_people_moss_emails(
+    conn: _psycopg.Connection, values: _collections_abc.Iterable[dict], *, now=None
+) -> None:
+    return pg_update_people_additional_info_email(conn, "moss_email", values, now=now)
+
+
+def pg_update_people_additional_info_email(
+    conn: _psycopg.Connection,
+    key: str,
+    values: _collections_abc.Iterable[dict],
+    *,
+    now=None,
+) -> None:
+    from . import _util
+
+    now = _util.to_datetime(now)
+
+    values = [
+        {
+            "id": d["id"],
+            "value": email,
+            "now": _util.to_datetime(d.get("now"), now=now).isoformat(),
+        }
+        for d in values
+        if (email := d[key])
+    ]
+
+    if values:
+        query = f"""UPDATE people
+SET
+   additional_info['{key}'] = to_jsonb(%(value)s::text),
+   additional_info['{key}_created_at'] = COALESCE(additional_info['{key}_created_at'], to_jsonb(%(now)s::text)),
+   additional_info['{key}_updated_at'] = to_jsonb(%(now)s::text)
+WHERE id = %(id)s"""
+        with conn.cursor() as cur:
+            print(query)
+            cur.executemany(query, values)

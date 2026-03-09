@@ -1,5 +1,6 @@
 query:
-  collection_date: 2026-03-05  # Datum des nächsten Einzugs!
+  collection_date: 2026-04-07  # Datum des nächsten Einzugs!
+  include_sepa_mail_in_mailing_to: true
   where:
     id: []
 from_addr: finanzen@worldscoutjamboree.de

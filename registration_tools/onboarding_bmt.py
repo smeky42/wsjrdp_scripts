@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 import logging
-import re
 import sys
 
 import pandas as _pandas
-import psycopg as _psycopg
 import wsjrdp2027
 import wsjrdp2027.keycloak
 import wsjrdp2027.mailbox
@@ -49,6 +47,7 @@ def create_argument_parser():
     p.add_argument("yaml_file")
     return p
 
+
 def update_and_mail(
     batch_config,
     ctx: wsjrdp2027.WsjRdpContext,
@@ -59,23 +58,20 @@ def update_and_mail(
 
 
 def onboarding_and_mail(conn, pdf: _pandas.DataFrame, ctx: wsjrdp2027.WsjRdpContext):
-    batch_config = wsjrdp2027.BatchConfig.from_yaml(
-        ctx.parsed_args.yaml_file
-    )
+    batch_config = wsjrdp2027.BatchConfig.from_yaml(ctx.parsed_args.yaml_file)
 
     try:
         create_accounts(ctx, pdf)
 
         update_and_mail(
-                batch_config=batch_config,
-                ctx=ctx,
-                df=pdf,
-            )
+            batch_config=batch_config,
+            ctx=ctx,
+            df=pdf,
+        )
 
     except Exception as e:
-        _LOGGER.error(
-            "Error creating accounts: %s", e
-            )
+        _LOGGER.error("Error creating accounts: %s", e)
+
 
 def create_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):
     for _, row in df.iterrows():
@@ -104,10 +100,11 @@ def create_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):
             password=password,
             attributes={"mossEmail": [moss_email]},
         )
-        wsjrdp2027.keycloak.add_user_to_group(ctx, username=email_alias, group_name=role)
+        wsjrdp2027.keycloak.add_user_to_group(
+            ctx, username=email_alias, group_name=role
+        )
         wsjrdp2027.mailbox.add_alias(ctx, email=email_alias, goto=private_email)
         wsjrdp2027.mailbox.add_alias(ctx, email=moss_email, goto=private_email)
-
 
 
 def main(argv=None):
@@ -125,7 +122,9 @@ def main(argv=None):
         pdf = wsjrdp2027.load_people_dataframe(
             conn,
             query=wsjrdp2027.PeopleQuery(
-                where=wsjrdp2027.PeopleWhere(exclude_deregistered=True, primary_group_id=45)
+                where=wsjrdp2027.PeopleWhere(
+                    exclude_deregistered=True, primary_group_id=45
+                )
             ),
         )
         _LOGGER.info("Found %s people", len(pdf))
