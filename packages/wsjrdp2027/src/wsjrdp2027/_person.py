@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as _datetime
 import math as _math
 import typing as _typing
 
@@ -208,6 +209,18 @@ class Person:
                 return None
 
     @property
+    def wsjrdp_email_is_mailbox(self) -> bool | None:
+        return self.additional_info.get("wsjrdp_email_is_mailbox")
+
+    @wsjrdp_email_is_mailbox.setter
+    def wsjrdp_email_is_mailbox(self, value: bool | None) -> None:
+        if value is None:
+            self.additional_info.pop("wsjrdp_email_is_mailbox", None)
+        else:
+            additional_info = self._data.setdefault("additional_info", {})
+            additional_info["wsjrdp_email_is_mailbox"] = value
+
+    @property
     def moss_email_or_none(self) -> str | None:
         return self.additional_info.get("moss_email")
 
@@ -250,6 +263,24 @@ class Person:
         else:
             additional_info = self._data.setdefault("additional_info", {})
             additional_info["keycloak_username"] = value
+
+    @property
+    def moss_invited_at(self) -> _datetime.datetime | None:
+        dt = self.additional_info.get("moss_invited_at")
+        return _datetime.datetime.fromisoformat(dt) if dt else None
+
+    @moss_invited_at.setter
+    def moss_invited_at(
+        self, value: _datetime.datetime | _datetime.date | str | float | int | None
+    ) -> None:
+        from ._util import to_datetime_or_none
+
+        value = to_datetime_or_none(value)
+        if not value:
+            self.additional_info.pop("moss_invited_at", None)
+        else:
+            additional_info = self._data.setdefault("additional_info", {})
+            additional_info["moss_invited_at"] = value.isoformat()
 
 
 Person._cls_keys = frozenset(Person.__dict__.keys())

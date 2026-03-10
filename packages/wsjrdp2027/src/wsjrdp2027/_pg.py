@@ -1582,14 +1582,22 @@ def pg_update_people_additional_info(
     *,
     now=None,
 ) -> None:
+    import datetime as _datetime
+
     from psycopg.types.json import Jsonb
 
     from . import _util
 
     now = _util.to_datetime(now)
 
+    def _pre_dump(value):
+        if isinstance(value, _datetime.datetime):
+            return value.isoformat()
+        else:
+            return value
+
     values = [
-        {"id": d["id"], "key": k, "value": Jsonb(v)}
+        {"id": d["id"], "key": k, "value": Jsonb(_pre_dump(v))}
         for d in values
         for k, v in d.items()
         if k != "id"

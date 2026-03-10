@@ -5,6 +5,7 @@ import typing as _typing
 
 
 if _typing.TYPE_CHECKING:
+    import collections.abc as _collections_abc
     import string.templatelib as _string_templatelib
 
     import psycopg as _psycopg
@@ -69,6 +70,18 @@ class Group:
         cls, conn: _psycopg.Connection, group_id: int
     ) -> _typing.Self:
         return cls.db_load_for_where(conn, t'"id" = {group_id}')
+
+    @classmethod
+    def load_for_group_ids(
+        cls, conn: _psycopg.Connection, group_ids: _collections_abc.Iterable[str | int]
+    ) -> list[_typing.Self]:
+        from psycopg.sql import SQL
+
+        from . import _pg, _util
+
+        where = SQL(_util.in_expr("id", list(group_ids)))
+        results = _pg.pg_select_groups_dicts_for_where(conn, where=where)
+        return [cls(**d) for d in results]
 
     @classmethod
     def db_load(
