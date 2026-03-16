@@ -241,6 +241,18 @@ class Person:
                 return None
 
     @property
+    def moss_email_expected_goto(self) -> str | None:
+        match self.short_role_name:
+            case "CMT":
+                return None
+            case "UL":
+                return self.wsjrdp_email
+            case "IST" | "BMT" | "YP":
+                return self.email
+            case _:
+                raise RuntimeError(f"Cannot determine moss_email_expected_goto for role {self.short_role_name}")
+
+    @property
     def deregistration_issue(self) -> str | None:
         return self.additional_info.get("deregistration_issue")
 
