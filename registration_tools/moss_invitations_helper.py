@@ -21,9 +21,14 @@ def main():
         where=wsjrdp2027.PeopleWhere(
             # id=2480,
             role="UL", tag="Finanzverantwortlich", status="confirmed"
+            exclude_primary_group_id=[5, 6, 7],
         )
     )
 
+    all_mail_aliases = wsjrdp2027.mailbox.get_aliases(ctx)
+    addr2goto = {
+        a["address"]: frozenset(a["goto"].split(",")) for a in all_mail_aliases
+    }
     with ctx.psycopg_connect() as conn:
         df = batch_config.load_people_dataframe(
             ctx=ctx, conn=conn, log_resulting_data_frame=False
@@ -40,7 +45,17 @@ def main():
     for p in people:
         now = ctx.start_time
         group = groups[p.primary_group_id]
-        print(group.name, p.moss_email, p.wsjrdp_email)
+        group_or_role = group.name if p.is_ul else p.short_role_name
+        if expected_goto := p.moss_email_expected_goto:
+            print(group_or_role, p.moss_email, "->", expected_goto)
+            goto_addrs = set(s.lower() for s in addr2goto.get(p.moss_email, set()))
+            if expected_goto.lower() not in goto_addrs:
+                print(f"    ! Missing alias {p.moss_email} -> {expected_goto}")
+                print(f"    {group.name}  status: {p.status}")
+                if wsjrdp2027.console_confirm("Add missing mail alias?"):
+                    wsjrdp2027.mailbox.add_alias(ctx, p.moss_email, goto=expected_goto)
+        else:
+            print(group_or_role, p.moss_email)
         if p.moss_invited_at:
             print(f"    moss_invited_at={p.moss_invited_at.isoformat()}")
         elif wsjrdp2027.console_confirm(
