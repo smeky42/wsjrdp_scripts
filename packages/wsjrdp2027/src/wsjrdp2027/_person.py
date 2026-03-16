@@ -127,6 +127,10 @@ class Person:
         val = data[key]
         return self.__normalize_val(key, val)
 
+    def __setitem__(self, key, value, /):
+        data = self.__dict__.get("_data", {})
+        data[key] = value
+
     def __str__(self) -> str:
         cls_name = self.__class__.__qualname__
         args = [f"{k}={v!r}" for k, v in self._data.items()]
