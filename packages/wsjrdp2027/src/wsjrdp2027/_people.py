@@ -1062,6 +1062,7 @@ def _update_person_from_row(
         if person_changes_for_version := row["person_changes"]:
             person_changes_for_version = person_changes_for_version.copy()
             person_changes_for_version.pop("primary_group_role_types", None)
+            person_changes_for_version.pop("tag_list", None)
             _pg.pg_insert_version(
                 cursor,
                 main_id=row["id"],
@@ -1076,8 +1077,24 @@ def _update_person_from_row(
     if "tag_list" in person_changes:
         for tag_name in _util.to_str_list(row.get("add_tags")):
             _pg.pg_add_person_tag(cursor, person_id=row["id"], tag_name=tag_name)
+            if write_versions:
+                _pg.pg_insert_version(
+                    cursor,
+                    main_id=row["id"],
+                    created_at=now,
+                    changes={"tag": [None, tag_name]},
+                    event="wsjrdp_add_tag",
+                )
         for tag_name in _util.to_str_list(row.get("remove_tags")):
             _pg.pg_remove_person_tag(cursor, person_id=row["id"], tag_name=tag_name)
+            if write_versions:
+                _pg.pg_insert_version(
+                    cursor,
+                    main_id=row["id"],
+                    created_at=now,
+                    changes={"tag": [tag_name, None]},
+                    event="wsjrdp_remove_tag",
+                )
     if (add_note := row.get("add_note")) is not None:
         _pg.pg_insert_note(cursor, subject_id=row["id"], text=add_note)
     for chg in _person_pg.PERSON_CHANGES:

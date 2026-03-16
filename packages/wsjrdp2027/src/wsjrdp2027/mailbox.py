@@ -126,11 +126,11 @@ def get_aliases(ctx: _context.WsjRdpContext) -> list[dict]:
     return response.json()
 
 
-def get_mailboxes(ctx: _context.WsjRdpContext) -> list[dict]:
+def get_mailboxes(ctx: _context.WsjRdpContext, id: str = "all") -> list[dict]:
     headers = {"Content-Type": "application/json", "X-API-Key": ctx.config.mail_api_key}
     base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
     _LOGGER.info(f"{headers=}")
-    url = f"{base_url}/api/v1/get/mailbox/all"
+    url = f"{base_url}/api/v1/get/mailbox/{id}"
     response = requests.get(url, headers=headers, timeout=30)
     _LOGGER.debug(f"GET {url} -> {response}")
     response.raise_for_status()
