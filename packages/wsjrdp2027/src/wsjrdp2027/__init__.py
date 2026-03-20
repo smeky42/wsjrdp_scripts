@@ -97,6 +97,7 @@ if _typing.TYPE_CHECKING:
         bank_accounts as bank_accounts,
         keycloak as keycloak,
         mailbox as mailbox,
+        moss as moss,
     )
     from ._camt import (
         CamtMessage as CamtMessage,
@@ -111,6 +112,7 @@ if _typing.TYPE_CHECKING:
     from ._person import (
         Person as Person,
         iter_people_dataframe as iter_people_dataframe,
+        load_primary_groups_for_people as load_primary_groups_for_people,
     )
 
 
@@ -163,6 +165,7 @@ __all__ = [
     "load_payment_dataframe_from_payment_initiation",
     "load_people_dataframe",
     "load_person_row",
+    "load_primary_groups_for_people",
     "merge_mail_addresses",
     "nan_to_none",
     "pg_add_person_tag",
@@ -204,6 +207,7 @@ __all__ = [
     "datev",
     "keycloak",
     "mailbox",
+    "moss",
     "pg",
 ]
 
@@ -314,7 +318,9 @@ __ALIASES__ = {
     "datev": ("._datev", ""),
     "iter_people_dataframe": ("._person", "iter_people_dataframe"),
     "keycloak": (".keycloak", ""),
+    "load_primary_groups_for_people": ("._person", "load_primary_groups_for_people"),
     "mailbox": (".mailbox", ""),
+    "moss": (".moss", ""),
     "pg": ("._pg", ""),
 }
 

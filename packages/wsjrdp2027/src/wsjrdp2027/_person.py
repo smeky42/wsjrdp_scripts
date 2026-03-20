@@ -11,6 +11,9 @@ if _typing.TYPE_CHECKING:
     import collections.abc as _collections_abc
 
     import pandas as _pandas
+    import psycopg as _psycopg
+
+    from . import _groups
 
 
 class Person:
@@ -23,6 +26,7 @@ class Person:
     _data: dict[str, _typing.Any] = _typing.cast(dict, None)
     _cls_keys: frozenset[str]
     _data_keys: frozenset[str] = frozenset([])
+    _primary_group: _groups.Group | None = None
 
     def __init__(self, **kwargs) -> None:
         self._index = None
@@ -137,6 +141,17 @@ class Person:
         return f"{cls_name}({', '.join(args)})"
 
     @property
+    def primary_group(self) -> _groups.Group:
+        if self._primary_group is None:
+            raise RuntimeError("Missing primary group object")
+        return self._primary_group
+
+    @primary_group.setter
+    def primary_group(self, value: _groups.Group) -> None:
+        assert value.id == self.primary_group_id
+        self._primary_group = value
+
+    @property
     def short_role_name(self) -> str | None:
         payment_role = self._data.get("payment_role")
         if payment_role:
@@ -165,6 +180,13 @@ class Person:
     @property
     def is_ul(self) -> bool:
         return self.short_role_name == "UL"
+
+    @property
+    def unit_or_role(self) -> str | None:
+        if self.is_ul:
+            return self._primary_group.name if self._primary_group is not None else None
+        else:
+            return self.short_role_name
 
     @property
     def helpdesk_email(self) -> str:
@@ -254,7 +276,9 @@ class Person:
             case "IST" | "BMT" | "YP":
                 return self.email
             case _:
-                raise RuntimeError(f"Cannot determine moss_email_expected_goto for role {self.short_role_name}")
+                raise RuntimeError(
+                    f"Cannot determine moss_email_expected_goto for role {self.short_role_name}"
+                )
 
     @property
     def deregistration_issue(self) -> str | None:
@@ -320,3 +344,16 @@ def _filtered_join(*args, sep=" "):
             or (isinstance(a, float) and math.isnan(a))  # filter out NaN
         )
     )
+
+
+def load_primary_groups_for_people(
+    conn: _psycopg.Connection, *, people: list[Person]
+) -> None:
+    from . import _groups
+
+    groups_list = _groups.Group.load_for_group_ids(
+        conn, (p.primary_group_id for p in people)
+    )
+    groups = {g.id: g for g in groups_list}
+    for p in people:
+        p.primary_group = groups[p.primary_group_id]

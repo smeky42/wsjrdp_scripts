@@ -112,21 +112,73 @@ def add_alias(ctx, email, goto):
     _LOGGER.info("Add Alias Response: %s", resp.text)
 
 
-def get_aliases(ctx: _context.WsjRdpContext) -> list[dict]:
+def update_alias(ctx, email, add_goto: str):
+    from . import _util
+
+    aliases = get_aliases(ctx, id=email)
+    print(f"{aliases=}")
+    if not aliases:
+        _LOGGER.info(f"No existing alias for {email}, will create new one")
+        return add_alias(ctx, email, goto=add_goto)
+    old_alias = aliases[0]
+    old_goto_list = old_alias["goto"].split(",")
+    add_goto_list = [a.strip() for a in add_goto.split(",")]
+    new_goto_list = list(_util.dedup(old_goto_list + add_goto_list))
+    if new_goto_list == old_goto_list:
+        _LOGGER.info("No update required, goto list unchanged")
+        return old_alias
+    EDIT_ALIAS_ATTRS = [
+        "address",
+        "goto",
+        "goto_null",
+        "goto_spam",
+        "goto_ham",
+        "private_comment",
+        "public_comment",
+        "active",
+    ]
+    new_alias = {k: v for k, v in old_alias.items() if k in EDIT_ALIAS_ATTRS}
+    new_alias["goto"] = ",".join(new_goto_list)
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": ctx._config.mail_api_key,
+    }
+
+    payload = {"items": [old_alias["id"]], "attr": new_alias}
+
+    base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
+    _LOGGER.info(f"{payload=}")
+    _LOGGER.info(f"{headers=}")
+    resp = requests.post(
+        f"{base_url}/api/v1/edit/alias",
+        json=payload,
+        headers=headers,
+        timeout=30,
+    )
+    # resp.raise_for_status()  # optional: raise exception for HTTP error codes
+    _LOGGER.info("Edit Alias Response: %s", resp.text)
+
+
+def get_aliases(ctx: _context.WsjRdpContext, *, id: str = "all") -> list[dict]:
     headers = {
         "Content-Type": "application/json",
         "X-API-Key": ctx._config.mail_api_key,
     }
     base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
     _LOGGER.info(f"{headers=}")
-    url = f"{base_url}/api/v1/get/alias/all"
+    url = f"{base_url}/api/v1/get/alias/{id}"
     response = requests.get(url, headers=headers, timeout=30)
     _LOGGER.debug(f"GET {url} -> {response}")
     response.raise_for_status()
-    return response.json()
+    result = response.json()
+    if isinstance(result, dict):
+        return [result]
+    else:
+        return result
 
 
-def get_mailboxes(ctx: _context.WsjRdpContext, id: str = "all") -> list[dict]:
+def get_mailboxes(ctx: _context.WsjRdpContext, *, id: str = "all") -> list[dict]:
     headers = {"Content-Type": "application/json", "X-API-Key": ctx.config.mail_api_key}
     base_url = ctx.config.mail_api_url or "https://mail.worldscoutjamboree.de"
     _LOGGER.info(f"{headers=}")

@@ -172,6 +172,8 @@ _ArrayMatchLike = ArrayMatchExpr | ArrayMatchDict | str | _collections_abc.Itera
 class PeopleWhere:
     exclude_deregistered: bool | None = None
     role: tuple[_role.WsjRole, ...] | None = None
+    email: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
+    exclude_email: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     exclude_status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     sepa_status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
@@ -206,6 +208,8 @@ class PeopleWhere:
         | _role.WsjRole
         | _collections_abc.Iterable[str | _role.WsjRole]
         | None = None,
+        email: _StrOrNullIterable | None = None,
+        exclude_email: _StrOrNullIterable | None = None,
         status: _StrOrNullIterable | None = None,
         exclude_status: _StrOrNullIterable | None = None,
         sepa_status: _StrOrNullIterable | None = None,
@@ -248,6 +252,8 @@ class PeopleWhere:
                 self.role = (_role.WsjRole.from_any(role),)
             else:
                 self.role = tuple(_role.WsjRole.from_any(r) for r in role)
+        self.email = _to_str_or_null_list(email)
+        self.exclude_email = _to_str_or_null_list(exclude_email)
         self.status = _to_str_or_null_list(status)
         self.exclude_status = _to_str_or_null_list(exclude_status)
         self.sepa_status = _to_str_or_null_list(sepa_status)
@@ -352,6 +358,7 @@ class PeopleWhere:
             fee_rules = None
 
         regular_to_out_keys = [
+            "email",
             "status",
             "sepa_status",
             "id",
@@ -433,7 +440,7 @@ class PeopleWhere:
                 where, f"{people_table}.print_at <= '{self.max_print_at.isoformat()}'"
             )
 
-        for key in ["id", "primary_group_id", "sepa_status", "status", "unit_code"]:
+        for key in ["id", "primary_group_id", "sepa_status", "email", "status", "unit_code"]:
             expr = f"{people_table}.{key}"
             if key == "sepa_status":
                 expr = f"COALESCE({expr}, 'ok')"
