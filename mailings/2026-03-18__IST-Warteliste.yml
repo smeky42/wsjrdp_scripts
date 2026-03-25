@@ -1,0 +1,37 @@
+# Run with:
+# uv run tools/mailing_from_yml.py mailings/2026-03-18__IST-Warteliste.yml
+# WSJRDP_SCRIPTS_CONFIG=config-prod.yml uv run tools/mailing_from_yml.py mailings/2026-03-18__IST-Warteliste.yml
+updates:
+  add_tags: 'IST Info Warteliste'
+query:
+  include_sepa_mail_in_mailing_to: false
+  where:
+    # role: IST
+    status: ['registered', 'printed', 'upload', 'in_review']
+    primary_group_id: 7
+    # id: [2, 82, 386, 2085 ]  # Peter und IST Manager Accounts 
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: ist@worldscoutjamboree.de
+email_subject: "Deine Chance auf das World Scout Jamboree 2027 in Polen! - {{ row.short_full_name }} (id {{ row.id }})"
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir freuen uns sehr, dass du als Teil des deutschen IST-Kontingents beim World Scout Jamboree 2027 dabei sein möchtest!
+
+  Aktuell stehst du mit dem Status „{{ row.status }}“ auf unserer Warteliste. Da immer mal wieder Plätze frei werden, hast du noch eine echte Chance, nachzurücken! Damit wir dich berücksichtigen können, brauchen wir aber deine Mithilfe:
+
+  Was ist zu tun? Bitte lade alle notwendigen Unterlagen im Portal unter „Dokumente hochladen“ hoch. Nur mit einem vollständig ausgefüllten Profil können wir dich als Nachrücker berücksichtigen.
+
+  Wichtig beim Führungszeugnis: Wir benötigen zwingend den Nachweis über die bereits erfolgte Einsichtnahme. Ein Beleg über die Beantragung oder die Information, dass es an ein Büro oder Stelle zur Einsichtnahme geschickt wurde, reicht leider noch nicht aus.
+
+  So sicherst du dir deinen Platz: Hier gilt das Fair-Play-Prinzip: „First come, first served!“ Sobald ein Platz frei wird, rücken die Personen in der Reihenfolge nach, in der ihre Unterlagen vollständig bei uns eingegangen sind.
+
+  Vervollständige am besten gleich deine Daten, damit deinem Abenteuer in Polen nichts im Weg steht!
+
+  Wenn deine Dokumente nicht vollständig sind gehen wir leider davon aus dass du kein Interesse mehr hast beim WSJ 2027 dabei zu sein. 
+
+  Gut Pfad, dein IST-Support-Team
+
+  Micha und Patty
