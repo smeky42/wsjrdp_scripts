@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>German Contingent Newsletter WSJ 2027</title>
+    <style>
+        .title {
+            font-family: 'Montserrat', Arial, serif, sans-serif, bold;
+            font-size: 28px;
+            align-items: center;
+            font-weight: lighter;
+        }
+        .subtitle {
+            font-family: 'Montserrat', Arial, serif, sans-serif;
+            font-size: 16px;
+            align-items: center;
+            margin-top: 5px;
+        }
+        .logo {
+            margin-bottom: 10px;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Montserrat', Arial, serif, sans-serif;
+            background-color: #1C1C1E;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #c5c7c4ff;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .header {
+            background-color: #af2534ff;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+            background-image: url('https://www.worldscoutjamboree.de/app/uploads/2025/12/waldlaeuferzeichen.png');
+        }
+        .header img {
+            max-width: 200px;
+        }
+        .content {
+            padding: 20px;
+        }
+        .slogan {
+            font-size: 24px;
+            margin: 10px 0;
+            color: #be1e2dff;
+            font-weight: lighter;
+        }
+        .slogan-right {
+            font-size: 24px;
+            margin: 10px 0;
+            color: #be1e2dff;
+            text-align: right;
+            font-weight: lighter;
+        }
+        .text {
+            color: #555;
+            line-height: 1.6;
+        }
+        .footer {
+            color: #ffffff;
+            text-align: justify;
+            background-color: #af2534ff;
+            padding: 20px;
+            font-size: 10px;
+            background-image: url('https://www.worldscoutjamboree.de/app/uploads/2025/12/waldlaeuferzeichen.png');
+
+        }
+        .footer a {
+            color: #ffffff;
+            text-decoration: none;
+        }
+
+        .footer p {
+            color: #ffffff;
+            text-align: center;
+            font-size: 28px;
+            font-weight: lighter;
+        }
+        .website-link{
+            color: #ffffff;
+            text-decoration: none;
+            text-align: center;
+        }
+        .website-link a{
+            color: #555;
+            text-decoration: none;
+            font-weight: lighter;
+            font-size: 20px;
+        }
+        .social {
+            text-align: center;
+            margin-top: 10px;
+            font-family: 'Montserrat', Arial, serif, sans-serif;
+
+        }
+
+        .social a img {
+            margin: 0 10px;
+            color: #ffffff;
+            font-size: 30px;
+            height: 30px;
+            font-family: 'Montserrat', Arial, serif, sans-serif;
+        }
+
+        .fa {
+            margin: 0 10px;
+            color: #c5c7c4ff;
+            font-size: 30px;
+            font-family: 'Montserrat', Arial, serif, sans-serif;
+        }
+
+        .teaser-block {
+            display: flex;
+            align-items: center;
+            margin: 16px 0;
+            gap: 16px;
+            text-decoration: none;
+            color: inherit;
+        }
+        .teaser-image {
+            flex: 0 0 33%;
+            width: 33%;
+        }
+        .teaser-image img {
+            width: 100%;
+            max-width: 180px;
+            max-height: 180px;
+            object-fit: cover;
+            border-radius: 6px;
+            display: block;
+        }
+        .teaser-text-wrap {
+            flex: 1;
+        }
+        .teaser-headline {
+            font-size: 18px;
+            font-weight: bold;
+            color: #be1e2dff;
+            margin: 0 0 8px 0;
+            line-height: 1.3;
+        }
+        .teaser-headline a {
+            color: #be1e2dff;
+            text-decoration: none;
+        }
+        .teaser-text {
+            color: #555;
+            line-height: 1.6;
+            margin: 0;
+            font-size: 14px;
+        }
+        @media (max-width: 480px) {
+            .teaser-block {
+                flex-direction: column;
+            }
+            .teaser-block.image-right {
+                flex-direction: column;
+            }
+            .teaser-image {
+                width: 100%;
+                flex: none;
+            }
+        }
+
+        .fire-gif {
+            text-align: center;
+            margin: 20px 0;
+            width: 100%;
+        }
+
+        @media (max-width: 600px) {
+            .header, .content, .footer {
+                padding: 15px;
+            }
+            .slogan {
+                font-size: 20px;
+            }
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body {
+                margin: 0;
+                padding: 0;
+                font-family: 'Montserrat', Arial, serif, sans-serif;
+                background-color: #1C1C1E;
+            }
+            .header {
+                background-color: af2534ff;
+                color: #ffffff;
+            }
+            
+
+            .content {
+                background-color: #c5c7c4ff; /* or a light gray */
+                color: #1C1C1E; 
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo"><img src="https://www.worldscoutjamboree.de/app/uploads/2025/12/logo-weiss.png" alt="Logo"></div>
+            <div class="title">
+                Sweet Contingent
+            </div>
+            <div class="subtitle">German Contingent - WSJ 2027 Poland</div>
+        </div>
+        <div class="content">
+            <div class="slogan">Liebe*r {{ row.greeting_name }},</div>
+            <p class="text">
+                es geht los! </br> 
+                Aber wem sagen wir das? </br> 
+                </br>
+                Als UnitLeader seid ihr bereits am planen, organisieren und Kennenlernen eurer Unit. Die erste Infoveranstaltung mit eurer Unit habt ihr vermutlich schon hinter euch und das erste Unit-Wochenende steht bevor. </br> Also einiges los. </br> </br>
+
+                Auch im CMT passiert einiges. In den einzelnen Bereichen arbeiten wir stetig weiter. So arbeitet ein Team an der Kontingents-Identität, ein anderes am Schutzkonzept usw. </br></br>
+
+                Hierbei haben sich einige Themen und Punkte angesammelt, die wir teilen wollen. Erst mit euch und in einer Woche auch mit den YPs und den Eltern. </br></br>
+
+                Als Unitleader seit ihr die ersten Ansprechpartner*innen für Fragen der YPs und Eltern. Aus diesem Grund ist es wichtig, dass zunächst ihr Informationen erhaltet um sprachfähig zu sein. Aber natürlich auch um Rückmeldung zu geben, sollte etwas unstimmig sein. </br></br>
+
+                Im Folgenden findet ihr also den 1. Newsletter - der an Ostern an die YPs verschickt werden wird. </br></br>
+
+                Damit wünschen wir euch schon einmal eine schöne Ferienzeit und freuen uns auf die Zusammenarbeit. </br></br>
+
+                Euer CMT
+            </p>
+             <!-- <div class="fire-gif"><img src="https://www.worldscoutjamboree.de/app/uploads/2025/12/WSJ-Weihnachten.gif" alt="Lagerfeuer"></div> -->
+            
+            <p class="text">
+               <div class="slogan">Liebe*r {{ row.greeting_name }}, liebe Eltern,</div>
+
+                die Monate vergehen, schon ist Ostern und wir senden euch ein kleines Update aus dem CMT (Kontingentsteam).
+                </br></br>
+                Während die Unitleader fleißig dabei sind die Unitwochenenden vorzubereiten, zu planen und dafür jede Menge Informationen sammeln, werkelt das CMT etwas mehr im Hintergrund. Hier wird organisiert, strukturiert und Rahmen gesteckt. Über einige Themen aus dem Kontingent wollen wir euch mit diesem Newsletter informieren und einen keinen Einblick geben.
+                </br></br>
+                Die wichtigsten Informationen zum Jamboree und die wichtigen Neuigkeiten erhaltet ihr im Regelfall durch eure Unitleader. Diese sind auch die ersten Ansprechpartner*innen für Fragen. Dennoch wollen wir euch auch immer mal wieder einen direkten Einblick in den Planungsstand und aktuelle Themen im Kontingent gebem. Daher werdet ihr bis zum Jamboree immer mal wieder einen solchen Newsletter im Postfach finden - Falls dieser dort nicht gelandet ist, raten wir zum Lesen des 2. Beitrags zum "Whitelistening".
+                </br></br>
+                Nachdem wir euch mit neuem Lesestoff versorgt haben, wünschen wir euch allen noch schöne Ostern und eine tolle Ferienzeit.
+                </br></br>
+                Viele Grüße aus dem CMT
+            </p>
+
+            <a href="https://www.worldscoutjamboree.de/2026/03/16/sweet/" target="_blank" class="teaser-block">
+                <div class="teaser-image">
+                    <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/well-being.jpg" alt="Sweet Contingent – Deutsche Backkunst">
+                </div>
+                <div class="teaser-text-wrap">
+                    <p class="teaser-headline">Sweet. Sweeter. The German Contingent!</p>
+                    <p class="teaser-text">Entdecke unsere süße Seite: Von Schwarzwälder Kirschstorte bis zum Franzbrötchen – wir bringen unsere Backtradition und Pfadfinderkultur aufs Jamboree 2027.</p>
+                </div>
+            </a>
+
+            <a href="https://www.worldscoutjamboree.de/2026/03/16/sweet/" target="_blank" class="teaser-block image-right">
+                <div class="teaser-text-wrap">
+                    <p class="teaser-headline">Whitelisting – damit du nichts verpasst!</p>
+                    <p class="teaser-text">Damit unsere Newsletter sicher in deinem Postfach landen, füge unsere Absenderadresse zu deiner Whitelist hinzu.</p>
+                </div>
+                <div class="teaser-image">
+                    <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/whitelist.jpg" alt="Whitelisting">
+                </div>
+            </a>
+
+            <a href="https://www.worldscoutjamboree.de/kontingentsteam-2/" target="_blank" class="teaser-block">
+                <div class="teaser-image">
+                    <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/2025-04-26-14-43-35-CMT-Mannheim_quadratisch.jpg" alt="e-HoC Gruppenbild">
+                </div>
+                <div class="teaser-text-wrap">
+                    <p class="teaser-headline">eHoC Vorstellung</p>
+                    <p class="teaser-text">Das Leitungsteam des German Contingents stellt sich vor: Von HOC bis Unit-Support – rund 45 Ehrenamtliche machen das Jamboree 2027 möglich. Lernt sie und ihre Rollen hier kennen!</p>
+                </div>
+            </a>
+
+            <a href="https://www.worldscoutjamboree.de/2026/03/16/foto-videomaterial-von-unit-treffen" target="_blank" class="teaser-block image-right">
+                <div class="teaser-text-wrap">
+                    <p class="teaser-headline">Foto- und Videomaterial von Unit-Treffen</p>
+                    <p class="teaser-text">Schickt uns eure besten Fotos und Videos, damit wir die bunten Erlebnisse des German Contingents gemeinsam sichtbar machen können.</p>
+                </div>
+                <div class="teaser-image">
+                    <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/Teaser_WSJ2023-KoLa-20230520-210147-Kristof-Wistal.jpg" alt="Whitelisting">
+                </div>
+            </a>
+
+            <a href="https://www.worldscoutjamboree.de/2026/03/16/vorstellung-well-being-team" target="_blank" class="teaser-block">
+                <div class="teaser-image">
+                    <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/well-being.jpg" alt="Sweet Contingent – Deutsche Backkunst">
+                </div>
+                <div class="teaser-text-wrap">
+                    <p class="teaser-headline">Well-being Team</p>
+                    <p class="teaser-text">Unser Well-being-Team begleitet das German Contingent zum Jamboree 2027 und sorgt dafür, dass sich alle Teilnehmenden gut unterstützt und aufgehoben fühlen. Hier kannst du mehr über uns erfahren und sehen, wie wir euch begleiten.</p>
+                </div>
+            </a>
+
+            <a href="https://www.worldscoutjamboree.de/2026/03/16/schutzkonzept-im-german-contingent" target="_blank" class="teaser-block image-right">
+                <div class="teaser-text-wrap">
+                    <p class="teaser-headline">Ankündigung Schutzkonzept</p>
+                    <p class="teaser-text">Für das German Contingent entwickeln wir ein umfassendes Schutzkonzept – damit sich alle Teilnehmenden sicher und gut aufgehoben fühlen. Das fertige Konzept veröffentlichen wir später transparent auf unserer Website.</p>
+                </div>
+                <div class="teaser-image">
+                    <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/Schutzkonzept.jpg" alt="Schutzkonzept">
+                </div>
+            </a>
+
+            <a href="https://www.worldscoutjamboree.de/2026/03/16/die-moglichmacherinnen-trafen-sich-zur-ersten-vorbereitung" target="_blank" class="teaser-block">
+                <div class="teaser-image">
+                    <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/gruppenbild_shopped_quadratisch.jpg" alt="Gruppenbild der Möglichmacherinnen IST">
+                </div>
+                <div class="teaser-text-wrap">
+                    <p class="teaser-headline">IST Vorbereitungstreffen</p>
+                    <p class="teaser-text">Mehr als 200 Möglichmacher*innen des German Contingents haben das Jamboree-Abenteuer 2027 in Mainz gestartet: Kennenlernen, Workshops, kreative Abende – bunt, motiviert und voller Vorfreude!</p>
+                </div>
+            </a>
+
+            <p class="text">
+                Für die kommenden Feiertage wünschen wir euch eine besinnliche Zeit, erholsame Tage und einen guten Start ins neue Jahr. 
+                Möge es voller Vorfreude, Begegnungen und Pfadfindergeist sein!
+            </p>
+            <p class="text">
+                Gut Pfad und frohe Weihnachten!
+            </p>
+        </div>
+        <div class="footer">
+            <p>Gut Pfad!</p>
+            Du erhältst diesen Newsletter, weil du dich für das deutsche Kontingent 
+            zum Worldscout Jamboree 2027 in Polen angemeldet hast. Bei Fragen oder Anregungen
+            meldet euch jederzeit gerne bei uns. 
+            <a href="mailto:info@worldscoutjamboree.de">info@worldscoutjamboree.de</a>
+            <div class="social">
+                <a href="https://whatsapp.com/channel/0029Vb0LOom7DAWzG1tjxf3s"><img src="https://www.worldscoutjamboree.de/app/uploads/2025/12/whatsapp.png" alt="Whatsapp"></a>
+                <a href="https://www.instagram.com/wsjrdp/"><img src="https://www.worldscoutjamboree.de/app/uploads/2025/12/instagram.png" alt="Instagram"></a>
+                <a href="https://t.me/wsjrdp"><img src="https://www.worldscoutjamboree.de/app/uploads/2025/12/telegram.png" alt="Telegram"></a>
+            </div>
+        </div>
+        <div class="website-link">
+            <p><a href="https://www.worldscoutjamboree.de">worldscoutjamboree.de</a></p>
+        </div>
+    </div>
+</body>
+</html>
