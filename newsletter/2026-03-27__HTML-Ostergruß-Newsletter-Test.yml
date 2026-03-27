@@ -1,0 +1,18 @@
+# Run with:
+# uv run tools/mailing_from_yml.py newsletter/2026-03-27__HTML-Ostergruß-Newsletter-Test.yml
+# WSJRDP_SCRIPTS_CONFIG=config-prod.yml uv run tools/mailing_from_yml.py newsletter/2026-03-27__HTML-Ostergruß-Newsletter-Test.yml
+query:
+  include_sepa_mail_in_mailing_to: false
+  where:
+    status: ['confirmed']
+    # id: [2,8]
+    primary_group_id: 1
+    tag: ['eHoC']
+    exclude_tag: ['Warteliste']
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: info@worldscoutjamboree.de
+email_subject: "Newsletter - Sweet Contingent - Jamboree 2027 - {{ row.short_full_name }} (id {{ row.id }})"
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: ""
+html_content: "./2026-04-06__HTML-Ostergruß-Newsletter.html"
