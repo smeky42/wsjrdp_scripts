@@ -52,6 +52,13 @@
             color: #be1e2dff;
             font-weight: lighter;
         }
+
+        .sender {
+            font-size: 16px;
+            margin: 0px 0;
+            color: #be1e2dff;
+        }
+
         .slogan-right {
             font-size: 24px;
             margin: 10px 0;
@@ -212,6 +219,16 @@
                 color: #1C1C1E; 
             }
         }
+
+        .section-divider {
+            border: 2px solid #ccc;
+            margin: 20px 0;
+        }
+
+        .section-label {
+            font-style: italic;
+            color: #888;
+        }
     </style>
 </head>
 <body>
@@ -224,6 +241,36 @@
             <div class="subtitle">German Contingent - WSJ 2027 Poland</div>
         </div>
         <div class="content">
+            <div class="slogan">Herzlichen Glückwunsch {{ row.greeting_name }},</div>
+            <p class="text">
+                das ist ein Test und du hast es in den Kreis der auserwählten Personen geschafft ... zu gewinnen gibts nix und nen Knopf um den Newsletter abzubestellen auch nicht, aber du kannst uns gerne Feedback geben. 
+                </br> 
+                </br> Gehen alle Links? 
+                </br> Sieht alles gut aus? 
+                </br> Auch auf dem Handy und bei deinem Mailprovider? 
+                </br> Stimmt das was wir schreiben und ist es verständlich?
+                </br>
+                <b>Wir verschicken den Newsletter an Ostern an über 3000 Adressen, deswegen sag bescheid wenn dir was auffällt oder du Verbesserungsvorschläge hast!</b>
+
+            </p>
+            <div class="sender">Viele Grüße 
+                </br></br>
+                Kristof und Peter
+            </div>    
+                <a href="https://wiki.worldscoutjamboree.de/spaces/KT/pages/59376840/1.+Newsletter+06.04.2026" target="_blank" class="teaser-block">
+                <div class="teaser-image">
+                    <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/korrektur.png" alt="Für Rückmeldung zum Newsletter hier klicken">
+                </div>
+                <div class="teaser-text-wrap">
+                    <p class="teaser-headline">Für Rückmeldung zum Newsletter hier klicken!</p>
+                    <p class="teaser-text">Du wirst auf Confluence weitergeleitet, um dein Feedback zu hinterlassen.</p>
+                </div>
+            </a>
+
+            <hr class="section-divider">
+            <p class="text section-label">Ab hier beginnt der Newsletter den in ein paar Tagen die ULs erhalten.</p>
+            <hr class="section-divider">
+
             <div class="slogan">Liebe*r {{ row.greeting_name }},</div>
             <p class="text">
                 es geht los! </br> 
@@ -235,31 +282,37 @@
 
                 Hierbei haben sich einige Themen und Punkte angesammelt, die wir teilen wollen. Erst mit euch und in einer Woche auch mit den YPs und den Eltern. </br></br>
 
-                Als Unitleader seit ihr die ersten Ansprechpartner*innen für Fragen der YPs und Eltern. Aus diesem Grund ist es wichtig, dass zunächst ihr Informationen erhaltet um sprachfähig zu sein. Aber natürlich auch um Rückmeldung zu geben, sollte etwas unstimmig sein. </br></br>
+                Als Unitleader seid ihr die ersten Ansprechpartner*innen für Fragen der YPs und deren Eltern. Aus diesem Grund ist es wichtig, dass zunächst ihr Informationen erhaltet um sprachfähig zu sein. Aber natürlich auch um Rückmeldung zu geben, sollte etwas unstimmig sein. </br></br>
 
-                Im Folgenden findet ihr also den 1. Newsletter - der an Ostern an die YPs verschickt werden wird. </br></br>
+                Im Folgenden findet ihr also den 1. Newsletter - der an Ostern an unser Kontingent verschickt werden wird. </br></br>
 
                 Damit wünschen wir euch schon einmal eine schöne Ferienzeit und freuen uns auf die Zusammenarbeit. </br></br>
 
-                Euer CMT
+                <div class="sender">Euer CMT</div>
             </p>
+            <hr class="section-divider">
+            <p class="text section-label">Ab hier beginnt der Newsletter den nächste Woche das ganze Kontingent erhält.</p>
+            <hr class="section-divider">
              <!-- <div class="fire-gif"><img src="https://www.worldscoutjamboree.de/app/uploads/2025/12/WSJ-Weihnachten.gif" alt="Lagerfeuer"></div> -->
             
+            <div class="slogan">Liebe*r {{ row.greeting_name }}, liebe Eltern,</div>
             <p class="text">
-               <div class="slogan">Liebe*r {{ row.greeting_name }}, liebe Eltern,</div>
 
                 die Monate vergehen, schon ist Ostern und wir senden euch ein kleines Update aus dem CMT (Kontingentsteam).
                 </br></br>
-                Während die Unitleader fleißig dabei sind die Unitwochenenden vorzubereiten, zu planen und dafür jede Menge Informationen sammeln, werkelt das CMT etwas mehr im Hintergrund. Hier wird organisiert, strukturiert und Rahmen gesteckt. Über einige Themen aus dem Kontingent wollen wir euch mit diesem Newsletter informieren und einen keinen Einblick geben.
+                Während die Unitleader fleißig dabei sind die Unitwochenenden vorzubereiten, zu planen und dafür jede Menge Informationen sammeln, haben die IST schon ihr erstes Wochenende hinter sich und das CMT werkelt im Hintergrund. Hier wird organisiert, strukturiert und Rahmen gesteckt. Deswegen wollen wir euch über einige Themen aus dem Kontingent mit diesem Newsletter informieren und einen keinen Einblick in unsere Arbeit geben.
                 </br></br>
-                Die wichtigsten Informationen zum Jamboree und die wichtigen Neuigkeiten erhaltet ihr im Regelfall durch eure Unitleader. Diese sind auch die ersten Ansprechpartner*innen für Fragen. Dennoch wollen wir euch auch immer mal wieder einen direkten Einblick in den Planungsstand und aktuelle Themen im Kontingent gebem. Daher werdet ihr bis zum Jamboree immer mal wieder einen solchen Newsletter im Postfach finden - Falls dieser dort nicht gelandet ist, raten wir zum Lesen des 2. Beitrags zum "Whitelistening".
+                Die wichtigsten Informationen zum Jamboree und die wichtigen Neuigkeiten erhaltet ihr im Regelfall durch eure Unitleader oder das IST Management. Diese sind auch die ersten Ansprechpartner*innen für Fragen. Dennoch wollen wir euch auch immer mal wieder einen direkten Einblick in den Planungsstand und aktuelle Themen im Kontingent geben. Daher werdet ihr bis zum Jamboree immer mal wieder einen Newsletter von uns im Postfach finden - Falls dieser dort nicht gelandet ist, raten wir zum Lesen des 2. Beitrags zum "Whitelistening".
                 </br></br>
                 Nachdem wir euch mit neuem Lesestoff versorgt haben, wünschen wir euch allen noch schöne Ostern und eine tolle Ferienzeit.
                 </br></br>
-                Viele Grüße aus dem CMT
             </p>
-
-            <a href="https://www.worldscoutjamboree.de/2026/03/16/sweet/" target="_blank" class="teaser-block">
+            <div class="sender">Viele Grüße aus dem CMT</div>
+            <hr class="section-divider">
+            <p class="text section-label">Nimm dir die Zeit und klicke auf die Artikel um mehr zu erfahren.</p>
+            <hr class="section-divider">
+            
+            <a href="https://www.worldscoutjamboree.de/2026/03/27/sweet/" target="_blank" class="teaser-block">
                 <div class="teaser-image">
                     <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/kuchen.png" alt="Sweet Contingent – Deutsche Backkunst">
                 </div>
@@ -269,7 +322,7 @@
                 </div>
             </a>
 
-            <a href="https://www.worldscoutjamboree.de/2026/03/16/sweet/" target="_blank" class="teaser-block image-right">
+            <a href="https://www.worldscoutjamboree.de/2026/03/27/sweet/" target="_blank" class="teaser-block image-right">
                 <div class="teaser-text-wrap">
                     <p class="teaser-headline">Whitelisting – damit du nichts verpasst!</p>
                     <p class="teaser-text">Damit unsere Newsletter sicher in deinem Postfach landen, füge unsere Absenderadresse zu deiner Whitelist hinzu.</p>
@@ -279,7 +332,7 @@
                 </div>
             </a>
 
-            <a href="https://www.worldscoutjamboree.de/kontingentsteam-2/" target="_blank" class="teaser-block">
+            <a href="https://www.worldscoutjamboree.de/2026/03/27/ehoc-vorstellung/" target="_blank" class="teaser-block">
                 <div class="teaser-image">
                     <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/2025-04-26-14-43-35-CMT-Mannheim_quadratisch.jpg" alt="e-HoC Gruppenbild">
                 </div>
@@ -289,7 +342,7 @@
                 </div>
             </a>
 
-            <a href="https://www.worldscoutjamboree.de/2026/03/16/foto-videomaterial-von-unit-treffen" target="_blank" class="teaser-block image-right">
+            <a href="https://www.worldscoutjamboree.de/2026/03/27/foto-videomaterial-von-unit-treffen" target="_blank" class="teaser-block image-right">
                 <div class="teaser-text-wrap">
                     <p class="teaser-headline">Foto- und Videomaterial von Unit-Treffen</p>
                     <p class="teaser-text">Schickt uns eure besten Fotos und Videos, damit wir die bunten Erlebnisse des German Contingents gemeinsam sichtbar machen können.</p>
@@ -299,7 +352,7 @@
                 </div>
             </a>
 
-            <a href="https://www.worldscoutjamboree.de/2026/03/16/vorstellung-well-being-team" target="_blank" class="teaser-block">
+            <a href="https://www.worldscoutjamboree.de/2026/03/27/vorstellung-well-being-team" target="_blank" class="teaser-block">
                 <div class="teaser-image">
                     <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/well-being.jpg" alt="Sweet Contingent – Deutsche Backkunst">
                 </div>
@@ -309,7 +362,7 @@
                 </div>
             </a>
 
-            <a href="https://www.worldscoutjamboree.de/2026/03/16/schutzkonzept-im-german-contingent" target="_blank" class="teaser-block image-right">
+            <a href="https://www.worldscoutjamboree.de/2026/03/27/schutzkonzept-im-german-contingent" target="_blank" class="teaser-block image-right">
                 <div class="teaser-text-wrap">
                     <p class="teaser-headline">Ankündigung Schutzkonzept</p>
                     <p class="teaser-text">Für das German Contingent entwickeln wir ein umfassendes Schutzkonzept – damit sich alle Teilnehmenden sicher und gut aufgehoben fühlen. Das fertige Konzept veröffentlichen wir später transparent auf unserer Website.</p>
@@ -319,7 +372,7 @@
                 </div>
             </a>
 
-            <a href="https://www.worldscoutjamboree.de/2026/03/16/die-moglichmacherinnen-trafen-sich-zur-ersten-vorbereitung" target="_blank" class="teaser-block">
+            <a href="https://www.worldscoutjamboree.de/2026/03/27/die-moeglichmacherinnen-trafen-sich-zur-ersten-vorbereitung" target="_blank" class="teaser-block">
                 <div class="teaser-image">
                     <img src="https://www.worldscoutjamboree.de/app/uploads/2026/03/gruppenbild_shopped_quadratisch.jpg" alt="Gruppenbild der Möglichmacherinnen IST">
                 </div>
@@ -328,13 +381,9 @@
                     <p class="teaser-text">Mehr als 200 Möglichmacher*innen des German Contingents haben das Jamboree-Abenteuer 2027 in Mainz gestartet: Kennenlernen, Workshops, kreative Abende – bunt, motiviert und voller Vorfreude!</p>
                 </div>
             </a>
-
-            <p class="slogan">
-                Gut Pfad und frohe Ostern!
-            </p>
         </div>
         <div class="footer">
-            <p>Gut Pfad!</p>
+            <p>Gut Pfad und frohe Ostern!</p>
             Du erhältst diesen Newsletter, weil du dich für das deutsche Kontingent 
             zum Worldscout Jamboree 2027 in Polen angemeldet hast. Bei Fragen oder Anregungen
             meldet euch jederzeit gerne bei uns. 
