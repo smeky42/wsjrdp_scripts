@@ -1596,15 +1596,26 @@ def pg_update_people_additional_info(
         else:
             return value
 
-    values = [
-        {"id": d["id"], "key": k, "value": Jsonb(_pre_dump(v))}
+    update_values = [
+        {"update_id": d["id"], "key": k, "value": Jsonb(_pre_dump(v))}
         for d in values
         for k, v in d.items()
-        if k != "id"
+        if k != "id" and v is not None
     ]
-
-    if values:
-        query = f"""UPDATE people SET additional_info[%(key)s] = %(value)s WHERE id = %(id)s"""
+    if update_values:
+        query = f"""UPDATE people SET additional_info[%(key)s] = %(value)s WHERE id = %(update_id)s"""
         with conn.cursor() as cur:
-            _LOGGER.debug(f"{query}" + "".join(f"\n  | {d!r}" for d in values))
-            cur.executemany(query, values)
+            _LOGGER.debug(f"{query}" + "".join(f"\n  | {d!r}" for d in update_values))
+            cur.executemany(query, update_values)
+
+    key_deletes = [
+        {"delete_id": d["id"], "key": k}
+        for d in values
+        for k, v in d.items()
+        if k != "id" and v is None
+    ]
+    if key_deletes:
+        query = f"""UPDATE people SET additional_info = additional_info - %(key)s WHERE id = %(delete_id)s"""
+        with conn.cursor() as cur:
+            _LOGGER.info(f"{query}" + "".join(f"\n  | {d!r}" for d in key_deletes))
+            cur.executemany(query, key_deletes)
