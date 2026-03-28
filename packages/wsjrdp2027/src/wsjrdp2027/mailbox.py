@@ -117,11 +117,12 @@ def update_alias(ctx, email, add_goto: str):
 
     aliases = get_aliases(ctx, id=email)
     print(f"{aliases=}")
-    if not aliases:
+    if not aliases or not aliases[0]:
         _LOGGER.info(f"No existing alias for {email}, will create new one")
         return add_alias(ctx, email, goto=add_goto)
     old_alias = aliases[0]
-    old_goto_list = old_alias["goto"].split(",")
+    _LOGGER.info(f"Found existing alias: {old_alias}")
+    old_goto_list = old_alias.get("goto", "").split(",")
     add_goto_list = [a.strip() for a in add_goto.split(",")]
     new_goto_list = list(_util.dedup(old_goto_list + add_goto_list))
     if new_goto_list == old_goto_list:

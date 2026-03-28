@@ -158,14 +158,16 @@ class Person:
             return payment_role.short_role_name
         else:
             match self.primary_group_id:
-                case 1:
+                case 1 | 47:
                     return "CMT"
-                case 2:
+                case 2 | 5:
                     return "UL"
-                case 3:
+                case 3 | 6:
                     return "YP"
-                case 4 | 45:
+                case 4 | 7 | 45:
                     return "IST"
+                case 48:
+                    return "EXT"
                 case _:
                     return None
 
@@ -231,8 +233,18 @@ class Person:
                 subdomain = "bmt" if self.is_bmt else "ist"
                 username = _util.generate_mail_username(self.first_name, self.last_name)
                 return f"{username}@{subdomain}.worldscoutjamboree.de"
+            case "EXT":
+                return f"wsj27-{self.id}@worldscoutjamboree.de"
             case _:
                 return None
+
+    @property
+    def wsjrdp_email_should_be_mailbox(self) -> bool:
+        match self.short_role_name:
+            case "CMT" | "UL":
+                return True
+            case _:
+                return False
 
     @property
     def wsjrdp_email_is_mailbox(self) -> bool | None:
@@ -261,7 +273,7 @@ class Person:
             case "CMT":
                 username = _util.generate_mail_username(self.first_name, self.last_name)
                 return f"{username}@worldscoutjamboree.de"
-            case "UL" | "IST" | "YP":
+            case "UL" | "IST" | "YP" | "EXT":
                 return f"wsj27-{self.id}@worldscoutjamboree.de"
             case _:
                 return None
