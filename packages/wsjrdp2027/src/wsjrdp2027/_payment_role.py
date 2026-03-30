@@ -90,6 +90,8 @@ _PAYMENT_ARRAY = [
     ["EarlyPayer::Group::Unit::Leader", "2400", "", "", "", "", "", "", "", ""],
     ["EarlyPayer::Group::Ist::Member", "2600", "", "", "", "", "", "", "", ""],
     ["EarlyPayer::Group::Root::Member", "1600", "", "", "", "", "", "", "", ""],
+    ["RegularPayer::Group::Extern::Member", "0", "", "", "", "", "", "", "", ""],
+    ["EarlyPayer::Group::Extern::Member", "0", "", "", "", "", "", "", "", ""],
 ]
 
 
@@ -100,11 +102,13 @@ class PaymentRole(_enum.Enum):
     REGULAR_PAYER_YP = "RegularPayer::Group::Unit::Member"
     REGULAR_PAYER_UL = "RegularPayer::Group::Unit::Leader"
     REGULAR_PAYER_IST = "RegularPayer::Group::Ist::Member"
+    REGULAR_PAYER_EXT = "RegularPayer::Group::Extern::Member"
 
     EARLY_PAYER_CMT = "EarlyPayer::Group::Root::Member"
     EARLY_PAYER_YP = "EarlyPayer::Group::Unit::Member"
     EARLY_PAYER_UL = "EarlyPayer::Group::Unit::Leader"
     EARLY_PAYER_IST = "EarlyPayer::Group::Ist::Member"
+    EARLY_PAYER_EXT = "EarlyPayer::Group::Extern::Member"
 
     def __str__(self) -> str:
         return self.name

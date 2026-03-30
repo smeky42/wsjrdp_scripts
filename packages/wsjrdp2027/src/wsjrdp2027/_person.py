@@ -285,7 +285,7 @@ class Person:
                 return None
             case "UL":
                 return self.wsjrdp_email
-            case "IST" | "BMT" | "YP":
+            case "IST" | "BMT" | "YP" | "EXT":
                 return self.email
             case _:
                 raise RuntimeError(

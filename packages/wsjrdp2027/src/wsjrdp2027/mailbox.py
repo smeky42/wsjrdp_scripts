@@ -112,7 +112,7 @@ def add_alias(ctx, email, goto):
     _LOGGER.info("Add Alias Response: %s", resp.text)
 
 
-def update_alias(ctx, email, add_goto: str):
+def update_alias(ctx, email, *, add_goto: str, remove_existing_goto: bool = False):
     from . import _util
 
     aliases = get_aliases(ctx, id=email)
@@ -124,7 +124,10 @@ def update_alias(ctx, email, add_goto: str):
     _LOGGER.info(f"Found existing alias: {old_alias}")
     old_goto_list = old_alias.get("goto", "").split(",")
     add_goto_list = [a.strip() for a in add_goto.split(",")]
-    new_goto_list = list(_util.dedup(old_goto_list + add_goto_list))
+    if remove_existing_goto:
+        new_goto_list = list(_util.dedup(add_goto_list))
+    else:
+        new_goto_list = list(_util.dedup(old_goto_list + add_goto_list))
     if new_goto_list == old_goto_list:
         _LOGGER.info("No update required, goto list unchanged")
         return old_alias
