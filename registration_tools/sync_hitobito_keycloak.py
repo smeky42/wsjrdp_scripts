@@ -110,7 +110,9 @@ def _check_for_keycloak_user(
     conn: _psycopg.Connection,
     person: wsjrdp2027.Person,
     groupname: str,
+    *,
     email2keycloak_user: dict[str | None, dict],
+    username2keycloak_user: dict[str | None, dict],
     keycloak_users: list[wsjrdp2027.keycloak.KeycloakUserDict],
     errors: list[str],
     additional_info_updates: list[dict],
@@ -122,11 +124,14 @@ def _check_for_keycloak_user(
         if add_goto not in goto_list:
             goto_list.append(add_goto)
 
+    if person.keycloak_username:
+        if username2keycloak_user.get(person.keycloak_username):
+            return True
     if email2keycloak_user.get(person.wsjrdp_email):
         return True
 
     password = wsjrdp2027.generate_password()
-    keycloak_username = person.wsjrdp_email
+    keycloak_username = person.keycloak_username or person.wsjrdp_email
     keycloak_email = person.wsjrdp_email
 
     if person.id == 1871:
@@ -232,6 +237,7 @@ def sync(
             keycloak_users=keycloak_users,
             errors=errors,
             email2keycloak_user=email2keycloak_user,
+            username2keycloak_user=username2keycloak_user,
             additional_info_updates=additional_info_updates,
             address2goto=address2goto,
         ):
