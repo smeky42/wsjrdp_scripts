@@ -4,7 +4,7 @@
 query:
   include_sepa_mail_in_mailing_to: false
   where:
-    role: UL
+    # role: UL
     status: ['confirmed']
     # id: [2,3,64,65]
     # primary_group_id: 1
