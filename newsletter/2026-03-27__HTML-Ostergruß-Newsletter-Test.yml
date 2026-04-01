@@ -4,11 +4,11 @@
 query:
   include_sepa_mail_in_mailing_to: false
   where:
+    role: UL
     status: ['confirmed']
-    # id: [2,8]
-    primary_group_id: 1
-    tag: ['eHoC']
-    exclude_tag: ['Warteliste']
+    # id: [2,3,64,65]
+    # primary_group_id: 1
+    #tag: ['eHoC']
 from_addr: anmeldung@worldscoutjamboree.de
 email_from: info@worldscoutjamboree.de
 email_subject: "Newsletter - Sweet Contingent - Jamboree 2027 - {{ row.short_full_name }} (id {{ row.id }})"
