@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
     <title>German Contingent Newsletter WSJ 2027</title>
     <style>
         .title {
             font-family: 'Montserrat', Arial, serif, sans-serif, bold;
             font-size: 28px;
             align-items: center;
-            font-weight: lighter;
         }
         .subtitle {
             font-family: 'Montserrat', Arial, serif, sans-serif;
@@ -29,7 +30,7 @@
         .container {
             max-width: 600px;
             margin: 0 auto;
-            background-color: #c5c7c4ff;
+            background-color: #2C2C2E;
             border-radius: 8px;
             overflow: hidden;
         }
@@ -50,7 +51,6 @@
             font-size: 24px;
             margin: 10px 0;
             color: #be1e2dff;
-            font-weight: lighter;
         }
 
         .sender {
@@ -64,10 +64,9 @@
             margin: 10px 0;
             color: #be1e2dff;
             text-align: right;
-            font-weight: lighter;
         }
         .text {
-            color: #555;
+            color: #ffffff;
             line-height: 1.6;
         }
         .footer {
@@ -88,7 +87,6 @@
             color: #ffffff;
             text-align: center;
             font-size: 28px;
-            font-weight: lighter;
         }
         .website-link{
             color: #ffffff;
@@ -118,7 +116,6 @@
 
         .fa {
             margin: 0 10px;
-            color: #c5c7c4ff;
             font-size: 30px;
             font-family: 'Montserrat', Arial, serif, sans-serif;
         }
@@ -130,7 +127,7 @@
             gap: 16px;
             text-decoration: none;
             color: inherit;
-            background-color: #ffffff;
+            background-color: #3a3a3c;
             border-radius: 8px;
             padding: 12px;
         }
@@ -168,7 +165,7 @@
             text-decoration: none;
         }
         .teaser-text {
-            color: #555;
+            color: #ffffff;
             line-height: 1.6;
             margin: 0;
             font-size: 14px;
@@ -198,25 +195,69 @@
             }
             .slogan {
                 font-size: 20px;
+                font-weight: bold;
             }
         }
 
         @media (prefers-color-scheme: dark) {
             body {
-                margin: 0;
-                padding: 0;
-                font-family: 'Montserrat', Arial, serif, sans-serif;
                 background-color: #1C1C1E;
             }
+            .container {
+                background-color: #2C2C2E;
+            }
             .header {
-                background-color: af2534ff;
+                background-color: #af2534;
                 color: #ffffff;
             }
-            
-
             .content {
-                background-color: #c5c7c4ff; /* or a light gray */
-                color: #1C1C1E; 
+                background-color: #2C2C2E;
+                color: #e0e0e0;
+            }
+            .slogan,
+            .slogan-right,
+            .sender {
+                color: #e06070;
+            }
+            .text {
+                color: #cccccc;
+            }
+            .section-label {
+                color: #aaaaaa;
+            }
+            .section-divider {
+                border-color: #555555;
+            }
+            .teaser-block {
+                background-color: #3a3a3c;
+            }
+            .teaser-block:not(.image-right) {
+                background-color: #8a1a25;
+            }
+            .teaser-headline {
+                color: #e06070;
+            }
+            .teaser-headline a {
+                color: #e06070;
+            }
+            .teaser-block:not(.image-right) .teaser-headline,
+            .teaser-block:not(.image-right) .teaser-headline a,
+            .teaser-block:not(.image-right) .teaser-text {
+                color: #ffffff;
+            }
+            .teaser-text {
+                color: #cccccc;
+            }
+            .footer {
+                background-color: #af2534;
+                color: #ffffff;
+            }
+            .footer a,
+            .footer p {
+                color: #ffffff;
+            }
+            .website-link a {
+                color: #cccccc;
             }
         }
 
@@ -322,7 +363,7 @@
                 </div>
             </a>
 
-            <a href="https://www.worldscoutjamboree.de/2026/03/27/sweet/" target="_blank" class="teaser-block image-right">
+            <a href="https://www.worldscoutjamboree.de/2026/03/16/whitelisting/" target="_blank" class="teaser-block image-right">
                 <div class="teaser-text-wrap">
                     <p class="teaser-headline">Whitelisting – damit du nichts verpasst!</p>
                     <p class="teaser-text">Damit unsere Newsletter sicher in deinem Postfach landen, füge unsere Absenderadresse zu deiner Whitelist hinzu.</p>
@@ -385,7 +426,7 @@
         <div class="footer">
             <p>Gut Pfad und frohe Ostern!</p>
             Du erhältst diesen Newsletter, weil du dich für das deutsche Kontingent 
-            zum Worldscout Jamboree 2027 in Polen angemeldet hast. Bei Fragen oder Anregungen
+            zum World Scout Jamboree 2027 in Polen angemeldet hast. Bei Fragen oder Anregungen
             meldet euch jederzeit gerne bei uns. 
             <a href="mailto:info@worldscoutjamboree.de">info@worldscoutjamboree.de</a>
             <div class="social">
