@@ -63,9 +63,30 @@ class Test_PeopleWhere__as_where_condition:
         where_str = where.as_where_condition()
         assert where_str == expected
 
+    @pytest.mark.parametrize(
+        "foto_permission,expected",
+        [
+            (True, "people.foto_permission = TRUE"),
+            (False, "COALESCE(people.foto_permission, FALSE) = FALSE"),
+            (None, ""),
+        ],
+    )
+    def test_foto_permission(self, foto_permission, expected):
+        where = PeopleWhere(foto_permission=foto_permission)
+        where_str = where.as_where_condition()
+        assert where_str == expected
+
     def test_status(self):
         where_str = PeopleWhere(status="confirmed").as_where_condition()
         assert where_str == "people.status = 'confirmed'"
+
+    def test_status_list(self):
+        where_str = PeopleWhere(status=["registered", "confirmed"]).as_where_condition()
+        assert where_str == "people.status IN ('registered', 'confirmed')"
+
+    def test_status_comma_separated(self):
+        where_str = PeopleWhere(status="registered,confirmed").as_where_condition()
+        assert where_str == "people.status IN ('registered', 'confirmed')"
 
     def test_exclude_status(self):
         where_str = PeopleWhere(exclude_status="registered").as_where_condition()
@@ -87,9 +108,61 @@ class Test_PeopleWhere__as_where_condition:
         where_str = PeopleWhere(exclude_id=123).as_where_condition()
         assert where_str == "people.id <> 123"
 
+    @pytest.mark.parametrize(
+        "primary_group,expected",
+        [
+            (None, ""),
+            ([], "FALSE"),
+            (123, "people.primary_group_id = 123"),
+            ([1, 2], "people.primary_group_id IN (1, 2)"),
+            (
+                "CMT",
+                "people.primary_group_id IN (SELECT id FROM groups WHERE name = 'CMT' OR short_name = 'CMT' OR additional_info->>group_code = 'CMT')",
+            ),
+            (
+                ["A1", "A2"],
+                "people.primary_group_id IN (SELECT id FROM groups WHERE name IN ('A1', 'A2') OR short_name IN ('A1', 'A2') OR additional_info->>group_code IN ('A1', 'A2'))",
+            ),
+            (
+                [1, "A1"],
+                "people.primary_group_id IN (SELECT id FROM groups WHERE id = 1 OR name = 'A1' OR short_name = 'A1' OR additional_info->>group_code = 'A1')",
+            ),
+        ],
+    )
+    def test_primary_group(self, primary_group, expected):
+        where_str = PeopleWhere(primary_group=primary_group).as_where_condition()
+        assert where_str == expected
+
     def test_primary_group_id(self):
         where_str = PeopleWhere(primary_group_id=123).as_where_condition()
         assert where_str == "people.primary_group_id = 123"
+
+    @pytest.mark.parametrize(
+        "exclude_primary_group,expected",
+        [
+            (None, ""),
+            ([], "TRUE"),
+            (123, "people.primary_group_id <> 123"),
+            ([1, 2], "people.primary_group_id NOT IN (1, 2)"),
+            (
+                "CMT",
+                "people.primary_group_id NOT IN (SELECT id FROM groups WHERE name = 'CMT' OR short_name = 'CMT' OR additional_info->>group_code = 'CMT')",
+            ),
+            (
+                ["A1", "A2"],
+                "people.primary_group_id NOT IN (SELECT id FROM groups WHERE name IN ('A1', 'A2') OR short_name IN ('A1', 'A2') OR additional_info->>group_code IN ('A1', 'A2'))",
+            ),
+            (
+                [1, "A1"],
+                "people.primary_group_id NOT IN (SELECT id FROM groups WHERE id = 1 OR name = 'A1' OR short_name = 'A1' OR additional_info->>group_code = 'A1')",
+            ),
+        ],
+    )
+    def test_exclude_primary_group(self, exclude_primary_group, expected):
+        where_str = PeopleWhere(
+            exclude_primary_group=exclude_primary_group
+        ).as_where_condition()
+        assert where_str == expected
 
     def test_exclude_primary_group_id(self):
         where_str = PeopleWhere(exclude_primary_group_id=123).as_where_condition()
@@ -227,13 +300,29 @@ class Test_PeopleWhere__to_dict:
         where_dict = PeopleWhere(exclude_id=123).to_dict()
         assert where_dict == {"exclude_id": 123}
 
+    @pytest.mark.parametrize(
+        "val,expected",
+        [
+            (None, {}),
+            ([], {"primary_group": []}),
+            (123, {"primary_group": 123}),
+            ("123", {"primary_group": 123}),
+            ("CMT", {"primary_group": "CMT"}),
+            (["1", "A1"], {"primary_group": [1, "A1"]}),
+            ([1, "A1"], {"primary_group": [1, "A1"]}),
+        ],
+    )
+    def test_primary_group(self, val, expected):
+        where_dict = PeopleWhere(primary_group=val).to_dict()
+        assert where_dict == expected
+
     def test_primary_group_id(self):
         where_dict = PeopleWhere(primary_group_id=123).to_dict()
-        assert where_dict == {"primary_group_id": 123}
+        assert where_dict == {"primary_group": 123}
 
     def test_exclude_primary_group_id(self):
         where_dict = PeopleWhere(exclude_primary_group_id=123).to_dict()
-        assert where_dict == {"exclude_primary_group_id": 123}
+        assert where_dict == {"exclude_primary_group": 123}
 
     def test_unit_code(self):
         where_dict = PeopleWhere(unit_code="000000").to_dict()

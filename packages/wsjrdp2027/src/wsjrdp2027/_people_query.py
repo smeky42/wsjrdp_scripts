@@ -4,6 +4,7 @@ import collections.abc as _collections_abc
 import dataclasses as _dataclasses
 import datetime as _datetime
 import logging as _logging
+import re as _re
 import typing as _typing
 
 from . import _types
@@ -182,9 +183,10 @@ class PeopleWhere:
     ) = None
     id: _collections_abc.Sequence[int] | None = None
     exclude_id: _collections_abc.Sequence[int] | None = None
-    primary_group_id: _collections_abc.Sequence[int] | None = None
-    exclude_primary_group_id: _collections_abc.Sequence[int] | None = None
+    primary_group: _collections_abc.Sequence[str | int] | None = None
+    exclude_primary_group: _collections_abc.Sequence[str | int] | None = None
     early_payer: bool | None = None
+    foto_permission: bool | None = None
     max_print_at: _datetime.date | None = None
     fee_rules: tuple[str, ...] = ("active",)
     unit_code: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
@@ -218,7 +220,10 @@ class PeopleWhere:
         exclude_id: str | int | _collections_abc.Iterable[str | int] | None = None,
         primary_group_id: _StrIntOrIterable | None = None,
         exclude_primary_group_id: _StrIntOrIterable | None = None,
+        primary_group: _StrIntOrIterable | None = None,
+        exclude_primary_group: _StrIntOrIterable | None = None,
         early_payer: bool | None = None,
+        foto_permission: bool | None = None,
         max_print_at: _datetime.date | str | None = None,
         fee_rules: _StrOrIterable = "active",
         unit_code: _StrOrNullIterable | None = None,
@@ -260,12 +265,16 @@ class PeopleWhere:
         self.exclude_sepa_status = _to_str_or_null_list(exclude_sepa_status)
         self.id = _util.to_int_list_or_none(id)
         self.exclude_id = _util.to_int_list_or_none(exclude_id)
-        self.primary_group_id = _util.to_int_list_or_none(primary_group_id)
-        self.exclude_primary_group_id = _util.to_int_list_or_none(
-            exclude_primary_group_id
+        self.primary_group = _to_primary_group_list_or_none(
+            primary_group, primary_group_id
+        )
+        self.exclude_primary_group = _to_primary_group_list_or_none(
+            exclude_primary_group, exclude_primary_group_id
         )
         if early_payer is not None:
             self.early_payer = early_payer
+        if foto_permission is not None:
+            self.foto_permission = foto_permission
         if max_print_at is not None:
             self.max_print_at = _util.to_date(max_print_at)
         if isinstance(fee_rules, str):
@@ -362,7 +371,7 @@ class PeopleWhere:
             "status",
             "sepa_status",
             "id",
-            "primary_group_id",
+            "primary_group",
             "unit_code",
             "tag",
             "note",
@@ -374,6 +383,7 @@ class PeopleWhere:
             "exclude_deregistered": self.exclude_deregistered,
             "role": to_out(self.role, map=str),
             "early_payer": self.early_payer,
+            "foto_permission": self.foto_permission,
             "max_print_at": iso_or_none(self.max_print_at),
             "fee_rules": fee_rules,
             "not": recursive_to_dict(self.not_),
@@ -428,19 +438,35 @@ class PeopleWhere:
             where = combine_where(
                 where, in_expr(f"{people_table}.payment_role", payment_roles)
             )
-        if self.early_payer is not None:
-            early_payer_cond = (
-                f"{people_table}.early_payer = TRUE"
-                if self.early_payer
-                else f"COALESCE({people_table}.early_payer, FALSE) = FALSE"
-            )
-            where = combine_where(where, early_payer_cond)
+        where = combine_where(
+            where,
+            self.__boolean_where(
+                "early_payer", self.early_payer, people_table=people_table
+            ),
+            self.__boolean_where(
+                "foto_permission", self.foto_permission, people_table=people_table
+            ),
+        )
         if self.max_print_at is not None:
             where = combine_where(
                 where, f"{people_table}.print_at <= '{self.max_print_at.isoformat()}'"
             )
 
-        for key in ["id", "primary_group_id", "sepa_status", "email", "status", "unit_code"]:
+        where = combine_where(
+            where,
+            self.__primary_group_where(
+                self.primary_group,
+                people_table=people_table,
+                exclude=False,
+            ),
+            self.__primary_group_where(
+                self.exclude_primary_group,
+                people_table=people_table,
+                exclude=True,
+            ),
+        )
+
+        for key in ["id", "sepa_status", "email", "status", "unit_code"]:
             expr = f"{people_table}.{key}"
             if key == "sepa_status":
                 expr = f"COALESCE({expr}, 'ok')"
@@ -491,6 +517,53 @@ class PeopleWhere:
                 where = combine_where(where, f"({or_where})")
 
         return where
+
+    def __boolean_where(
+        self, key: str, val: bool | None, *, people_table: str = "people"
+    ) -> str | None:
+        expr = f"{people_table}.{key}"
+        if (val := getattr(self, key, None)) is None:
+            return None
+        else:
+            return f"{expr} = TRUE" if val else f"COALESCE({expr}, FALSE) = FALSE"
+
+    def __primary_group_where(
+        self,
+        val: _collections_abc.Sequence[str | int] | None,
+        *,
+        people_table: str = "people",
+        exclude: bool = False,
+    ) -> str | None:
+        from ._util import combine_where, in_expr, not_in_expr
+
+        in_not_in_expr = not_in_expr if exclude else in_expr
+        expr = f"{people_table}.primary_group_id"
+
+        if val is None:
+            return None
+        elif not val:
+            return "TRUE" if exclude else "FALSE"
+        elif all(isinstance(v, int) for v in val):
+            return in_not_in_expr(expr, val)
+        else:
+            int_vals = []
+            str_vals = []
+            for v in val:
+                if isinstance(v, int):
+                    int_vals.append(v)
+                else:
+                    str_vals.append(v)
+
+            group_where = combine_where(
+                in_expr("id", int_vals, empty_expr=""),
+                in_expr("name", str_vals),
+                in_expr("short_name", str_vals),
+                in_expr("additional_info->>group_code", str_vals),
+                op="OR",
+                sep=" ",
+            )
+            in_not_in = "NOT IN" if exclude else "IN"
+            return f"{expr} {in_not_in} (SELECT id FROM groups WHERE {group_where})"
 
 
 _PeopleWhereLike = PeopleWhere | dict | str
@@ -590,20 +663,18 @@ _R = _typing.TypeVar("_R")
 
 
 def _to_list(
-    *args: _T | _collections_abc.Iterable[_T],
+    arg: _StrOrNullIterable | None = None,
+    /,
     map: _collections_abc.Callable[[_T], _R] = str,  # type: ignore
 ) -> list[_R]:
-    result = []
-    for arg in args:
-        if arg is None:
-            continue
-        if isinstance(arg, str):
-            result.append(map(_typing.cast(_T, arg)))
-        elif isinstance(arg, _collections_abc.Iterable):
-            result.extend(map(x) for x in arg)  # ty: ignore
-        else:
-            result.append(map(arg))
-    return result
+    if arg is None:
+        return []
+    if isinstance(arg, str):
+        return [map(_typing.cast(_T, x.strip())) for x in arg.split(",")]
+    elif isinstance(arg, _collections_abc.Iterable):
+        return [map(_typing.cast(_T, x)) for x in arg]
+    else:
+        return [map(_typing.cast(_T, arg))]
 
 
 def _to_str_or_null_type(x: _typing.Any) -> str | _types.NullOrNotType:
@@ -615,5 +686,34 @@ def _to_str_or_null_type(x: _typing.Any) -> str | _types.NullOrNotType:
         return str(x)
 
 
-def _to_str_or_null_list(*args) -> list[str | _types.NullOrNotType] | None:
-    return _to_list(*args, map=_to_str_or_null_type) or None
+def _to_str_or_null_list(
+    arg: _StrOrNullIterable | None = None, /
+) -> list[str | _types.NullOrNotType] | None:
+    return _to_list(arg, map=_to_str_or_null_type) or None
+
+
+def _normalize_group_name_or_id(x: int | str | None) -> int | str | None:
+    if x is None:
+        return None
+    elif isinstance(x, int):
+        return x
+    else:
+        s = x.strip()
+        if not s:
+            return None
+        elif _re.fullmatch("[0-9]+", s):
+            return int(s, base=10)
+        else:
+            return s
+
+
+def _to_primary_group_list_or_none(*args) -> list[str | int] | None:
+    from . import _util
+
+    if all(arg is None for arg in args):
+        return None
+    return [
+        x
+        for x in map(_normalize_group_name_or_id, _util.iter_nested_int_or_str(*args))
+        if x is not None
+    ]

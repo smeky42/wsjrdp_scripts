@@ -139,7 +139,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
 
 
 def is_minor_or_yp(row: _pandas.Series) -> bool:
-    age = int(row["age"])
+    age = int(_util.nan_to_none(row.get("age")) or 0)
     is_minor = age < 18
     payment_role = row["payment_role"]
     if payment_role is None:

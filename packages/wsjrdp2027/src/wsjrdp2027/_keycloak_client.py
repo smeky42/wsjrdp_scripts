@@ -265,14 +265,11 @@ class KeycloakClient:
         return all_users
 
     def get_user_id(self, username: str) -> str:
-        if user_id := self._cache.get_user_id(username):
-            return user_id
-        user_id = self._admin.get_user_id(username)
-        if user_id:
-            self._cache.set_user_id_for_username(username=username, user_id=user_id)
-            return user_id
-        else:
+        user_id = self.get_user_id_or_none(username)
+        if user_id is None:
             raise RuntimeError(f"Failed to get a user_id for {username=}")
+        else:
+            return user_id
 
     def get_user_id_or_none(self, username: str) -> str | None:
         if user_id := self._cache.get_user_id(username):
@@ -317,9 +314,11 @@ class KeycloakClient:
             attributes=attributes,
             payload=payload,
         )
+        username = payload.get("username")
+        assert username and isinstance(username, str)
         cls_name = self.__class__.__qualname__
         description = f"{cls_name}.create_user({email!r}, {password!r}, ...)"
-        maybe_user_id = self.get_user_id(username)
+        maybe_user_id = self.get_user_id_or_none(username)
         if maybe_user_id:
             user_id = maybe_user_id
             _LOGGER.debug(
