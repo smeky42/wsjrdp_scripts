@@ -14,6 +14,11 @@ def create_argument_parser():
 
     p = argparse.ArgumentParser()
 
+    p.add_argument("--role")
+    p.add_argument(
+        "--group",
+        help="""Name or id of the group the confirmed person should be moved to.""",
+    )
     p.add_argument(
         "--skip-uninvited",
         action="store_true",
@@ -39,6 +44,38 @@ IST_ID_FIRST_MEETING = [
 ]  # fmt: skip
 
 
+def build_people_where(ctx: wsjrdp2027.WsjRdpContext, conn) -> wsjrdp2027.PeopleWhere:
+    if ctx.parsed_args.group:
+        group = wsjrdp2027.Group.db_load(conn, ctx.parsed_args.group)
+        primary_group_id = group.id
+    else:
+        primary_group_id = None
+    if ctx.parsed_args.role:
+        role = ctx.parsed_args.role
+    else:
+        role = None
+    return wsjrdp2027.PeopleWhere(
+        status="confirmed",
+        exclude_deregistered=True,
+        exclude_primary_group_id=[5, 6, 7],
+        role=role,
+        primary_group_id=primary_group_id,
+        # role="CMT",
+        # tag="Finanzverantwortlich",
+        # role="UL",
+        # status="confirmed",
+        # tag='eHoC',
+        # tag='Unit-Manager',
+        # role="IST",
+        # primary_group_id=10,
+        # id=[2508, 2509],
+        # primary_group_id=[9, 24],  # 9 - A2, 24 - A8
+        # status="confirmed"
+        # role="IST",
+        # id=IST_ID_FIRST_MEETING,
+    )
+
+
 def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
         argument_parser=create_argument_parser(),
@@ -52,28 +89,9 @@ def main(argv=None):
     out_base = ctx.make_out_path("moss_invitations__{{ filename_suffix }}")
     log_filename = out_base.with_suffix(".log")
     ctx.configure_log_file(log_filename)
-    batch_config = wsjrdp2027.BatchConfig(
-        where=wsjrdp2027.PeopleWhere(
-            status="confirmed",
-            exclude_deregistered=True,
-            exclude_primary_group_id=[5, 6, 7],
-            exclude_id=[1871],
-            # role="CMT",
-            # tag="Finanzverantwortlich",
-            role="UL",
-            # status="confirmed",
-            # tag='eHoC',
-            # tag='Unit-Manager',
-            # role="IST",
-            primary_group_id=10,
-            # primary_group_id=[9, 24],  # 9 - A2, 24 - A8
-            # status="confirmed"
-            # role="IST",
-            # id=IST_ID_FIRST_MEETING,
-        )
-    )
 
     with ctx.psycopg_connect() as conn:
+        batch_config = wsjrdp2027.BatchConfig(where=build_people_where(ctx, conn))
         df = batch_config.load_people_dataframe(
             ctx=ctx, conn=conn, log_resulting_data_frame=False
         )
