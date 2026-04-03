@@ -41,9 +41,11 @@ __all__ = [
     "to_date_or_none",
     "to_datetime",
     "to_datetime_or_none",
+    "to_int_list",
     "to_int_list_or_none",
     "to_int_or_none",
     "to_log_level",
+    "to_str_list",
     "to_str_list_or_none",
     "to_yaml_str",
 ]
@@ -742,50 +744,172 @@ def nan_to_none(obj: _T) -> _T | None:
         return obj
 
 
-@_typing.overload
-def to_int_list_or_none(int_or_list: None, /) -> None: ...
-
-
-@_typing.overload
-def to_int_list_or_none(
-    int_or_list: int | str | _collections_abc.Iterable[int | str], /
-) -> list[int]: ...
-
-
-def to_int_list_or_none(int_or_list, /) -> list[int] | None:
-    if int_or_list is None:
-        return None
-    if isinstance(int_or_list, (int, str)):
-        int_or_list = [int_or_list]
-    return [int(x) for x in int_or_list if x or isinstance(x, int)]
-
-
-def _iter_nested_strings(*args) -> _typing.Iterator[str]:
+def iter_nested_str(*args) -> _typing.Iterator[str]:
     for arg in args:
         if arg is None:
             pass
         elif isinstance(arg, str):
             yield arg
         elif isinstance(arg, _typing.Iterable):
-            yield from _iter_nested_strings(*arg)
+            yield from iter_nested_str(*arg)
+        else:
+            yield str(arg)
+
+
+def iter_nested_int(*args) -> _typing.Iterator[int]:
+    for arg in args:
+        if arg is None:
+            pass
+        elif isinstance(arg, int):
+            yield arg
+        elif isinstance(arg, str):
+            yield int(arg, base=10)
+        elif isinstance(arg, _typing.Iterable):
+            yield from iter_nested_int(*arg)
+        else:
+            yield int(arg)
+
+
+def iter_nested_int_or_str(*args) -> _typing.Iterator[str | int]:
+    for arg in args:
+        if arg is None:
+            pass
+        elif isinstance(arg, (str, int)):
+            yield arg
+        elif isinstance(arg, _typing.Iterable):
+            yield from iter_nested_int_or_str(*arg)
         else:
             yield str(arg)
 
 
 @_typing.overload
-def to_str_list_or_none(arg: None) -> None: ...
+def to_int_list_or_none(arg: None, /) -> None: ...
+
+
 @_typing.overload
-def to_str_list_or_none(arg: str | _collections_abc.Iterable[str]) -> list[str]: ...
+def to_int_list_or_none(
+    arg: int | str | _collections_abc.Iterable[int | str], /
+) -> list[int]: ...
+
+
+@_typing.overload
+def to_int_list_or_none(
+    arg: int | str | _collections_abc.Iterable[int | str] | None,
+    *args: int | str | _collections_abc.Iterable[int | str] | None,
+) -> list[int] | None: ...
+
+
+def to_int_list_or_none(
+    arg=None,
+    *args: int | str | _collections_abc.Iterable[int | str] | None,
+) -> list[int] | None:
+    """Return a list of ints or `None`.
+
+    >>> to_int_list_or_none(None, None) is None
+    True
+    >>> to_int_list_or_none(None, 123)
+    [123]
+    >>> to_int_list_or_none(None, 123, [456, [789]])
+    [123, 456, 789]
+    """
+    if arg is None and all(arg is None for arg in args):
+        return None
+    return list(iter_nested_int(arg, *args))
+
+
+def to_int_list(
+    *args: int | str | _collections_abc.Iterable[int | str] | None,
+) -> list[int]:
+    """Return a list of ints.
+
+    >>> to_int_list(None, None)
+    []
+    >>> to_int_list(None, 123)
+    [123]
+    >>> to_int_list(None, "123")
+    [123]
+    >>> to_int_list(None, 123, [456, [789]])
+    [123, 456, 789]
+    """
+    return list(iter_nested_int(*args))
+
+
+@_typing.overload
+def to_int_or_str_list_or_none(arg: None, /) -> None: ...
+
+
+@_typing.overload
+def to_int_or_str_list_or_none(
+    arg: int | str | _collections_abc.Iterable[int | str], /
+) -> list[int | str]: ...
+
+
+@_typing.overload
+def to_int_or_str_list_or_none(
+    arg: int | str | _collections_abc.Iterable[int | str] | None,
+    *args: int | str | _collections_abc.Iterable[int | str] | None,
+) -> list[int | str] | None: ...
+
+
+def to_int_or_str_list_or_none(
+    arg=None,
+    *args: int | str | _collections_abc.Iterable[int | str] | None,
+) -> list[int | str] | None:
+    """Return a list of ints or strings, or `None`.
+
+    >>> to_int_or_str_list_or_none(None, None) is None
+    True
+    >>> to_int_or_str_list_or_none(None, 123)
+    [123]
+    >>> to_int_or_str_list_or_none(None, "123")
+    ['123']
+    >>> to_int_or_str_list_or_none(123, "", "abc")
+    [123, '', 'abc']
+    >>> to_int_or_str_list_or_none(None, "123abc")
+    ['123abc']
+    >>> to_int_or_str_list_or_none(None, 123, [456, ["789"]])
+    [123, 456, '789']
+    """
+    if arg is None and all(arg is None for arg in args):
+        return None
+    return list(iter_nested_int_or_str(arg, *args))
+
+
+def to_int_or_str_list(
+    *args: int | str | _collections_abc.Iterable[int | str] | None,
+) -> list[int | str]:
+    """Return a list of ints or strings.
+
+    >>> to_int_or_str_list(None, None)
+    []
+    >>> to_int_or_str_list(None, 123)
+    [123]
+    >>> to_int_or_str_list(None, "123")
+    ['123']
+    >>> to_int_or_str_list(None, "123abc")
+    ['123abc']
+    >>> to_int_or_str_list(None, 123, [456, ["789"]])
+    [123, 456, '789']
+    """
+    return list(iter_nested_int_or_str(*args))
+
+
+@_typing.overload
+def to_str_list_or_none(arg: None, /) -> None: ...
+@_typing.overload
+def to_str_list_or_none(arg: str | _collections_abc.Iterable[str], /) -> list[str]: ...
 @_typing.overload
 def to_str_list_or_none(
     arg: str | _collections_abc.Iterable[str] | None,
     *args: str | _collections_abc.Iterable[str] | None,
 ) -> list[str] | None: ...
+
+
 def to_str_list_or_none(
     arg=None,
     *args: str | _collections_abc.Iterable[str] | None,
 ) -> list[str] | None:
-    """Return a list of strings.
+    """Return a list of strings or `None`.
 
     >>> to_str_list_or_none(None, None) is None
     True
@@ -796,7 +920,7 @@ def to_str_list_or_none(
     """
     if arg is None and all(arg is None for arg in args):
         return None
-    return list(_iter_nested_strings(arg, *args))
+    return list(iter_nested_str(arg, *args))
 
 
 def to_str_list(*args: str | _collections_abc.Iterable[str] | None) -> list[str]:
@@ -807,7 +931,7 @@ def to_str_list(*args: str | _collections_abc.Iterable[str] | None) -> list[str]
     >>> to_str_list(None, ["foo", ["bar", ["baz"]]])
     ['foo', 'bar', 'baz']
     """
-    return list(_iter_nested_strings(*args))
+    return list(iter_nested_str(*args))
 
 
 @_typing.overload
@@ -819,6 +943,8 @@ def to_str_set_or_none(
     arg: str | _collections_abc.Iterable[str] | None,
     *args: str | _collections_abc.Iterable[str] | None,
 ) -> set[str] | None: ...
+
+
 def to_str_set_or_none(
     arg=None,
     *args: str | _collections_abc.Iterable[str] | None,
@@ -834,7 +960,7 @@ def to_str_set_or_none(
     """
     if arg is None and all(arg is None for arg in args):
         return None
-    return set(_iter_nested_strings(arg, *args))
+    return set(iter_nested_str(arg, *args))
 
 
 def to_str_set(*args: str | _collections_abc.Iterable[str] | None) -> set[str]:
@@ -843,7 +969,7 @@ def to_str_set(*args: str | _collections_abc.Iterable[str] | None) -> set[str]:
     >>> to_str_set(None, None)
     set()
     """
-    return set(_iter_nested_strings(*args))
+    return set(iter_nested_str(*args))
 
 
 @_typing.overload
@@ -990,10 +1116,22 @@ _OP_NEG = {
 }
 
 
-def combine_where(where: str, *exprs: str, op="AND") -> str:
+def combine_where(
+    *exprs: str | None,
+    op: str = "AND",
+    sep: str | None = "\n    ",
+    add_parens: bool = False,
+) -> str:
+    where = ""
+    used_exprs = 0
     for expr in exprs:
-        where = f"{where}\n    {op} {expr}" if where else expr
-    return where
+        if expr:
+            where = f"{where}{sep or ' '}{op} {expr}" if where else expr
+            used_exprs += 1
+    if used_exprs >= 2 and add_parens:
+        return f"({where})"
+    else:
+        return where
 
 
 def sql_literal(x):
@@ -1054,7 +1192,7 @@ def all_in_array_expr(
         return "(" + f" {join_op} ".join(val_str_list) + ")"
 
 
-def in_expr(expr, elts) -> str:
+def in_expr(expr, elts, *, empty_expr: str = "FALSE") -> str:
     """
 
     ..
@@ -1072,6 +1210,8 @@ def in_expr(expr, elts) -> str:
     'x IS NULL'
     >>> in_expr("x", [])
     'FALSE'
+    >>> in_expr("x", [], empty_expr="")
+    ''
     >>> in_expr("x", [1, 2, None])
     '(x IN (1, 2) OR x IS NULL)'
     >>> in_expr("x", None)
@@ -1079,11 +1219,11 @@ def in_expr(expr, elts) -> str:
     """
 
     if elts is None:
-        return "FALSE"
+        return empty_expr
     elif isinstance(elts, (int, float, str, bool)):
         elts = [elts]
     if not elts:
-        return "FALSE"
+        return empty_expr
     elif any(x in (_types.NULL, None) for x in elts):
         elts_wo_none = [x for x in elts if x not in (_types.NULL, None)]
         if not elts_wo_none:
@@ -1104,7 +1244,7 @@ def in_expr(expr, elts) -> str:
             return f"{expr} IN ({elts_list_str})"
 
 
-def not_in_expr(expr, elts) -> str:
+def not_in_expr(expr, elts, *, empty_expr: str = "FALSE") -> str:
     """
 
     ..
@@ -1116,6 +1256,8 @@ def not_in_expr(expr, elts) -> str:
     'x <> 1'
     >>> not_in_expr("x", [])
     'TRUE'
+    >>> not_in_expr("x", [], empty_expr="")
+    ''
     >>> not_in_expr("x", [None])
     'x IS NOT NULL'
     >>> not_in_expr("x", [NULL])
@@ -1131,11 +1273,11 @@ def not_in_expr(expr, elts) -> str:
     """
 
     if elts is None:
-        return "TRUE"
+        return empty_expr
     elif isinstance(elts, (int, float, str, bool)):
         elts = [elts]
     if not elts:
-        return "TRUE"
+        return empty_expr
     elif any(x in (_types.NULL, None) for x in elts):
         elts_wo_none = [x for x in elts if x not in (_types.NULL, None)]
         if not elts_wo_none:

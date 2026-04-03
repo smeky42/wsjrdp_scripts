@@ -50,6 +50,7 @@ class Test_KeyCloakClient:
                 ("foo@example.org", "pw"),
                 {},
                 {
+                    "username": "foo@example.org",
                     "email": "foo@example.org",
                     "enabled": True,
                     "credentials": [{"type": "password", "value": "pw"}],
@@ -65,10 +66,11 @@ class Test_KeyCloakClient:
         expected_payload,
         monkeypatch,
     ):
-        mock = unittest.mock.Mock()
+        mock = unittest.mock.Mock(wraps=keycloak_client._admin.create_user)
         monkeypatch.setattr(keycloak_client._admin, "create_user", mock)
 
-        keycloak_client.create_user(*args, **kwargs)
+        user_dict = keycloak_client.create_user(*args, **kwargs)
+        keycloak_client.delete_user(user_dict["username"])
 
         assert mock.call_count == 1
         assert mock.call_args == unittest.mock.call(expected_payload, exist_ok=True)
