@@ -60,9 +60,10 @@ def main(argv=None):
     _LOGGER.info(
         f"{impersonation_username} keycloak user:\n{pprint.pformat(moss_impersonation_user)}"
     )
-    redirect_moss_email = bool(
-        p.moss_email != p.wsjrdp_email and p.moss_email.startswith("wsj27")
-    )
+    _LOGGER.info(f"  moss_email: {p.moss_email}")
+    _LOGGER.info(f"  wsjrdp_email: {p.wsjrdp_email}")
+    redirect_moss_email = p.moss_email.startswith("wsj27")
+    _LOGGER.info(f"  redirect_moss_email: {redirect_moss_email}")
     old_moss_goto = ""
     if redirect_moss_email:
         old_moss_alias = wsjrdp2027.mailbox.get_aliases(ctx, id=p.moss_email)[0]
