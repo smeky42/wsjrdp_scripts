@@ -7,6 +7,7 @@ import logging as _logging
 import logging.handlers as _logging_handlers
 import os as _os
 import pathlib as _pathlib
+import sys as _sys
 import typing as _typing
 
 from . import _types
@@ -212,6 +213,8 @@ class WsjRdpContextKind(_enum.StrEnum):
 class WsjRdpContext:
     """Context (prod or dev?, hosts, ports, ...) of a script execution."""
 
+    __exit_stacks: list[_contextlib.ExitStack]
+
     _config: WsjRdpContextConfig
     _logger: _logging.Logger | _logging.LoggerAdapter
     _buffering_handler: _UnlimitedBufferingHandler | None = None
@@ -279,6 +282,7 @@ class WsjRdpContext:
         """
         from . import _util
 
+        self.__exit_stacks = [_contextlib.ExitStack()]
         self._approved_categories = set()
 
         # Default basic logging config
@@ -294,7 +298,9 @@ class WsjRdpContext:
                 handlers=[stream_handler, self._buffering_handler],
             )
         if logger is None:
-            self._logger = _util.PrefixLoggerAdapter(_LOGGER, prefix="[ctx]")
+            from ._logging_util import PrefixLoggerAdapter
+
+            self._logger = PrefixLoggerAdapter(_LOGGER, prefix="[ctx]")
         else:
             self._logger = logger
 
@@ -322,6 +328,26 @@ class WsjRdpContext:
             self._skip_email = skip_email
         if skip_db_updates is not None:
             self._skip_db_updates = skip_db_updates
+
+    def __del__(self):
+        """Clear this context.
+
+        Does nothing when called during interpreter shutdown.
+        """
+        if _sys.is_finalizing():
+            return
+        level = len(self.__exit_stacks)
+        while len(self.__exit_stacks) > 0:
+            exit_stack = self.__exit_stacks.pop()
+            level -= 1
+            try:
+                _LOGGER.debug(f"Start context cleanup ({level=})")
+                result = exit_stack.__exit__(None, None, None)
+                _LOGGER.debug(f"Finished context cleanup ({level=}): {result=}")
+            except Exception as exc:
+                _LOGGER.exception(
+                    f"Error during context cleanup ({level=}): {exc}\nWill continue anyway"
+                )
 
     def __get_env(
         self, env_name: str, /, *, env=None, ignore_in_prod: bool = True
@@ -616,6 +642,22 @@ class WsjRdpContext:
             _logging.getLogger().removeHandler(buffering_handler)
         return file_handler
 
+    @property
+    def _exit_stack(self) -> _contextlib.ExitStack:
+        return self.__exit_stacks[-1]
+
+    def __enter__(self):
+        exit_stack = _contextlib.ExitStack()
+        exit_stack.__enter__()
+        self.__exit_stacks.append(exit_stack)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if len(self.__exit_stacks) < 2:
+            raise RuntimeError("Cannot exit non-entered context")
+        exit_stack = self.__exit_stacks.pop()
+        return exit_stack.__exit__(exc_type, exc_val, exc_tb)
+
     def is_action_approved_for_prod(self, category: str, action: str | None) -> bool:
         return category in self._approved_categories
 
@@ -672,15 +714,29 @@ class WsjRdpContext:
         )
         self.require_approval_to_run_in_prod(prompt=prompt)
 
-    @property
-    def keycloak(self) -> _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter:
-        if not self._keycloak_adapter:
-            from . import _keycloak_wsjrdp_adapter
+    def keycloak(
+        self, *, force_new: bool = False
+    ) -> _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter:
+        old_keycloak_adapter = self._keycloak_adapter
+        if force_new or not old_keycloak_adapter:
+            new_keycloak_adapter = self._create_keycloak_adapter()
 
-            self._keycloak_adapter = _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter(
-                self
-            )
-        return self._keycloak_adapter
+            def callback():
+                new_keycloak_adapter.close()
+                self._keycloak_adapter = old_keycloak_adapter
+
+            self._exit_stack.callback(callback)
+            self._keycloak_adapter = new_keycloak_adapter
+            return new_keycloak_adapter
+        else:
+            return old_keycloak_adapter
+
+    def _create_keycloak_adapter(
+        self,
+    ) -> _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter:
+        from . import _keycloak_wsjrdp_adapter
+
+        return _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter(self)
 
     def __create_ssh_forwarder(
         self, *, remote_bind_address: tuple[str, int]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as _datetime
 import math as _math
+import re as _re
 import typing as _typing
 
 from . import _weakref_util
@@ -14,6 +15,69 @@ if _typing.TYPE_CHECKING:
     import psycopg as _psycopg
 
     from . import _groups
+
+
+_CMT_KEYCLOAK_USERNAME_REGEX = _re.compile(r"^[a-z]+$")
+_UL_KEYCLOAK_USERNAME_REGEX = _re.compile(r"^[a-z.-]+@units[.]worldscoutjamboree[.]de$")
+_IST_KEYCLOAK_USERNAME_REGEX = _re.compile(r"^[a-z.-]+@ist[.]worldscoutjamboree[.]de$")
+_BMT_KEYCLOAK_USERNAME_REGEX = _re.compile(r"^[a-z.-]+@bmt[.]worldscoutjamboree[.]de$")
+_YP_KEYCLOAK_USERNAME_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+_EXT_KEYCLOAK_USERNAME_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+_NONE_KEYCLOAK_USERNAME_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+
+
+_ROLE_TO_KEYCLOAK_USERNAME_REGEX = {
+    "CMT": _CMT_KEYCLOAK_USERNAME_REGEX,
+    "UL": _UL_KEYCLOAK_USERNAME_REGEX,
+    "IST": _IST_KEYCLOAK_USERNAME_REGEX,
+    "BMT": _BMT_KEYCLOAK_USERNAME_REGEX,
+    "YP": _YP_KEYCLOAK_USERNAME_REGEX,
+    "EXT": _EXT_KEYCLOAK_USERNAME_REGEX,
+    "NONE": _NONE_KEYCLOAK_USERNAME_REGEX,
+    None: _NONE_KEYCLOAK_USERNAME_REGEX,
+}
+
+
+_CMT_WSJRDP_EMAIL_REGEX = _re.compile(r"^[a-z.-]+@worldscoutjamboree[.]de$")
+_UL_WSJRDP_EMAIL_REGEX = _re.compile(r"^[a-z.-]+@units[.]worldscoutjamboree[.]de$")
+_IST_WSJRDP_EMAIL_REGEX = _re.compile(r"^[a-z.-]+@ist[.]worldscoutjamboree[.]de$")
+_BMT_WSJRDP_EMAIL_REGEX = _re.compile(r"^[a-z.-]+@bmt[.]worldscoutjamboree[.]de$")
+_YP_WSJRDP_EMAIL_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+_EXT_WSJRDP_EMAIL_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+_NONE_WSJRDP_EMAIL_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+
+
+_ROLE_TO_WSJRDP_EMAIL_REGEX = {
+    "CMT": _CMT_WSJRDP_EMAIL_REGEX,
+    "UL": _UL_WSJRDP_EMAIL_REGEX,
+    "IST": _IST_WSJRDP_EMAIL_REGEX,
+    "BMT": _BMT_WSJRDP_EMAIL_REGEX,
+    "YP": _YP_WSJRDP_EMAIL_REGEX,
+    "EXT": _EXT_WSJRDP_EMAIL_REGEX,
+    "NONE": _NONE_WSJRDP_EMAIL_REGEX,
+    None: _NONE_WSJRDP_EMAIL_REGEX,
+}
+
+
+_CMT_MOSS_EMAIL_REGEX = _re.compile(r"^[a-z.-]+@worldscoutjamboree[.]de$")
+_UL_MOSS_EMAIL_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+_IST_MOSS_EMAIL_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+_BMT_MOSS_EMAIL_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+_YP_MOSS_EMAIL_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+_EXT_MOSS_EMAIL_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+_NONE_MOSS_EMAIL_REGEX = _re.compile(r"^wsj27-[0-9]+@worldscoutjamboree[.]de$")
+
+
+_ROLE_TO_MOSS_EMAIL_REGEX = {
+    "CMT": _CMT_MOSS_EMAIL_REGEX,
+    "UL": _UL_MOSS_EMAIL_REGEX,
+    "IST": _IST_MOSS_EMAIL_REGEX,
+    "BMT": _BMT_MOSS_EMAIL_REGEX,
+    "YP": _YP_MOSS_EMAIL_REGEX,
+    "EXT": _EXT_MOSS_EMAIL_REGEX,
+    "NONE": _NONE_MOSS_EMAIL_REGEX,
+    None: _NONE_MOSS_EMAIL_REGEX,
+}
 
 
 class Person:
@@ -157,6 +221,7 @@ class Person:
         if payment_role:
             return payment_role.short_role_name
         else:
+            return self.wsj
             match self.primary_group_id:
                 case 1 | 47:
                     return "CMT"
@@ -172,8 +237,48 @@ class Person:
                     return None
 
     @property
+    def wsjrdp_role_by_primary_group(self) -> str | None:
+        primary_group_id = self.primary_group_id
+        if 8 <= primary_group_id <= 36:
+            return "YP"
+        match self.primary_group_id:
+            case 1 | 47:
+                return "CMT"
+            case 2 | 5:
+                return "UL"
+            case 3 | 6:
+                return "YP"
+            case 4 | 7:
+                return "IST"
+            case 45:  # BMT
+                return "BMT"
+            case 46:  # T1
+                return "YP"
+            case 48:
+                return "EXT"
+            case _:
+                return None
+
+    @property
+    def wsjrdp_role(self) -> str | None:
+        payment_role = self._data.get("payment_role")
+        if payment_role and (short_role_name := payment_role.short_role_name):
+            if short_role_name == "IST" and self.primary_group_id == 45:
+                return "BMT"
+            else:
+                return short_role_name
+        else:
+            return self.wsjrdp_role_by_primary_group
+
+    @property
     def is_bmt(self) -> bool:
-        return self.short_role_name == "IST" and self.primary_group_id == 45
+        payment_role = self._data.get("payment_role")
+        if payment_role:
+            return bool(
+                payment_role.short_role_name == "IST" and self.primary_group_id == 45
+            )
+        else:
+            return self.primary_group_id == 45
 
     @property
     def is_cmt(self) -> bool:
@@ -206,11 +311,30 @@ class Person:
 
     @property
     def role_id_name(self) -> str:
-        return _filtered_join(self.short_role_name, self.id, self.short_full_name)
+        return _filtered_join(self.wsjrdp_role, self.id, self.short_full_name)
 
     @property
     def additional_info(self) -> dict[str, _typing.Any]:
         return self._data.get("additional_info", {})
+
+    def _set_additional_info(self, key: str, value) -> None:
+        if value is None:
+            self._date.get("additional_info", {}).pop(key, None)
+        else:
+            additional_info = self._data.setdefault("additional_info", {})
+            additional_info[key] = value
+
+    @property
+    def deregistration_issue(self) -> str | None:
+        return self.additional_info.get("deregistration_issue")
+
+    @deregistration_issue.setter
+    def deregistration_issue(self, value: str | None) -> None:
+        if not value:
+            self.additional_info.pop("deregistration_issue", None)
+        else:
+            additional_info = self._data.setdefault("additional_info", {})
+            additional_info["deregistration_issue"] = value
 
     @property
     def wsjrdp_email_or_none(self) -> str | None:
@@ -218,10 +342,18 @@ class Person:
 
     @property
     def wsjrdp_email(self) -> str | None:
-        from . import _util
-
         if email := self.wsjrdp_email_or_none:
             return email
+        else:
+            return self.get_wsjrdp_email_default()
+
+    @wsjrdp_email.setter
+    def wsjrdp_email(self, value: str | None) -> None:
+        self._set_additional_info("wsjrdp_email", value)
+
+    def get_wsjrdp_email_default(self) -> str | None:
+        from . import _util
+
         match self.short_role_name:
             case "CMT":
                 username = _util.generate_mail_username(self.first_name, self.last_name)
@@ -238,6 +370,20 @@ class Person:
             case _:
                 return None
 
+    def get_wsjrdp_email_regex(self) -> _re.Pattern:
+        wsjrdp_role = self.wsjrdp_role
+        if wsjrdp_role in ("YP", "EXT"):
+            return self.wsj27_email_regex()
+        else:
+            return _ROLE_TO_WSJRDP_EMAIL_REGEX[wsjrdp_role]
+
+    def get_wsjrdp_email_expected(self) -> str | None:
+        wsjrdp_email = self.wsjrdp_email
+        if wsjrdp_email and self.get_wsjrdp_email_regex().fullmatch(wsjrdp_email):
+            return wsjrdp_email
+        else:
+            return self.get_wsjrdp_email_default()
+
     @property
     def wsjrdp_email_should_be_mailbox(self) -> bool:
         match self.short_role_name:
@@ -252,11 +398,7 @@ class Person:
 
     @wsjrdp_email_is_mailbox.setter
     def wsjrdp_email_is_mailbox(self, value: bool | None) -> None:
-        if value is None:
-            self.additional_info.pop("wsjrdp_email_is_mailbox", None)
-        else:
-            additional_info = self._data.setdefault("additional_info", {})
-            additional_info["wsjrdp_email_is_mailbox"] = value
+        self._set_additional_info("wsjrdp_email_is_mailbox", value)
 
     @property
     def moss_email_or_none(self) -> str | None:
@@ -264,10 +406,17 @@ class Person:
 
     @property
     def moss_email(self) -> str | None:
-        from . import _util
-
         if email := self.moss_email_or_none:
             return email
+        else:
+            return self.get_moss_email_default()
+
+    @moss_email.setter
+    def moss_email(self, value: bool | None) -> None:
+        self._set_additional_info("moss_email", value)
+
+    def get_moss_email_default(self) -> str | None:
+        from . import _util
 
         match self.short_role_name:
             case "CMT":
@@ -277,6 +426,20 @@ class Person:
                 return f"wsj27-{self.id}@worldscoutjamboree.de"
             case _:
                 return None
+
+    def get_moss_email_regex(self) -> _re.Pattern:
+        wsjrdp_role = self.wsjrdp_role
+        if wsjrdp_role in ("UL", "IST", "BMT", "YP", "EXT", "NONE", None):
+            return self.wsj27_email_regex()
+        else:
+            return _ROLE_TO_MOSS_EMAIL_REGEX[wsjrdp_role]
+
+    def get_moss_email_expected(self) -> str | None:
+        moss_email = self.moss_email_or_none
+        if moss_email and self.get_moss_email_regex().fullmatch(moss_email):
+            return moss_email
+        else:
+            return self.get_moss_email_default()
 
     @property
     def moss_email_expected_goto(self) -> str | None:
@@ -291,30 +454,6 @@ class Person:
                 raise RuntimeError(
                     f"Cannot determine moss_email_expected_goto for role {self.short_role_name}"
                 )
-
-    @property
-    def deregistration_issue(self) -> str | None:
-        return self.additional_info.get("deregistration_issue")
-
-    @deregistration_issue.setter
-    def deregistration_issue(self, value: str | None) -> None:
-        if not value:
-            self.additional_info.pop("deregistration_issue", None)
-        else:
-            additional_info = self._data.setdefault("additional_info", {})
-            additional_info["deregistration_issue"] = value
-
-    @property
-    def keycloak_username(self) -> str | None:
-        return self.additional_info.get("keycloak_username")
-
-    @keycloak_username.setter
-    def keycloak_username(self, value: str | None) -> None:
-        if not value:
-            self.additional_info.pop("keycloak_username", None)
-        else:
-            additional_info = self._data.setdefault("additional_info", {})
-            additional_info["keycloak_username"] = value
 
     @property
     def moss_invited_at(self) -> _datetime.datetime | None:
@@ -333,6 +472,82 @@ class Person:
         else:
             additional_info = self._data.setdefault("additional_info", {})
             additional_info["moss_invited_at"] = value.isoformat()
+
+    @property
+    def keycloak_username(self) -> str | None:
+        return self.additional_info.get("keycloak_username")
+
+    @keycloak_username.setter
+    def keycloak_username(self, value: str | None) -> None:
+        if not value:
+            self.additional_info.pop("keycloak_username", None)
+        else:
+            additional_info = self._data.setdefault("additional_info", {})
+            additional_info["keycloak_username"] = value
+
+    def get_keycloak_username_default(self) -> str | None:
+        from . import _util
+
+        match self.short_role_name:
+            case "CMT":
+                return _util.generate_cmt_keycloak_username(
+                    self.first_name, self.last_name
+                )
+            case "UL":
+                username = _util.generate_mail_username(self.first_name, self.last_name)
+                return f"{username}@units.worldscoutjamboree.de"
+            case "IST" | "BMT":
+                subdomain = "bmt" if self.is_bmt else "ist"
+                username = _util.generate_mail_username(self.first_name, self.last_name)
+                return f"{username}@{subdomain}.worldscoutjamboree.de"
+            case "YP" | "EXT":
+                return f"wsj27-{self.id}@worldscoutjamboree.de"
+            case _:
+                return None
+
+    def get_keycloak_username_regex(self) -> _re.Pattern:
+        wsjrdp_role = self.wsjrdp_role
+        if wsjrdp_role in ("YP", "EXT"):
+            return self.wsj27_email_regex()
+        else:
+            return _ROLE_TO_KEYCLOAK_USERNAME_REGEX[wsjrdp_role]
+
+    def get_keycloak_username_expected(self) -> str | None:
+        keycloak_username = self.keycloak_username
+        if keycloak_username and self.get_keycloak_username_regex().fullmatch(
+            keycloak_username
+        ):
+            return keycloak_username
+        else:
+            return self.get_keycloak_username_default()
+
+    def find_role_consistency_updates(self) -> dict:
+        updates = {}
+        for key, val, expected in [
+            (
+                "keycloak_username",
+                self.keycloak_username,
+                self.get_keycloak_username_expected(),
+            ),
+            (
+                "wsjrdp_email",
+                self.wsjrdp_email,
+                self.get_wsjrdp_email_expected(),
+            ),
+            (
+                "moss_email",
+                self.moss_email,
+                self.get_moss_email_expected(),
+            ),
+        ]:
+            if val and expected and (val != expected):
+                updates[key] = expected
+
+        return updates
+
+    def wsj27_email_regex(self) -> _re.Pattern:
+        escaped = _re.escape(f"wsj27-{self.id}@worldscoutjamboree.de")
+        return _re.compile("^" + escaped + "$")
 
 
 Person._cls_keys = frozenset(Person.__dict__.keys())

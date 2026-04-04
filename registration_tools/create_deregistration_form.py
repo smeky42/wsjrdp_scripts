@@ -8,7 +8,6 @@ import logging
 import pathlib as _pathlib
 import sys
 
-import pandas as _pandas
 import wsjrdp2027
 
 

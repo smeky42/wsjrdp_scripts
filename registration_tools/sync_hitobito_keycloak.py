@@ -18,7 +18,9 @@ EXT_GROUPS = [48]
 
 
 GROUPNAMES_TO_SYNC = ["CMT", "UL", "IST", "BMT", "EXT"]
-GROUPNAMES_TO_SYNC = ["BMT"]
+
+
+KEYCLOAK_GROUPNAMES_TO_FETCH = ["CMT", "UL", "IST", "BMT", "EXT"]
 
 
 def load_people_dataframe_for_groupname(
@@ -124,10 +126,9 @@ def _check_for_keycloak_user(
         if add_goto not in goto_list:
             goto_list.append(add_goto)
 
-    if person.keycloak_username:
-        if username2keycloak_user.get(person.keycloak_username):
-            return True
-    if email2keycloak_user.get(person.wsjrdp_email):
+    if ctx.keycloak().get_user_for_person_or_none(
+        person, additional_info_updates=additional_info_updates, allow_cached=True
+    ):
         return True
 
     password = wsjrdp2027.generate_password()
@@ -143,7 +144,6 @@ def _check_for_keycloak_user(
         keycloak_username
         and keycloak_email
         and person.moss_email
-        and not person.wsjrdp_email_should_be_mailbox
         and wsjrdp2027.console_confirm(
             f"No keycloak user for E-Mail {keycloak_email}\n"
             f"  username: {keycloak_username}\n"
@@ -163,8 +163,7 @@ def _check_for_keycloak_user(
             _update_alias(email=keycloak_email, add_goto=person.email)
             _update_alias(email=person.moss_email, add_goto=person.email)
 
-        wsjrdp2027.keycloak.add_user(
-            ctx,
+        ctx.keycloak().create_user(
             email=keycloak_email,
             username=keycloak_username,
             first_name=person.first_name,
@@ -175,8 +174,8 @@ def _check_for_keycloak_user(
                 "hitobitoId": [str(person.id)],
             },
         )
-        wsjrdp2027.keycloak.add_user_to_group(
-            ctx, username=keycloak_username, group_name=groupname
+        ctx.keycloak().add_user_to_group(
+            username=keycloak_username, groupname=groupname
         )
         additional_info_updates.append(
             {"id": person.id, "keycloak_initial_password": password}
@@ -327,7 +326,7 @@ def sync(
         return False
 
     update_additional_info(conn, additional_info_updates, console_confirm=True)
-    ctx.keycloak.update_users(keycloak_updates, console_confirm=True)
+    ctx.keycloak().update_users(keycloak_updates, console_confirm=True)
     return True
 
 
@@ -335,7 +334,7 @@ def _load_keycloak_users_in_groups(ctx: wsjrdp2027.WsjRdpContext, groupnames):
     all_users = []
     for groupname in groupnames:
         _LOGGER.info(f"Load keycloak {groupname=} users")
-        users = ctx.keycloak.get_users_in_group(groupname, enabled=True)
+        users = ctx.keycloak().get_users_in_group(groupname, enabled=True)
         _LOGGER.info(f"Found {len(users)} enabled {groupname=} users in Keycloak")
         all_users.extend(users)
     if len(groupnames) > 1:
@@ -353,7 +352,7 @@ def main():
     log_filename = out_base.with_suffix(".log")
     ctx.configure_log_file(log_filename)
 
-    keycloak_users = _load_keycloak_users_in_groups(ctx, GROUPNAMES_TO_SYNC)
+    keycloak_users = _load_keycloak_users_in_groups(ctx, KEYCLOAK_GROUPNAMES_TO_FETCH)
 
     with ctx.psycopg_connect() as conn:
         for groupname in GROUPNAMES_TO_SYNC:

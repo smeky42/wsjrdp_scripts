@@ -9,7 +9,7 @@ from wsjrdp2027 import KeycloakClient
 
 @pytest.fixture
 def keycloak_client(ctx: wsjrdp2027.WsjRdpContext):
-    return ctx.keycloak._client
+    return ctx.keycloak()._client
 
 
 class Test_KeyCloakClient:
@@ -97,6 +97,18 @@ class Test_KeyCloakClient:
 
         keycloak_client.delete_user("foo@baz")
         keycloak_client.delete_user("foo@baz", raise_on_missing=False)
+
+    def test_add_user_to_group(self, keycloak_client: KeycloakClient):
+        keycloak_client.create_group("FOO")
+        keycloak_client.create_user("foo@baz", "pw")
+        keycloak_client.add_user_to_group("foo@baz", "FOO")
+        user_dict_list = keycloak_client.get_users_in_group("FOO")
+        assert len(user_dict_list) == 1
+        user_dict = user_dict_list[0]
+        assert user_dict["username"] == "foo@baz"
+
+        keycloak_client.delete_user("foo@baz", raise_on_missing=True)
+        keycloak_client.delete_group("FOO", raise_on_missing=True)
 
 
 class Test_Keycloak:

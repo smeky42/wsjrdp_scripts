@@ -46,9 +46,9 @@ class MailClient:
         dry_run: bool | None = None,
         confirm_send_callback: _ConfirmCallback | None = None,
     ) -> None:
-        from . import _util
+        from . import _logging_util
 
-        self._logger = _util.PrefixLoggerAdapter(_LOGGER, prefix="[MAIL]")
+        self._logger = _logging_util.PrefixLoggerAdapter(_LOGGER, prefix="[MAIL]")
         self._config = config
         if dry_run is not None:
             self._dry_run = dry_run
