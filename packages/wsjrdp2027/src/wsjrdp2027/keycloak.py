@@ -5,9 +5,16 @@ import typing as _typing
 
 import keycloak as _keycloak_python
 
+from . import _keycloak_client
+from ._keycloak_client import (
+    KeycloakGroupDict as KeycloakGroupDict,
+    KeycloakRealmDict as KeycloakRealmDict,
+    KeycloakUserDict as KeycloakUserDict,
+)
+
 
 if _typing.TYPE_CHECKING:
-    from . import _context, _keycloak_client
+    from . import _context
 
 
 _LOGGER = __import__("logging").getLogger(__name__)
@@ -180,7 +187,7 @@ def get_user(
     username: str,
     user_profile_metadata: bool = False,
 ) -> _keycloak_client.KeycloakUserDict:
-    return _get_keycloak_client(client_or_context).get_user(
+    return _get_keycloak_client(client_or_context).get_user_by_name(
         username, user_profile_metadata=user_profile_metadata
     )
 

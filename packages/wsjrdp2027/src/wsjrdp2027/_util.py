@@ -22,7 +22,6 @@ _LOGGER = _logging.getLogger(__name__)
 
 
 __all__ = [
-    "PrefixLoggerAdapter",
     "combine_where",
     "configure_file_logging",
     "console_confirm",
@@ -52,20 +51,6 @@ __all__ = [
 
 _T = _typing.TypeVar("_T")
 _R = _typing.TypeVar("_R")
-
-
-class PrefixLoggerAdapter(_logging.LoggerAdapter):
-    def __init__(
-        self,
-        logger: _logging.Logger | _logging.LoggerAdapter,
-        *,
-        prefix: str,
-    ) -> None:
-        self._prefix = prefix
-        super().__init__(logger)
-
-    def process(self, msg, kwargs):
-        return (f"{self._prefix} {msg}", kwargs)
 
 
 _CONSOLE_CONFIRM_DEFAULT_TO_CHOICE_DISPLAY = {
@@ -1413,25 +1398,28 @@ def generate_password(*, length: int = 20) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-def generate_mail_username(first_name, last_name):
+def _to_username_like(string: str, /) -> str:
     import re
     import unicodedata
 
-    # _LOGGER.info("Generated username from: %s, %s", str(firstname), str(lastname))
-    first_name = first_name.split(" ")[0]
-    username = first_name + "." + last_name
-    username = username.lower()
-    username = (
-        username.replace("ä", "ae")
+    string = string.lower()
+    string = (
+        string.replace("ä", "ae")
         .replace("ö", "oe")
         .replace("ü", "ue")
         .replace("ß", "ss")
     )
-    username = unicodedata.normalize("NFKD", username)
-    username = "".join(c for c in username if not unicodedata.combining(c))
-    username = re.sub(r"[^a-z0-9._-]+", "-", username)
-    username = re.sub(r"[_-]+", "-", username)
-    username = username.strip(".").strip("-")
+    string = unicodedata.normalize("NFKD", string)
+    string = "".join(c for c in string if not unicodedata.combining(c))
+    string = re.sub(r"[^a-z0-9._-]+", "-", string)
+    string = re.sub(r"[_-]+", "-", string)
+    string = string.strip(".").strip("-")
+    return string
+
+
+def generate_mail_username(first_name: str, last_name: str) -> str:
+    first_name = first_name.split(" ")[0]
+    username = _to_username_like(first_name + "." + last_name)
 
     if len(username) > 64:
         # try shrinking last username part
@@ -1440,5 +1428,12 @@ def generate_mail_username(first_name, last_name):
         last = parts[1][: max(1, 63 - len(first) - 1)]
         username = f"{first}.{last}".strip(".")
 
-    # _LOGGER.info("Generated username: %s", username)
+    return username
+
+
+def generate_cmt_keycloak_username(first_name: str, last_name: str) -> str:
+    import re
+
+    username = _to_username_like(first_name[0] + last_name)
+    username = re.sub(r"[^a-z]+", "", username)
     return username

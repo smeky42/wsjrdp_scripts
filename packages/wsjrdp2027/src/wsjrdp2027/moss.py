@@ -6,7 +6,7 @@ import typing as _typing
 if _typing.TYPE_CHECKING:
     import collections.abc as _collections_abc
 
-    from . import _context, _groups, _person
+    from . import _context, _person
 
 
 def ensure_moss_email_mailbox_or_alias(
@@ -30,6 +30,7 @@ def ensure_moss_email_mailbox_or_alias(
                 print(f"    {p.primary_group.name}  status: {p.status}")
                 if console_confirm("Add missing mail alias?"):
                     mailbox.add_alias(ctx, p.moss_email, goto=expected_goto)
+
 
 def moss_email_with_expected_goto(p: _person.Person, /) -> str:
     assert p.moss_email
