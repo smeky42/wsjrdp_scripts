@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib as _contextlib
 import logging
 
 import pytest
@@ -19,103 +20,153 @@ WSJRDP_DOMAINS = [
 ]
 
 
-@pytest.fixture
-def mailcow_client(ctx: wsjrdp2027.WsjRdpContext) -> MailcowClient:
-    return ctx.mailcow()
+def _clear_mailcow(mailcow_client: MailcowClient):
+    alias_list = mailcow_client.get_alias_list()
+    mailcow_client.delete_alias([a["address"] for a in alias_list])
+    domain_list = mailcow_client.get_domain_list()
+    mailcow_client.delete_domain([d["domain_name"] for d in domain_list])
 
 
-@pytest.fixture
-def clear_mailcow(mailcow_client: MailcowClient):
+@_contextlib.contextmanager
+def _clear_mailcow_on_exit(mailcow_client: MailcowClient):
     try:
         yield
     finally:
-        domain_list = mailcow_client.get_all_domains()
-        mailcow_client.delete_domain([d["domain_name"] for d in domain_list])
-        alias_list = mailcow_client.get_all_aliases()
-        mailcow_client.delete_alias([a["address"] for a in alias_list])
+        _clear_mailcow(mailcow_client)
 
 
 class Test_MailcowClient_Bare:
+    @pytest.fixture
+    def mailcow_client(self, ctx: wsjrdp2027.WsjRdpContext) -> MailcowClient:
+        return ctx.mailcow()
+
     @pytest.fixture(autouse=True)
-    def _auto_fixture(self, mailcow_client: MailcowClient, clear_mailcow):
-        pass
+    def _auto_fixture(self, mailcow_client: MailcowClient):
+        with _clear_mailcow_on_exit(mailcow_client):
+            yield
 
     def test_create_domain(self, mailcow_client: MailcowClient):
-        mailcow_client.create_domain("foo.local")
+        mailcow_client.add_domain("foo.local")
 
-        domain_list = mailcow_client.get_all_domains()
+        domain_list = mailcow_client.get_domain_list()
         assert len(domain_list) == 1
         domain_dict = domain_list[0]
         assert domain_dict["domain_name"] == "foo.local"
 
     def test_create_domain__fails_on_existing(self, mailcow_client: MailcowClient):
-        mailcow_client.create_domain("foo.local")
+        mailcow_client.add_domain("foo.local")
         with pytest.raises(MailcowError, match="domain_exists"):
-            mailcow_client.create_domain("foo.local", exist_ok=False)
-        domain_list = mailcow_client.get_all_domains()
+            mailcow_client.add_domain("foo.local", exist_ok=False)
+        domain_list = mailcow_client.get_domain_list()
         assert len(domain_list) == 1
 
     def test_create_domain__exist_ok(self, mailcow_client: MailcowClient):
-        mailcow_client.create_domain("foo.local")
-        mailcow_client.create_domain("foo.local", exist_ok=True)
-        domain_list = mailcow_client.get_all_domains()
+        mailcow_client.add_domain("foo.local")
+        mailcow_client.add_domain("foo.local", exist_ok=True)
+        domain_list = mailcow_client.get_domain_list()
         assert len(domain_list) == 1
 
     def test_create_delete_domain(self, mailcow_client: MailcowClient):
-        mailcow_client.create_domain("foo.local")
+        mailcow_client.add_domain("foo.local")
         mailcow_client.delete_domain(["foo.local"])
-        domain_list = mailcow_client.get_all_domains()
+        domain_list = mailcow_client.get_domain_list()
         assert domain_list == []
 
     def test_delete_domain__non_existing(self, mailcow_client: MailcowClient):
-        mailcow_client.create_domain("foo.local")
+        mailcow_client.add_domain("foo.local")
         mailcow_client.delete_domain(["foo.local", "foo2.local"])
         mailcow_client.delete_domain(["foo.local", "foo2.local"])
-        domain_list = mailcow_client.get_all_domains()
+        domain_list = mailcow_client.get_domain_list()
         assert domain_list == []
 
     def test_get_all_domains__no_domains(self, mailcow_client: MailcowClient):
-        domain_list = mailcow_client.get_all_domains()
+        domain_list = mailcow_client.get_domain_list()
         assert domain_list == []
 
     def test_get_all_domains__one_domain(self, mailcow_client: MailcowClient):
-        mailcow_client.create_domain("foo.local")
-        domain_list = mailcow_client.get_all_domains()
+        mailcow_client.add_domain("foo.local")
+        domain_list = mailcow_client.get_domain_list()
         assert len(domain_list) == 1
         domain_dict = domain_list[0]
         assert domain_dict["domain_name"] == "foo.local"
 
     def test_get_aliases__empty(self, mailcow_client: MailcowClient):
-        alias_list = mailcow_client.get_all_aliases()
+        alias_list = mailcow_client.get_alias_list()
         assert alias_list == []
 
     def test_add_delete_alias__delete_using_client(self, mailcow_client: MailcowClient):
-        mailcow_client.create_domain("foo.local")
+        mailcow_client.add_domain("foo.local")
 
         mailcow_client.add_alias("foo@foo.local", goto="bar@example.org")
         mailcow_client.delete_alias("foo@foo.local")
 
-        alias_list = mailcow_client.get_all_aliases()
+        alias_list = mailcow_client.get_alias_list()
         assert alias_list == []
 
     def test_add_delete_alias__delete_using_alias(self, mailcow_client: MailcowClient):
-        mailcow_client.create_domain("foo.local")
+        mailcow_client.add_domain("foo.local")
 
         alias = mailcow_client.add_alias("foo@foo.local", goto="bar@example.org")
         alias.delete()
 
-        alias_list = mailcow_client.get_all_aliases()
+        alias_list = mailcow_client.get_alias_list()
         assert alias_list == []
 
 
-class Test_MailcowClietnt_WSJRDP:
+class Test_MailcowClient_Bare_DryRun:
+    @pytest.fixture
+    def dry_run_client(self, ctx: wsjrdp2027.WsjRdpContext) -> MailcowClient:
+        client = ctx.mailcow(dry_run=True)
+        assert client.dry_run
+        return client
+
     @pytest.fixture(autouse=True)
-    def _auto_fixture(self, mailcow_client: MailcowClient, clear_mailcow):
-        for domain in WSJRDP_DOMAINS:
-            mailcow_client.create_domain(domain)
+    def _auto_fixture(self, dry_run_client: MailcowClient):
+        with _clear_mailcow_on_exit(dry_run_client):
+            yield
+
+    def test_add_domain(self, dry_run_client: MailcowClient):
+        dry_run_client.add_domain("foo.local")
+        _LOGGER.info("get domain list")
+        domain_list = dry_run_client.get_domain_list()
+        assert len(domain_list) == 1
+        domain = domain_list[0]
+        assert domain.domain_name == "foo.local"
+
+    def test_add_alias(self, dry_run_client: MailcowClient):
+        dry_run_client.add_domain("foo.local")
+        dry_run_client.add_alias("foo@foo.local", goto="bar@example.org")
+        alias_list = dry_run_client.get_alias_list()
+        assert len(alias_list) == 1
+        alias = alias_list[0]
+        assert alias.address == "foo@foo.local"
+        assert alias.goto == ["bar@example.org"]
+
+    def test_add_alias__update_alias(self, dry_run_client: MailcowClient):
+        dry_run_client.add_domain("foo.local")
+        dry_run_client.add_alias("foo@foo.local", goto="bar@example.org")
+        dry_run_client.add_alias("foo@foo.local", add_goto="foo@example.org")
+        alias_list = dry_run_client.get_alias_list()
+        assert len(alias_list) == 1
+        alias = alias_list[0]
+        assert alias.address == "foo@foo.local"
+        assert alias.goto == ["bar@example.org", "foo@example.org"]
+
+
+class Test_MailcowClient_WSJRDP:
+    @pytest.fixture
+    def mailcow_client(self, ctx: wsjrdp2027.WsjRdpContext) -> MailcowClient:
+        return ctx.mailcow()
+
+    @pytest.fixture(autouse=True)
+    def _auto_fixture(self, mailcow_client: MailcowClient):
+        with _clear_mailcow_on_exit(mailcow_client):
+            for domain in WSJRDP_DOMAINS:
+                mailcow_client.add_domain(domain)
+            yield
 
     def test_get_all_domains__wsjrdp_domains(self, mailcow_client: MailcowClient):
-        domain_list = mailcow_client.get_all_domains()
+        domain_list = mailcow_client.get_domain_list()
         assert len(domain_list) == len(WSJRDP_DOMAINS)
 
     def test_add_alias__invalid_goto(self, mailcow_client: MailcowClient):
@@ -128,7 +179,7 @@ class Test_MailcowClietnt_WSJRDP:
 
     def test_get_aliases__one_alias(self, mailcow_client: MailcowClient):
         mailcow_client.add_alias("foo@wsj.local", goto="bar@example.org")
-        alias_list = mailcow_client.get_all_aliases()
+        alias_list = mailcow_client.get_alias_list()
         assert len(alias_list) == 1
         alias = alias_list[0]
         assert alias["address"] == "foo@wsj.local"
@@ -138,7 +189,7 @@ class Test_MailcowClietnt_WSJRDP:
         mailcow_client.add_alias("foo@wsj.local", goto="bar@example.org")
         mailcow_client.add_alias("bar@wsj.local", goto="bar@example.org")
 
-        alias_list = mailcow_client.get_all_aliases()
+        alias_list = mailcow_client.get_alias_list()
         assert len(alias_list) == 2
         addresses = {a["address"] for a in alias_list}
         assert addresses == {"foo@wsj.local", "bar@wsj.local"}
