@@ -23,6 +23,8 @@ WSJRDP_DOMAINS = [
 def _clear_mailcow(mailcow_client: MailcowClient):
     alias_list = mailcow_client.get_alias_list()
     mailcow_client.delete_alias([a["address"] for a in alias_list])
+    mailbox_list = mailcow_client.get_mailbox_list()
+    mailcow_client.delete_mailbox([a["username"] for a in mailbox_list])
     domain_list = mailcow_client.get_domain_list()
     mailcow_client.delete_domain([d["domain_name"] for d in domain_list])
 
@@ -69,7 +71,14 @@ class Test_MailcowClient_Bare:
     def test_create_delete_domain(self, mailcow_client: MailcowClient):
         mailcow_client.add_domain("foo.local")
         mailcow_client.delete_domain(["foo.local"])
-        domain_list = mailcow_client.get_domain_list()
+        domain_list = mailcow_client.get_domain_list(allow_cached=False)
+        assert domain_list == []
+
+    def test_create_delete_domain__cached(self, mailcow_client: MailcowClient):
+        domain_list = mailcow_client.get_domain_list()  # load all domains
+        mailcow_client.add_domain("foo.local")
+        mailcow_client.delete_domain(["foo.local"])
+        domain_list = mailcow_client.get_domain_list(allow_cached=True)
         assert domain_list == []
 
     def test_delete_domain__non_existing(self, mailcow_client: MailcowClient):
@@ -112,6 +121,75 @@ class Test_MailcowClient_Bare:
         alias_list = mailcow_client.get_alias_list()
         assert alias_list == []
 
+    def test_add_mailbox__defaults(self, mailcow_client: MailcowClient):
+        mailcow_client.add_domain("foo.local")
+
+        mb = mailcow_client.add_mailbox("foo@foo.local", password="foobarbaz")
+
+        mailbox_list = mailcow_client.get_mailbox_list()
+        assert len(mailbox_list) == 1
+        mailbox = mailbox_list[0]
+        assert mb == mailbox
+        assert mb.username == "foo@foo.local"
+        assert mb.quota_mib == 1024
+        assert mb.authsource == "mailcow"
+        assert mb.tls_enforce_in
+        assert mb.tls_enforce_out
+        assert not mb.force_pw_update
+
+    def test_add_mailbox__quota(self, mailcow_client: MailcowClient):
+        mailcow_client.add_domain("foo.local")
+
+        mb = mailcow_client.add_mailbox(
+            "foo@foo.local", password="foobarbaz", quota_mib=12
+        )
+        assert mb.quota_b == 12 * 1024 * 1024
+
+    def test_update_mailbox(self, mailcow_client: MailcowClient):
+        mailcow_client.add_domain("foo.local")
+
+        mb1 = mailcow_client.add_mailbox(
+            "foo@foo.local", password="foobarbaz", quota_mib=12, force_pw_update=False
+        )
+        assert mb1.quota_b == 12 * 1024 * 1024
+        assert mb1.force_pw_update is False
+
+        mb2 = mailcow_client.add_mailbox(
+            "foo@foo.local", quota_mib=3, force_pw_update=True
+        )
+        assert mb2.quota_b == 3 * 1024 * 1024
+        assert mb2.force_pw_update is True
+
+    def test_update_mailbox__fails(self, mailcow_client: MailcowClient):
+        mailcow_client.add_domain("foo.local")
+
+        mailcow_client.add_mailbox("foo@foo.local", password="foobarbaz")
+        with pytest.raises(MailcowError, match="mailbox_exists"):
+            mailcow_client.add_mailbox("foo@foo.local", exist_ok=False)
+
+    def test_add_delete_mailbox__uncached(self, mailcow_client: MailcowClient):
+        mailcow_client.add_domain("foo.local")
+
+        mailcow_client.add_mailbox("foo@foo.local", password="foobarbaz")
+        mailbox_list = mailcow_client.get_mailbox_list(allow_cached=False)
+        assert len(mailbox_list) == 1
+
+        mailcow_client.delete_mailbox("foo@foo.local")
+        mailbox_list = mailcow_client.get_mailbox_list(allow_cached=False)
+        assert len(mailbox_list) == 0
+
+    def test_add_delete_mailbox__cached(self, mailcow_client: MailcowClient):
+        mailbox_list = mailcow_client.get_mailbox_list(allow_cached=True)
+        mailcow_client.add_domain("foo.local")
+
+        mailcow_client.add_mailbox("foo@foo.local", password="foobarbaz")
+        mailbox_list = mailcow_client.get_mailbox_list(allow_cached=True)
+        assert len(mailbox_list) == 1
+
+        mailcow_client.delete_mailbox("foo@foo.local")
+        mailbox_list = mailcow_client.get_mailbox_list(allow_cached=True)
+        assert len(mailbox_list) == 0
+
 
 class Test_MailcowClient_Bare_DryRun:
     @pytest.fixture
@@ -151,6 +229,29 @@ class Test_MailcowClient_Bare_DryRun:
         alias = alias_list[0]
         assert alias.address == "foo@foo.local"
         assert alias.goto == ["bar@example.org", "foo@example.org"]
+
+    def test_add_mailbox(self, dry_run_client: MailcowClient):
+        dry_run_client.add_domain("foo.local")
+        dry_run_client.add_mailbox("foo@foo.local")
+        mailbox_list = dry_run_client.get_mailbox_list()
+        assert len(mailbox_list) == 1
+        mailbox = mailbox_list[0]
+        assert mailbox.username == "foo@foo.local"
+
+    def test_add_mailbox__defaults(self, dry_run_client: MailcowClient):
+        dry_run_client.add_domain("foo.local")
+
+        mb = dry_run_client.add_mailbox("foo@foo.local", password="foobarbaz")
+
+        mailbox_list = dry_run_client.get_mailbox_list()
+        assert mailbox_list == [mb]
+
+        assert mb.username == "foo@foo.local"
+        assert mb.quota_mib == 1024
+        assert mb.authsource == "mailcow"
+        assert mb.tls_enforce_in
+        assert mb.tls_enforce_out
+        assert not mb.force_pw_update
 
 
 class Test_MailcowClient_WSJRDP:
