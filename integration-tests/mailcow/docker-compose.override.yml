@@ -1,0 +1,40 @@
+services:
+  ipv6nat-mailcow:
+    profiles: ["disabled"] # Use Docker profiles to hide the service
+  olefy-mailcow:
+    profiles: ["disabled"]
+  ofelia-mailcow:
+    profiles: ["disabled"]
+  # clamd-mailcow:
+  #   profiles: ["disabled"]
+  # rspamd-mailcow:
+  #   profiles: ["disabled"]
+  watchdog-mailcow:
+    profiles: ["disabled"]
+  acme-mailcow:
+    profiles: ["disabled"]
+
+  # Optional: disable the web interface if only testing via API/IMAP
+  # nginx-mailcow:
+  #   profiles: ["disabled"]
+  # sogo-mailcow:
+  #   profiles: ["disabled"]
+
+  # nginx-mailcow:
+  #   depends_on:
+  #     - redis-mailcow
+  #     - php-fpm-mailcow
+  #     - sogo-mailcow
+
+  netfilter-mailcow:
+    stop_grace_period: 2s
+
+  # php-fpm-mailcow:
+  #   ports:
+  #     - "127.0.0.1:5080:80"
+  dovecot-mailcow:
+    ports:
+      - "127.0.0.1:5143:143"
+  postfix-mailcow:
+    ports:
+      - "127.0.0.1:5025:25"

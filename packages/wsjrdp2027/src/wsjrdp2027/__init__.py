@@ -108,6 +108,11 @@ if _typing.TYPE_CHECKING:
         Group as Group,
     )
     from ._keycloak_client import KeycloakClient as KeycloakClient
+    from ._mailcow_client import (
+        MailcowClient as MailcowClient,
+        MailcowConfig as MailcowConfig,
+        MailcowError as MailcowError,
+    )
     from ._pain import PainMessage as PainMessage
     from ._person import (
         Person as Person,
@@ -136,6 +141,7 @@ __all__ = [
     "Group",
     "KeycloakClient",
     "MailClient",
+    "MailcowClient",
     "PainMessage",
     "PaymentRole",
     "PeopleQuery",
@@ -312,6 +318,9 @@ __ALIASES__ = {
     "CamtTxUniqueDbKey": (f"._camt", "CamtTxUniqueDbKey"),
     "Group": ("._groups", "Group"),
     "KeycloakClient": ("._keycloak_client", "KeycloakClient"),
+    "MailcowClient": ("._mailcow_client", "MailcowClient"),
+    "MailcowConfig": ("._mailcow_client", "MailcowConfig"),
+    "MailcowError": ("._mailcow_client", "MailcowError"),
     "PainMessage": (f"._pain", "PainMessage"),
     "Person": ("._person", "Person"),
     "bank_accounts": (".bank_accounts", ""),
