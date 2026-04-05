@@ -29,6 +29,7 @@ if _typing.TYPE_CHECKING:
         _keycloak_wsjrdp_adapter,
         _mail_client,
         _mail_config,
+        _mailcow_client,
         _people_query,
         _person,
     )
@@ -226,7 +227,7 @@ class WsjRdpContext:
     _skip_db_updates: bool | None = None
     _parsed_args: _argparse.Namespace | None = None
     _approved_categories: set[str] = _typing.cast(set, frozenset([]))
-    _keycloak_adapter: _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter | None = None
+    _resources: dict[str, _typing.Any]
 
     def __init__(
         self,
@@ -283,6 +284,7 @@ class WsjRdpContext:
         from . import _util
 
         self.__exit_stacks = [_contextlib.ExitStack()]
+        self._resources = {}
         self._approved_categories = set()
 
         # Default basic logging config
@@ -714,22 +716,28 @@ class WsjRdpContext:
         )
         self.require_approval_to_run_in_prod(prompt=prompt)
 
+    def _get_or_create_resource(self, key: str, *, create, force_new: bool = False):
+        old = self._resources.get(key)
+        if force_new or old is None:
+            new = create()
+
+            def callback():
+                if callable(close := getattr(new, "close", None)):
+                    close()
+                self._resources[key] = old
+
+            self._exit_stack.callback(callback)
+            self._resources[key] = new
+            return new
+        else:
+            return old
+
     def keycloak(
         self, *, force_new: bool = False
     ) -> _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter:
-        old_keycloak_adapter = self._keycloak_adapter
-        if force_new or not old_keycloak_adapter:
-            new_keycloak_adapter = self._create_keycloak_adapter()
-
-            def callback():
-                new_keycloak_adapter.close()
-                self._keycloak_adapter = old_keycloak_adapter
-
-            self._exit_stack.callback(callback)
-            self._keycloak_adapter = new_keycloak_adapter
-            return new_keycloak_adapter
-        else:
-            return old_keycloak_adapter
+        return self._get_or_create_resource(
+            "keycloak", create=self._create_keycloak_adapter, force_new=force_new
+        )
 
     def _create_keycloak_adapter(
         self,
@@ -737,6 +745,19 @@ class WsjRdpContext:
         from . import _keycloak_wsjrdp_adapter
 
         return _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter(self)
+
+    def mailcow(self, *, force_new: bool = False) -> _mailcow_client.MailcowClient:
+        return self._get_or_create_resource(
+            "mailcow", create=self._create_mailcow_client, force_new=force_new
+        )
+
+    def _create_mailcow_client(self) -> _mailcow_client.MailcowClient:
+        from . import _mailcow_client
+
+        config = _mailcow_client.MailcowConfig(
+            server=self._config.mail_api_url, api_key=self._config.mail_api_key
+        )
+        return _mailcow_client.MailcowClient(config, dry_run=self.dry_run_or_none)
 
     def __create_ssh_forwarder(
         self, *, remote_bind_address: tuple[str, int]
