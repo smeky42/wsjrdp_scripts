@@ -43,6 +43,8 @@ __all__ = [
     "to_int_list",
     "to_int_list_or_none",
     "to_int_or_none",
+    "to_int_or_str_list",
+    "to_int_or_str_list_or_none",
     "to_log_level",
     "to_str_list",
     "to_str_list_or_none",
@@ -769,21 +771,15 @@ def iter_nested_int_or_str(*args) -> _typing.Iterator[str | int]:
 
 @_typing.overload
 def to_int_list_or_none(arg: None, /) -> None: ...
-
-
 @_typing.overload
 def to_int_list_or_none(
     arg: int | str | _collections_abc.Iterable[int | str], /
 ) -> list[int]: ...
-
-
 @_typing.overload
 def to_int_list_or_none(
     arg: int | str | _collections_abc.Iterable[int | str] | None,
     *args: int | str | _collections_abc.Iterable[int | str] | None,
 ) -> list[int] | None: ...
-
-
 def to_int_list_or_none(
     arg=None,
     *args: int | str | _collections_abc.Iterable[int | str] | None,
@@ -821,21 +817,15 @@ def to_int_list(
 
 @_typing.overload
 def to_int_or_str_list_or_none(arg: None, /) -> None: ...
-
-
 @_typing.overload
 def to_int_or_str_list_or_none(
     arg: int | str | _collections_abc.Iterable[int | str], /
 ) -> list[int | str]: ...
-
-
 @_typing.overload
 def to_int_or_str_list_or_none(
     arg: int | str | _collections_abc.Iterable[int | str] | None,
     *args: int | str | _collections_abc.Iterable[int | str] | None,
 ) -> list[int | str] | None: ...
-
-
 def to_int_or_str_list_or_none(
     arg=None,
     *args: int | str | _collections_abc.Iterable[int | str] | None,
@@ -888,8 +878,6 @@ def to_str_list_or_none(
     arg: str | _collections_abc.Iterable[str] | None,
     *args: str | _collections_abc.Iterable[str] | None,
 ) -> list[str] | None: ...
-
-
 def to_str_list_or_none(
     arg=None,
     *args: str | _collections_abc.Iterable[str] | None,
@@ -928,8 +916,6 @@ def to_str_set_or_none(
     arg: str | _collections_abc.Iterable[str] | None,
     *args: str | _collections_abc.Iterable[str] | None,
 ) -> set[str] | None: ...
-
-
 def to_str_set_or_none(
     arg=None,
     *args: str | _collections_abc.Iterable[str] | None,
@@ -959,12 +945,8 @@ def to_str_set(*args: str | _collections_abc.Iterable[str] | None) -> set[str]:
 
 @_typing.overload
 def to_int_or_none(obj: int) -> int: ...
-
-
 @_typing.overload
 def to_int_or_none(obj: object) -> int | None: ...
-
-
 def to_int_or_none(obj):
     try:
         return int(obj)

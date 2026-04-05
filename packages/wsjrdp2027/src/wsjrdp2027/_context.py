@@ -678,11 +678,15 @@ class WsjRdpContext:
         category: str | None = None,
         action: str | None = None,
         description: str | None = None,
+        read_only: bool | None = None,
     ) -> None:
         if not self._config.is_production:
             _LOGGER.debug(
                 "[ctx] Not running in production - no special approval required"
             )
+            return
+        elif read_only:
+            _LOGGER.debug("[ctx] Read-only operation - no special approval required")
             return
 
         if category is not None and self.is_action_approved_for_prod(category, action):
@@ -697,7 +701,12 @@ class WsjRdpContext:
             "[ctx] Running in production - asking for user consent in console"
         )
         if not prompt:
-            prompt = "Do you want to continue running this script in a PRODUCTION environment?"
+            if category:
+                prompt = (
+                    f"Do you want to update {category} in a PRODUCTION environment?"
+                )
+            else:
+                prompt = "Do you want to continue running this script in a PRODUCTION environment?"
         print()
         print(flush=True)
         if not _util.console_confirm(prompt, default=False):
@@ -709,6 +718,15 @@ class WsjRdpContext:
             _LOGGER.debug("[ctx] User approved to continue")
             return
 
+    def create_audithook(self, category: str) -> _collections_abc.Callable:
+        def audithook(action, read_only=None, **kwargs):
+            self.require_approval_to_run_in_prod(
+                category=category, action=action, read_only=read_only
+            )
+
+        audithook.__name__ = f"{category}_audithook"
+        return audithook
+
     def require_approval_to_send_email_in_prod(self) -> None:
         prompt = (
             f"Do you want to send email messages in a PRODUCTION environment "
@@ -716,10 +734,24 @@ class WsjRdpContext:
         )
         self.require_approval_to_run_in_prod(prompt=prompt)
 
-    def _get_or_create_resource(self, key: str, *, create, force_new: bool = False):
+    def _get_or_create_resource(
+        self,
+        key: str,
+        *,
+        create,
+        force_new: bool = False,
+        dry_run: bool | None = None,
+        audithook: _collections_abc.Callable | bool | None = None,
+    ):
         old = self._resources.get(key)
         if force_new or old is None:
-            new = create()
+            if dry_run is None:
+                dry_run = self.dry_run
+            if audithook is None or audithook is True:
+                audithook = self.create_audithook(key)
+            elif audithook is False:
+                audithook = None
+            new = create(dry_run=dry_run, audithook=audithook)
 
             def callback():
                 if callable(close := getattr(new, "close", None)):
@@ -740,24 +772,38 @@ class WsjRdpContext:
         )
 
     def _create_keycloak_adapter(
-        self,
+        self, *, dry_run: bool, audithook: _collections_abc.Callable
     ) -> _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter:
         from . import _keycloak_wsjrdp_adapter
 
         return _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter(self)
 
-    def mailcow(self, *, force_new: bool = False) -> _mailcow_client.MailcowClient:
+    def mailcow(
+        self,
+        *,
+        force_new: bool = False,
+        dry_run: bool | None = None,
+        audithook: _mailcow_client.MailcowAudithook | bool | None = None,
+    ) -> _mailcow_client.MailcowClient:
         return self._get_or_create_resource(
-            "mailcow", create=self._create_mailcow_client, force_new=force_new
+            "mailcow",
+            create=self._create_mailcow_client,
+            force_new=force_new,
+            dry_run=dry_run,
+            audithook=audithook,
         )
 
-    def _create_mailcow_client(self) -> _mailcow_client.MailcowClient:
+    def _create_mailcow_client(
+        self, *, dry_run: bool, audithook: _collections_abc.Callable | None = None
+    ) -> _mailcow_client.MailcowClient:
         from . import _mailcow_client
 
         config = _mailcow_client.MailcowConfig(
             server=self._config.mail_api_url, api_key=self._config.mail_api_key
         )
-        return _mailcow_client.MailcowClient(config, dry_run=self.dry_run_or_none)
+        return _mailcow_client.MailcowClient(
+            config, dry_run=dry_run, audithook=audithook
+        )
 
     def __create_ssh_forwarder(
         self, *, remote_bind_address: tuple[str, int]
