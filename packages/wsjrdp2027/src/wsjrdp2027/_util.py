@@ -1229,7 +1229,7 @@ def in_expr(expr, elts, *, empty_expr: str = "FALSE") -> str:
             return f"{expr} IN ({elts_list_str})"
 
 
-def not_in_expr(expr, elts, *, empty_expr: str = "FALSE") -> str:
+def not_in_expr(expr, elts, *, empty_expr: str = "TRUE") -> str:
     """
 
     ..
