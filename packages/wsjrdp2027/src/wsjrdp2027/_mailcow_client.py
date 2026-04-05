@@ -15,15 +15,48 @@ if _typing.TYPE_CHECKING:
 _LOGGER = _logging.getLogger(__name__)
 
 
+_EDIT_MAILBOX_ATTRS = [
+    "active",
+    "authsource",
+    "force_pw_update",
+    "name",
+    "password",
+    "password2",
+    "sender_acl",
+    "sogo_access",
+]
+
+# Mailbox attributes that are stored in the *attribuutes* dictionary.
+_MAILBOX_ATTRIBUTES_KEYS = [
+    "attribute_hash",
+    "dav_access",
+    "eas_access",
+    "force_pw_update",
+    "force_tfa",
+    "imap_access",
+    "mailbox_format",
+    "passwd_update",
+    "pop3_access",
+    "quarantine_category",
+    "quarantine_notification",
+    "relayhost",
+    "sieve_access",
+    "smtp_access",
+    "sogo_access",
+    "tls_enforce_in",
+    "tls_enforce_out",
+]
+
 _EDIT_ALIAS_ATTRS = [
+    "active",
     "address",
     "goto",
+    "goto_ham",
     "goto_null",
     "goto_spam",
-    "goto_ham",
     "private_comment",
     "public_comment",
-    "active",
+    "sogo_visible",
 ]
 
 
@@ -33,7 +66,8 @@ class _MailcowCache:
     _domains: dict[str | None, MailcowDomain]
     _all_domains_cached: bool = False
 
-    _mailboxes: dict[str, dict]
+    _mailboxes: dict[str | None, MailcowMailbox]
+    _all_mailboxes_cached: bool = False
 
     _address2alias: dict[str | None, MailcowAlias]
     _aid2address: dict[int | None, str]
@@ -55,6 +89,7 @@ class _MailcowCache:
         self._domains.clear()
         self._all_aliases_cached = False
         self._mailboxes.clear()
+        self._all_mailboxes_cached = False
         self._aid2address.clear()
         self._address2alias.clear()
         self._all_aliases_cached = False
@@ -108,6 +143,73 @@ class _MailcowCache:
         else:
             domain = self.get_domain_by_name(key, client=client)
             return [domain] if domain is not None else None
+
+    def delete_domain(self, domain: str | _collections_abc.Iterable[str], /) -> None:
+        for key in _util.to_str_list(domain):
+            self._domains.pop(key, None)
+
+    # ==================================================================================
+    # Mailboxes Cache
+    # ==================================================================================
+
+    @property
+    def all_mailboxes_cached(self) -> bool:
+        return self._all_mailboxes_cached
+
+    def add_mailbox(self, mailbox: MailcowMailbox | dict) -> None:
+        mailbox = MailcowMailbox.fromdict(mailbox)
+        if missing := [
+            key for key in ["local_part", "domain", "username"] if not mailbox.get(key)
+        ]:
+            raise ValueError(
+                f"Mailbox has missing field(s) {', '.join(repr(x) for x in missing)}, got {mailbox=}"
+            )
+        if mailbox.address != mailbox.username:
+            raise ValueError(
+                f"Inconsistent mailbox: username={mailbox.username} does not match "
+                f"local_part={mailbox.local_part} domain={mailbox.domain}\n"
+                f"  {mailbox=}"
+            )
+        self._mailboxes[mailbox.username] = mailbox
+
+    def add_mailboxes(
+        self, mailboxes: _typing.Iterable[MailcowMailbox | dict], *, all: bool = False
+    ) -> None:
+        mailboxes = list(mailboxes)
+        self._logger.debug(f"add {len(mailboxes)} mailboxes to cache, {all=}")
+        for mailbox in mailboxes:
+            self.add_mailbox(mailbox)
+        if all:
+            self._all_mailboxes_cached = True
+
+    def get_mailbox_by_username(
+        self, username: str | None, *, client: MailcowClient | None
+    ) -> MailcowMailbox | None:
+        if mailbox := self._mailboxes.get(username):
+            return mailbox.__with_client__(client)
+        else:
+            return None
+
+    def get_mailbox_list(
+        self, key: str, *, client: MailcowClient | None, allow_cached: bool = True
+    ) -> list[MailcowMailbox] | None:
+        if not allow_cached:
+            return None
+        elif key == "all":
+            if self._all_mailboxes_cached:
+                return [
+                    mailbox.__with_client__(client)
+                    for mailbox in self._mailboxes.values()
+                ]
+            else:
+                return None
+        else:
+            mailbox = self.get_mailbox_by_username(key, client=client)
+            return [mailbox] if mailbox is not None else None
+
+    def delete_mailbox(self, username: str | _collections_abc.Iterable[str], /) -> None:
+        for key in _util.to_str_list(username):
+            self._mailboxes.pop(key, None)
 
     # ==================================================================================
     # Aliases Cache
@@ -251,6 +353,65 @@ class MailcowDomain(_MailcowDict):
     @property
     def domain_name(self) -> str:
         return self["domain_name"]
+
+
+class MailcowMailbox(_MailcowDict):
+    @classmethod
+    def from_payload(
+        cls, payload: dict, *, client: MailcowClient | None = None
+    ) -> _typing.Self:
+        mailbox_dict = _payload_to_mailbox_dict(payload)
+        return cls.fromdict(mailbox_dict, client=client)
+
+    @property
+    def active(self) -> bool:
+        return bool(self.get("active"))
+
+    @property
+    def username(self) -> str:
+        return self.get("username", "")
+
+    @property
+    def local_part(self) -> str:
+        return self["local_part"]
+
+    @property
+    def domain(self) -> str:
+        return self["domain"]
+
+    @property
+    def address(self) -> str:
+        return f"{self.local_part}@{self.domain}"
+
+    @property
+    def quota_b(self) -> int:
+        """Quota in bytes."""
+        return int(self.get("quota", 0))
+
+    @property
+    def quota_mib(self) -> int:
+        """Quota in MiBs."""
+        return int(self.get("quota", 0)) // (1024 * 1024)
+
+    @property
+    def attributes(self) -> dict:
+        return self.setdefault("attributes", {})
+
+    @property
+    def force_pw_update(self) -> bool:
+        return bool(int(self.get("attributes", {}).get("force_pw_update", "0")))
+
+    @property
+    def tls_enforce_in(self) -> bool:
+        return bool(int(self.get("attributes", {}).get("tls_enforce_in", "0")))
+
+    @property
+    def tls_enforce_out(self) -> bool:
+        return bool(int(self.get("attributes", {}).get("tls_enforce_out", "0")))
+
+    @property
+    def authsource(self) -> str:
+        return self.get("authsource", "???")
 
 
 class MailcowAlias(_MailcowDict):
@@ -600,7 +761,151 @@ class MailcowClient:
         payload = _util.to_str_list(domain)
         if not payload:
             return
+        self._cache.delete_domain(payload)
         self._request("POST", "/api/v1/delete/domain", json=payload)
+
+    # ==================================================================================
+    # Mailboxes
+    # ==================================================================================
+
+    def get_mailbox_list(
+        self,
+        id: str = "all",
+        /,
+        *,
+        allow_cached: bool = True,
+    ) -> list[MailcowMailbox]:
+        if (
+            mailbox_list := self._cache.get_mailbox_list(
+                id, client=self, allow_cached=allow_cached
+            )
+        ) is not None:
+            return mailbox_list
+        result = self._request("GET", f"/api/v1/get/mailbox/{id}")
+        if not result:
+            result = []
+        elif isinstance(result, dict):
+            result = [result]
+        mailboxs = [MailcowMailbox.fromdict(d, client=self) for d in result]
+        self._cache.add_mailboxes(mailboxs, all=(id == "all"))
+        return mailboxs
+
+    def get_mailbox_or_none_by_username(
+        self, username: str, /, *, allow_cached: bool = True
+    ) -> MailcowMailbox | None:
+        mailbox_list = self.get_mailbox_list(username, allow_cached=allow_cached)
+        if not mailbox_list:
+            return None
+        elif len(mailbox_list) > 1:
+            err_msg = f"Found more than one mailbox for {username=}"
+            self._logger.error(err_msg)
+            raise RuntimeError(err_msg)
+        else:
+            return mailbox_list[0]
+
+    def get_mailbox_by_username(
+        self, username: str, /, *, allow_cached: bool = True
+    ) -> MailcowMailbox:
+        if mailbox := self.get_mailbox_or_none_by_username(
+            username, allow_cached=allow_cached
+        ):
+            return mailbox
+        else:
+            err_msg = f"Found no mailbox with {username=}"
+            self._logger.error(err_msg)
+            raise RuntimeError(err_msg)
+
+    def add_mailbox(
+        self,
+        username: str,
+        *,
+        password: str | None = None,
+        password2: str | None = None,
+        active: bool | None = None,
+        name: str | None = None,
+        quota_mib: int | None = None,
+        authsource: str | None = None,
+        force_pw_update: bool | None = None,
+        tls_enforce_in: bool | None = None,
+        tls_enforce_out: bool | None = None,
+        exist_ok: bool = True,
+        dry_run: bool | None = None,
+    ) -> MailcowMailbox:
+        import email.utils as _email_utils
+
+        if self.dry_run or bool(dry_run):
+            self._logger.debug(f"[dry-run] load all mailboxes into cache")
+            self.get_mailbox_list(allow_cached=True)  # cache all mailboxes
+
+        email_addr = _email_utils.parseaddr(username, strict=True)[1]
+        local_part, domain = email_addr.split("@", 1)
+        password2 = password2 or password
+        payload = {
+            "local_part": local_part,
+            "domain": domain,
+            "authsource": authsource,
+            "password": password,
+            "password2": password2,
+            "active": active,
+            "name": name,
+            "quota": quota_mib,
+            "force_pw_update": force_pw_update,
+            "tls_enforce_in": tls_enforce_in,
+            "tls_enforce_out": tls_enforce_out,
+        }
+        payload = {k: v for k, v in payload.items() if v is not None}
+
+        old_mailbox = self.get_mailbox_or_none_by_username(username)
+        if old_mailbox:
+            if not exist_ok:
+                raise MailcowError("error: mailbox_exists")
+            return self._edit_mailbox(payload, old_mailbox=old_mailbox, dry_run=dry_run)
+
+        else:
+            self._add_mailbox(payload, dry_run=dry_run)
+            return self.get_mailbox_by_username(username)
+
+    def _add_mailbox(self, payload: dict, *, dry_run: bool | None = None) -> None:
+        payload.setdefault("force_pw_update", False)
+        payload.setdefault("tls_enforce_in", True)
+        payload.setdefault("tls_enforce_out", True)
+        payload.setdefault("quota", 1024)
+        payload.setdefault("active", True)
+        payload.setdefault("authsource", "mailcow")
+        dry_run = self.dry_run or bool(dry_run)
+        if dry_run:
+            mailbox = MailcowMailbox.from_payload(payload)
+            self._logger.debug(f"[dry-run] add fake {mailbox=} to cache")
+            self._cache.add_mailbox(mailbox)
+        else:
+            self._request("POST", "/api/v1/add/mailbox", json=payload)
+
+    def _edit_mailbox(
+        self,
+        payload: dict,
+        *,
+        old_mailbox: MailcowMailbox,
+        dry_run: bool | None = None,
+    ) -> MailcowMailbox:
+        username = old_mailbox["username"]
+        new_mailbox = _merge_mailbox_dicts(
+            old_mailbox, MailcowMailbox.from_payload(payload)
+        )
+        self._request(
+            "POST",
+            "/api/v1/edit/mailbox",
+            json={"items": [username], "attr": payload},
+            read_only=False,
+            dry_run=dry_run,
+        )
+        return MailcowMailbox.fromdict(new_mailbox, client=self)
+
+    def delete_mailbox(self, username: str | _typing.Iterable[str]) -> None:
+        payload = _util.to_str_list(username)
+        if not payload:
+            return
+        self._cache.delete_mailbox(payload)
+        self._request("POST", "/api/v1/delete/mailbox", json=payload, read_only=False)
 
     # ==================================================================================
     # Aliases
@@ -870,6 +1175,39 @@ def _normalize_alias_dict_remove_special_goto(d: dict, /) -> dict:
                 d.pop(rm_key, None)
             break
     return d
+
+
+def _payload_to_mailbox_dict(payload: dict) -> dict:
+    def attr_v(obj) -> str:
+        if isinstance(obj, bool):
+            obj = int(obj)
+        return str(obj)
+
+    mailbox_dict = payload.copy()
+    if (quota := mailbox_dict.pop("quota", None)) is not None:
+        mailbox_dict["quota"] = int(quota) * (1024 * 1024)
+    attributes = {
+        k: attr_v(v)
+        for k in _MAILBOX_ATTRIBUTES_KEYS
+        if (v := mailbox_dict.pop(k, None)) is not None
+    }
+    local_part = mailbox_dict.get("local_part")
+    domain = mailbox_dict.get("domain")
+    if not mailbox_dict.get("username") and local_part and domain:
+        mailbox_dict["username"] = f"{local_part}@{domain}"
+    if attributes:
+        mailbox_dict["attributes"] = attributes
+    return mailbox_dict
+
+
+def _merge_mailbox_dicts(a: dict, b: dict) -> dict:
+    a = a.copy()
+    b = b.copy()
+    if b_attrs := b.pop("attributes", None):
+        a_attrs = a.setdefault("attributes", {})
+        a_attrs.update(b_attrs)
+    a.update(b)
+    return a
 
 
 class _DryRunResponse:
