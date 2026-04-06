@@ -119,6 +119,22 @@ class WsjRdpKeycloakAdapter:
             audit=lambda s: self.__audit("update_user", s),
         )
 
+    def delete_user_by_id(
+        self,
+        user_id: str,
+        *,
+        raise_on_missing: bool | None = None,
+        dry_run: bool | None = None,
+    ) -> None:
+        if dry_run is None:
+            dry_run = self.dry_run
+        self._client.delete_user_by_id(
+            user_id,
+            raise_on_missing=raise_on_missing,
+            audit=lambda s: self.__audit("delete_user_by_id", s),
+            dry_run=dry_run,
+        )
+
     def update_users(
         self,
         updates: _collections_abc.Iterable[dict],
@@ -161,7 +177,7 @@ class WsjRdpKeycloakAdapter:
     ) -> list[_keycloak_client.KeycloakUserDict]:
         return self._client.get_users_in_group(groupname, enabled=enabled)
 
-    def get_user_by_name(
+    def get_user_by_username(
         self,
         username: str,
         *,
@@ -169,14 +185,14 @@ class WsjRdpKeycloakAdapter:
         omit_keys: _collections_abc.Iterable[str] = (),
         allow_cached: bool = False,
     ) -> _keycloak_client.KeycloakUserDict:
-        return self._client.get_user_by_name(
+        return self._client.get_user_by_username(
             username,
             user_profile_metadata=user_profile_metadata,
             omit_keys=omit_keys,
             allow_cached=allow_cached,
         )
 
-    def get_user_by_name_or_none(
+    def get_user_or_none_by_name(
         self,
         username: str,
         *,
@@ -185,7 +201,7 @@ class WsjRdpKeycloakAdapter:
         allow_cached: bool = False,
     ) -> _keycloak_client.KeycloakUserDict | None:
         try:
-            return self.get_user_by_name(
+            return self.get_user_by_username(
                 username,
                 user_profile_metadata=user_profile_metadata,
                 omit_keys=omit_keys,
@@ -195,7 +211,7 @@ class WsjRdpKeycloakAdapter:
             _LOGGER.debug(f"Failed to fetch user with {username=}: {exc}")
             return None
 
-    def get_user_by_email_or_none(
+    def get_user_or_none_by_email(
         self,
         email: str,
         *,
@@ -203,11 +219,41 @@ class WsjRdpKeycloakAdapter:
         user_profile_metadata: bool | None = None,
         omit_keys: _collections_abc.Iterable[str] | None = None,
     ) -> _keycloak_client.KeycloakUserDict | None:
-        return self._client.get_user_by_email_or_none(
+        return self._client.get_user_or_none_by_email(
             email,
             allow_cached=allow_cached,
             user_profile_metadata=user_profile_metadata,
             omit_keys=omit_keys,
+        )
+
+    def get_user_by_email(
+        self,
+        email: str,
+        *,
+        allow_cached: bool = False,
+        user_profile_metadata: bool | None = None,
+        omit_keys: _collections_abc.Iterable[str] | None = None,
+    ) -> _keycloak_client.KeycloakUserDict:
+        user_dict = self._client.get_user_or_none_by_email(
+            email,
+            allow_cached=allow_cached,
+            user_profile_metadata=user_profile_metadata,
+            omit_keys=omit_keys,
+        )
+        if user_dict is not None:
+            return user_dict
+        else:
+            raise RuntimeError(f"Found no keycloak user for {email=}")
+
+    def get_user_list(
+        self,
+        *,
+        omit_keys: _collections_abc.Iterable[str] | None = None,
+        allow_cached: bool = True,
+    ) -> list[_keycloak_client.KeycloakUserDict]:
+        return self._client.get_user_list(
+            omit_keys=omit_keys,
+            allow_cached=allow_cached,
         )
 
     def get_user_for_person_or_none(
@@ -216,17 +262,19 @@ class WsjRdpKeycloakAdapter:
         *,
         additional_info_updates: list[dict],
         allow_cached: bool = False,
+        check_role_consistency: bool = True,
     ) -> _keycloak_client.KeycloakUserDict | None:
-        self.__check_person_is_consistent(
-            person, additional_info_updates=additional_info_updates
-        )
+        if check_role_consistency:
+            self.__check_person_is_consistent(
+                person, additional_info_updates=additional_info_updates
+            )
         if username := person.keycloak_username:
-            if user_dict := self.get_user_by_name_or_none(
+            if user_dict := self.get_user_or_none_by_name(
                 username, allow_cached=allow_cached
             ):
                 return user_dict
         if wsjrdp_email := person.wsjrdp_email_or_none:
-            if user_dict := self.get_user_by_email_or_none(
+            if user_dict := self.get_user_or_none_by_email(
                 wsjrdp_email, allow_cached=allow_cached
             ):
                 return user_dict

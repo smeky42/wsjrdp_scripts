@@ -228,6 +228,7 @@ class WsjRdpContext:
     _parsed_args: _argparse.Namespace | None = None
     _approved_categories: set[str] = _typing.cast(set, frozenset([]))
     _resources: dict[str, _typing.Any]
+    _console_confirm_cache: dict
 
     def __init__(
         self,
@@ -285,6 +286,7 @@ class WsjRdpContext:
 
         self.__exit_stacks = [_contextlib.ExitStack()]
         self._resources = {}
+        self._console_confirm_cache = {}
         self._approved_categories = set()
 
         # Default basic logging config
@@ -666,10 +668,23 @@ class WsjRdpContext:
     def approve_action_for_prod(self, category: str, action: str | None) -> None:
         self._approved_categories.add(category)
 
-    def console_confirm(self, prompt: str, default=False) -> bool:
+    def console_confirm(
+        self,
+        prompt: str,
+        default=False,
+        *,
+        cache_key: object | None = None,
+        cache_hint: str | None = None,
+    ) -> bool:
         from . import _util
 
-        return _util.console_confirm(prompt, default=default)
+        return _util.console_confirm(
+            prompt,
+            default=default,
+            cache=self._console_confirm_cache,
+            cache_key=cache_key,
+            cache_hint=cache_hint,
+        )
 
     def require_approval_to_run_in_prod(
         self,

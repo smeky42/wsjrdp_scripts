@@ -70,7 +70,7 @@ class Test_KeyCloakClient:
         monkeypatch.setattr(keycloak_client._admin, "create_user", mock)
 
         user_dict = keycloak_client.create_user(*args, **kwargs)
-        keycloak_client.delete_user(user_dict["username"])
+        keycloak_client.delete_user_by_username(user_dict["username"])
 
         assert mock.call_count == 1
         assert mock.call_args == unittest.mock.call(expected_payload, exist_ok=True)
@@ -81,7 +81,7 @@ class Test_KeyCloakClient:
         assert user1 == user2
         assert user1["username"] == user1["email"]
 
-        keycloak_client.delete_user("foo@foo")
+        keycloak_client.delete_user_by_username("foo@foo")
 
     def test_create_or_update_user(self, keycloak_client: KeycloakClient):
         user1 = keycloak_client.create_or_update_user(
@@ -95,8 +95,8 @@ class Test_KeyCloakClient:
         assert user1.get("firstName") == "first"
         assert user2.get("firstName") == "second"
 
-        keycloak_client.delete_user("foo@baz")
-        keycloak_client.delete_user("foo@baz", raise_on_missing=False)
+        keycloak_client.delete_user_by_username("foo@baz")
+        keycloak_client.delete_user_by_username("foo@baz", raise_on_missing=False)
 
     def test_add_user_to_group(self, keycloak_client: KeycloakClient):
         keycloak_client.create_group("FOO")
@@ -107,7 +107,7 @@ class Test_KeyCloakClient:
         user_dict = user_dict_list[0]
         assert user_dict["username"] == "foo@baz"
 
-        keycloak_client.delete_user("foo@baz", raise_on_missing=True)
+        keycloak_client.delete_user_by_username("foo@baz", raise_on_missing=True)
         keycloak_client.delete_group("FOO", raise_on_missing=True)
 
 

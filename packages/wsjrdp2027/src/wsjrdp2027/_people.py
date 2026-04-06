@@ -676,6 +676,8 @@ def load_people_dataframe(
         limit_clause = f"\nLIMIT {query.limit}"
     else:
         limit_clause = ""
+    if query.offset is not None:
+        limit_clause += f"\nOFFSET {query.offset}"
 
     accounting_entry_exclude_payment_initiation_id = _util.to_int_list_or_none(
         accounting_entry_exclude_payment_initiation_id

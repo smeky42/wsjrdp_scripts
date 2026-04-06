@@ -139,7 +139,7 @@ class _KeycloakCache:
     def get_username(self, user_id: str) -> str | None:
         return self._uid2user.get(user_id, {}).get("username")
 
-    def get_user_by_name(
+    def get_user_by_username(
         self,
         username: str,
         *,
@@ -560,11 +560,12 @@ class KeycloakClient:
         payload = _merge_user_dicts(payload, user_dict)
         return payload
 
-    def delete_user(
+    def delete_user_by_username(
         self,
         username: str,
         raise_on_missing: bool | None = None,
         audit: _collections_abc.Callable[[str | None], object] | None = None,
+        dry_run: bool | None = None,
     ) -> None:
         if raise_on_missing is None:
             raise_on_missing = False
@@ -582,6 +583,7 @@ class KeycloakClient:
                 raise_on_missing=raise_on_missing,
                 description=description,
                 audit=audit,
+                dry_run=dry_run,
             )
 
     def delete_user_by_id(
@@ -589,13 +591,18 @@ class KeycloakClient:
         user_id: str,
         raise_on_missing: bool | None = None,
         audit: _collections_abc.Callable[[str | None], object] | None = None,
+        dry_run: bool | None = None,
     ) -> None:
         if raise_on_missing is None:
             raise_on_missing = False
         cls_name = self.__class__.__qualname__
         description = f"{cls_name}.delete_user_by_id({user_id!r}, raise_on_missing={raise_on_missing!r})"
         self.__delete_user_by_id(
-            user_id, raise_on_missing, description=description, audit=audit
+            user_id,
+            raise_on_missing,
+            description=description,
+            audit=audit,
+            dry_run=dry_run,
         )
 
     def __delete_user_by_id(
@@ -604,14 +611,21 @@ class KeycloakClient:
         raise_on_missing: bool,
         description: str,
         audit: _collections_abc.Callable[[str | None], object] | None = None,
+        dry_run: bool | None = None,
     ) -> None:
-        audit(description) if audit else None
         self._cache.remove_user_by_id(user_id)
-        try:
-            self._admin.delete_user(user_id)
-        except _keycloak_python.KeycloakDeleteError:
-            if raise_on_missing:
-                raise
+        if dry_run:
+            _LOGGER.debug(
+                f"[dry-run] {description}"
+                f" :: skip call to keycloak_admin.delete_user({user_id!r})"
+            )
+        else:
+            audit(description) if audit else None
+            try:
+                self._admin.delete_user(user_id)
+            except _keycloak_python.KeycloakDeleteError:
+                if raise_on_missing:
+                    raise
 
     def get_user_by_id(
         self,
@@ -634,7 +648,7 @@ class KeycloakClient:
                 user_dict, user_profile_metadata, omit_keys=omit_keys
             )
 
-    def get_user_by_name_or_none(
+    def get_user_or_none_by_username(
         self,
         username: str,
         *,
@@ -643,7 +657,7 @@ class KeycloakClient:
         allow_cached: bool = False,
     ) -> KeycloakUserDict | None:
         if allow_cached and (
-            user_dict := self._cache.get_user_by_name(
+            user_dict := self._cache.get_user_by_username(
                 username,
                 copy=True,
                 user_profile_metadata=user_profile_metadata,
@@ -661,7 +675,7 @@ class KeycloakClient:
                 user_dict, user_profile_metadata, omit_keys=omit_keys
             )
 
-    def get_user_by_name(
+    def get_user_by_username(
         self,
         username: str,
         *,
@@ -669,7 +683,7 @@ class KeycloakClient:
         omit_keys: _collections_abc.Iterable[str] | None = None,
         allow_cached: bool = False,
     ) -> KeycloakUserDict:
-        user_dict = self.get_user_by_name_or_none(
+        user_dict = self.get_user_or_none_by_username(
             username,
             user_profile_metadata=user_profile_metadata,
             omit_keys=omit_keys,
@@ -682,13 +696,15 @@ class KeycloakClient:
         else:
             return user_dict
 
-    def get_user_by_email_or_none(
+    def get_user_or_none_by_email(
         self,
-        email: str,
+        email: str | None,
         user_profile_metadata: bool | None = None,
         omit_keys: _collections_abc.Iterable[str] | None = None,
         allow_cached: bool = False,
     ) -> KeycloakUserDict | None:
+        if not email:
+            return None
         if allow_cached and (
             user_dict := self._cache.get_user_by_email(
                 email,
@@ -715,6 +731,20 @@ class KeycloakClient:
                 user_dict, user_profile_metadata, omit_keys=omit_keys
             )
 
+    def get_user_list(
+        self,
+        *,
+        omit_keys: _collections_abc.Iterable[str] | None = None,
+        allow_cached: bool = True,
+    ) -> list[KeycloakUserDict]:
+        user_list = self._admin.get_users()
+        for user in user_list:
+            self._cache.add_user(user)
+        return [
+            _filter_user_dict(user, user_profile_metadata=False, omit_keys=omit_keys)
+            for user in user_list
+        ]
+
     def update_user(
         self,
         username: str,
@@ -728,7 +758,7 @@ class KeycloakClient:
         omit_keys = frozenset(["createdTimestamp"])
         dry_run = bool(dry_run)
 
-        original_payload = self.get_user_by_name(
+        original_payload = self.get_user_by_username(
             username,
             omit_keys=omit_keys,
             allow_cached=True,
@@ -749,7 +779,7 @@ class KeycloakClient:
             _LOGGER.debug(f"{description}\n  No diff to current user, no update")
         else:
             if not allow_cached:
-                original_payload = self.get_user_by_name(
+                original_payload = self.get_user_by_username(
                     username,
                     omit_keys=omit_keys,
                     allow_cached=False,
