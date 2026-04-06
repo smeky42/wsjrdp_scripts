@@ -187,7 +187,7 @@ def get_user(
     username: str,
     user_profile_metadata: bool = False,
 ) -> _keycloak_client.KeycloakUserDict:
-    return _get_keycloak_client(client_or_context).get_user_by_name(
+    return _get_keycloak_client(client_or_context).get_user_by_username(
         username, user_profile_metadata=user_profile_metadata
     )
 

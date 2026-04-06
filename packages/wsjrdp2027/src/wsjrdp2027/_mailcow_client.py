@@ -105,9 +105,8 @@ class _MailcowCache:
 
     def add_domain(self, domain: MailcowDomain | dict) -> None:
         domain = MailcowDomain.fromdict(domain)
-        name = domain.get("domain_name")
-        if not name:
-            raise ValueError(f"Domain must have domain_name, got {domain=}")
+        if not (name := domain.get("domain_name")):
+            raise ValueError(f"Domain dict must have domain_name key, got {domain=}")
         self._domains[name] = domain
 
     def add_domains(
@@ -127,6 +126,14 @@ class _MailcowCache:
             return domain.__with_client__(client)
         else:
             return None
+
+    def get_domain_by_name_or_raise(
+        self, name: str | None, *, client: MailcowClient | None
+    ) -> MailcowDomain:
+        if domain := self.get_domain_by_name(name, client=client):
+            return domain
+        else:
+            raise RuntimeError(f"No domain with {name=} in cache")
 
     def get_domain_list(
         self, key: str, *, client: MailcowClient | None, allow_cached: bool = True
@@ -342,17 +349,48 @@ class _MailcowDict(dict):
 
     def __str__(self) -> str:
         cls_name = self.__class__.__qualname__
-        return f"{cls_name}({super().__str__()})"
+        return f"{cls_name}({dict(self)})"
 
     def __repr__(self) -> str:
         cls_name = self.__class__.__qualname__
-        return f"{cls_name}({super().__repr__()})"
+        return f"{cls_name}({dict(self)!r})"
 
 
 class MailcowDomain(_MailcowDict):
     @property
+    def active(self) -> bool:
+        return bool(self["active"])
+
+    @property
     def domain_name(self) -> str:
         return self["domain_name"]
+
+    @property
+    def max_num_aliases_for_domain(self) -> int:
+        return self["max_num_aliases_for_domain"]
+
+    @property
+    def max_num_mboxes_for_domain(self) -> int:
+        return self["max_num_mboxes_for_domain"]
+
+    @property
+    def max_quota_for_domain(self) -> int:
+        return self["max_quota_for_domain"]
+
+    @property
+    def max_quota_for_mbox(self) -> int:
+        return self["max_quota_for_mbox"]
+
+    @property
+    def def_quota_for_mbox(self) -> int:
+        return self["def_quota_for_mbox"]
+
+    @property
+    def description(self) -> str:
+        return self.get("description", "")
+
+    def as_payload_dict(self) -> dict:
+        return _domain_dict_to_payload(self)
 
 
 class MailcowMailbox(_MailcowDict):
@@ -668,6 +706,7 @@ class MailcowClient:
         logger.debug(f"  => {response}")
         response.raise_for_status()
         response_json = response.json()
+        # logger.debug(f"  => {response_json}")
         self._log_notes_and_raise_for_danger_or_error(
             response_json, allow_danger=allow_danger, logger=logger
         )
@@ -710,7 +749,9 @@ class MailcowClient:
             self._logger.error(err_msg)
             raise RuntimeError(err_msg)
         else:
-            return domain_list[0]
+            domain = domain_list[0]
+            self._cache.add_domain(domain)
+            return domain
 
     def get_domain_by_name(
         self, domain_name: str, /, *, allow_cached: bool = True
@@ -725,13 +766,46 @@ class MailcowClient:
             raise RuntimeError(err_msg)
 
     def add_domain(
-        self, domain_name: str, *, exist_ok: bool = True, dry_run: bool | None = None
+        self,
+        domain_name: str,
+        *,
+        aliases: int | None = None,
+        mailboxes: int | None = None,
+        domain_quota_mib: int | None = None,
+        max_mailbox_quota_mib: int | None = None,
+        default_mailbox_quota_mib: int | None = None,
+        description: str | None = None,
+        active: bool | None = None,
+        exist_ok: bool = True,
+        dry_run: bool | None = None,
     ) -> MailcowDomain:
+        payload = {
+            "active": active,
+            "domain": domain_name,
+            "aliases": aliases,
+            "mailboxes": mailboxes,
+            "quota": domain_quota_mib,
+            "maxquota": max_mailbox_quota_mib,
+            "defquota": default_mailbox_quota_mib,
+            "description": description,
+        }
+        return self.add_domain_with_payload(payload, exist_ok=exist_ok, dry_run=dry_run)
+
+    def add_domain_with_payload(
+        self, payload: dict, exist_ok: bool = True, dry_run: bool | None = None
+    ) -> MailcowDomain:
+        payload = {k: v for k, v in payload.items() if v is not None}
+        payload.setdefault("active", True)
+        payload.setdefault("aliases", 400)
+        payload.setdefault("mailboxes", 10)
+        payload.setdefault("quota", 10240)
+        payload.setdefault("maxquota", min(10240, (payload["quota"] or 10240)))
+        payload.setdefault("defquota", min(3072, (payload["maxquota"] or 3072)))
+        domain_name = payload["domain"]
         dry_run = self.dry_run or bool(dry_run)
         if dry_run:
-            return self._add_domain_dry_run(domain_name, exist_ok=exist_ok)
+            return self.__add_domain_dry_run(domain_name, payload, exist_ok=exist_ok)
         else:
-            payload = {"domain": domain_name}
             self._request(
                 "POST",
                 "/api/v1/add/domain",
@@ -740,22 +814,77 @@ class MailcowClient:
             )
             return self.get_domain_by_name(domain_name)
 
-    def _add_domain_dry_run(self, domain_name: str, exist_ok: bool) -> MailcowDomain:
+    def __add_domain_dry_run(
+        self, domain_name: str, payload: dict, exist_ok: bool
+    ) -> MailcowDomain:
         self._logger.debug(f"[dry-run] load all domains into cache")
         self.get_domain_list(allow_cached=True)  # ensure we have all domains cached
-        cached_domain = self._cache.get_domain_by_name(domain_name, client=self)
-        if cached_domain:
-            if exist_ok:
-                return cached_domain
-            else:
-                raise MailcowError(f"dry-run error: {domain_name=} already exists")
+        domain = self._cache.get_domain_by_name(domain_name, client=self)
+        if domain and not exist_ok:
+            raise MailcowError(f"dry-run error: {domain_name=} already exists")
         else:
-            fake_domain = MailcowDomain.fromdict(
-                {"domain_name": domain_name}, client=self
-            )
-            self._logger.debug(f"[dry-run] add fake domain {fake_domain} to cache")
-            self._cache.add_domain(fake_domain)
-            return fake_domain
+            domain = {}
+        domain.update(_payload_to_domain_dict(payload))
+        self._logger.debug(f"[dry-run] add fake domain {domain} to cache")
+        self._cache.add_domain(domain)
+        return self._cache.get_domain_by_name_or_raise(domain_name, client=self)
+
+    def edit_domain(
+        self,
+        domain_name: str,
+        *,
+        aliases: int | None = None,
+        mailboxes: int | None = None,
+        domain_quota_mib: int | None = None,
+        max_mailbox_quota_mib: int | None = None,
+        default_mailbox_quota_mib: int | None = None,
+        description: str | None = None,
+        active: bool | None = None,
+        create_ok: bool = True,
+        dry_run: bool | None = None,
+    ) -> MailcowDomain:
+        """Edit or create domain."""
+        payload = {
+            "active": active,
+            "domain": domain_name,
+            "aliases": aliases,
+            "mailboxes": mailboxes,
+            "quota": domain_quota_mib,
+            "maxquota": max_mailbox_quota_mib,
+            "defquota": default_mailbox_quota_mib,
+            "description": description,
+        }
+        return self.edit_domain_with_payload(
+            payload, create_ok=create_ok, dry_run=dry_run
+        )
+
+    def edit_domain_with_payload(
+        self,
+        payload: dict,
+        *,
+        create_ok: bool = True,
+        dry_run: bool | None = None,
+    ) -> MailcowDomain:
+        """Edit or create domain."""
+        domain_name = payload["domain"]
+        payload = {k: v for k, v in payload.items() if v is not None}
+        dry_run = self.dry_run or bool(dry_run)
+
+        if domain := self.get_domain_or_none_by_name(domain_name):
+            domain.update(_payload_to_domain_dict(payload))
+            self._cache.add_domain(domain)
+            if dry_run:
+                return self._cache.get_domain_by_name_or_raise(domain_name, client=self)
+            else:
+                edit_payload = {"attr": payload, "items": [domain_name]}
+                self._request(
+                    "POST", "/api/v1/edit/domain", json=edit_payload, read_only=False
+                )
+                return self.get_domain_by_name(domain_name, allow_cached=not dry_run)
+        elif create_ok:
+            return self.add_domain_with_payload(payload, dry_run=dry_run)
+        else:
+            raise MailcowError(f"error: Domain {domain_name=} does not exist")
 
     def delete_domain(self, domain: str | _typing.Iterable[str]) -> None:
         payload = _util.to_str_list(domain)
@@ -1208,6 +1337,49 @@ def _merge_mailbox_dicts(a: dict, b: dict) -> dict:
         a_attrs.update(b_attrs)
     a.update(b)
     return a
+
+
+def _domain_dict_to_payload(d: dict, /) -> dict:
+    d = {
+        "active": bool(d.get("active")),
+        "domain": d["domain_name"],
+        "mailboxes": d.get("max_num_mboxes_for_domain"),
+        "aliases": d.get("max_num_aliases_for_domain"),
+        "quota": d.get("max_quota_for_domain"),
+        "maxquota": d.get("max_quota_for_mbox"),
+        "defquota": d.get("def_quota_for_mbox"),
+        "description": d.get("description"),
+    }
+    for k in ["quota", "maxquota", "defquota"]:
+        if (size_b := d.get(k)) is not None:
+            d[k] = size_b // (1024 * 1024)
+    return {k: v for k, v in d.items() if v is not None}
+
+
+def _payload_to_domain_dict(d: dict, /) -> dict:
+    d = {
+        "active": int(d.get("active", True)),
+        "active_int": int(d.get("active", True)),
+        "domain_name": d["domain"],
+        "max_num_mboxes_for_domain": d.get("mailboxes"),
+        "max_num_aliases_for_domain": d.get("aliases"),
+        "max_quota_for_domain": d.get("quota"),
+        "max_quota_for_mbox": d.get("maxquota"),
+        "def_quota_for_mbox": d.get("defquota"),
+        "max_new_mailbox_quota": d.get("maxquota"),
+        "def_new_mailbox_quota": d.get("defquota"),
+        "description": d.get("description"),
+    }
+    for k in [
+        "max_quota_for_domain",
+        "max_quota_for_mbox",
+        "def_quota_for_mbox",
+        "max_new_mailbox_quota",
+        "def_new_mailbox_quota",
+    ]:
+        if (size_mib := d.get(k)) is not None:
+            d[k] = size_mib * (1024 * 1024)
+    return {k: v for k, v in d.items() if v is not None}
 
 
 class _DryRunResponse:

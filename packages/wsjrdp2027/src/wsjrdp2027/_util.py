@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections.abc as _collections_abc
 import logging as _logging
 import math as _math
+import os as _os
 import re as _re
 import typing as _typing
 
@@ -70,21 +71,76 @@ _CONSOLE_CONFIRM_INPUT_TO_VALUE = {
 }
 
 
-def console_confirm(question, *, default: bool | None = False) -> bool:
+_MISSING = object()
+
+
+if _os.name == "nt":  # Windows
+
+    def clear_stdin():
+        import msvcrt
+
+        while msvcrt.kbhit():
+            msvcrt.getch()
+
+else:  # Unix/Linux/macOS
+
+    def clear_stdin():
+        import select
+        import sys
+        import termios
+
+        stdin, _, _ = select.select([sys.stdin], [], [], 0)
+        if stdin:
+            if sys.stdin.isatty():
+                termios.tcflush(sys.stdin, termios.TCIFLUSH)
+
+
+def console_confirm(
+    question,
+    *,
+    default: bool | None = False,
+    cache_key: object | None = None,
+    cache: dict | None = None,
+    cache_hint: str | None = None,
+) -> bool:
+    if cache is not None and (cache_key is None or not cache_hint):
+        cache = cache_key = cache_hint = None
+
     allowed_choices = _CONSOLE_CONFIRM_DEFAULT_TO_CHOICE_DISPLAY.get(default, "y/n")
+    if cache is None:
+        yn_msg = "Please respond with 'yes' or 'no' (or 'y' or 'n')."
+    else:
+        yn_msg = "Please respond with 'yes' or 'no' or '!' or 'a' (or 'y' or 'n')."
+        allowed_choices += f"/!/a (! = never, a = always {cache_hint})"
+    prompt = f"{question} [{allowed_choices}] "
+    if cache is not None and (
+        (cached_value := cache.get(cache_key, _MISSING)) is not _MISSING
+    ):
+        msg = f"{prompt}{'y' if cached_value else 'n'} (from cache)"
+        print(msg)
+        _LOGGER.debug(msg)
+        return cached_value
+    clear_stdin()
     while True:
-        prompt = f"{question} [{allowed_choices}] "
         raw_user_input = input(prompt)
-        _LOGGER.debug(f"{prompt}{raw_user_input.strip()}")
         user_input = raw_user_input.strip().lower()
         if not user_input and default is not None:
+            _LOGGER.debug(f"{prompt}(no user input, default {'y' if default else 'n'})")
+        else:
+            _LOGGER.debug(f"{prompt}{raw_user_input.strip()}")
+        if not user_input and default is not None:
             return default
+        elif cache is not None and user_input == "!":
+            cache[cache_key] = False
+            return False
+        elif cache is not None and user_input == "a":
+            cache[cache_key] = True
+            return True
         elif (val := _CONSOLE_CONFIRM_INPUT_TO_VALUE.get(user_input, None)) is not None:
             return val
         else:
-            msg = "Please respond with 'yes' or 'no' (or 'y' or 'n')."
-            _LOGGER.debug(msg)
-            print(f"{msg}\n", flush=True)
+            _LOGGER.debug(yn_msg)
+            print(f"{yn_msg}\n", flush=True)
 
 
 def create_dir(

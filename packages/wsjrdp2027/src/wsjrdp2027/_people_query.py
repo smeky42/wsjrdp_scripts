@@ -573,6 +573,7 @@ class PeopleQueryDict(_typing.TypedDict, total=False):
     where: PeopleWhere | None
     email_only_where: PeopleWhere | None
     limit: int | None
+    offset: int | None
     now: _datetime.datetime | None
     collection_date: _datetime.date | None
     include_sepa_mail_in_mailing_to: bool | None
@@ -583,6 +584,7 @@ class PeopleQuery:
     where: PeopleWhere | None = None
     email_only_where: PeopleWhere | None = None
     limit: int | None = None
+    offset: int | None = None
     now: _datetime.datetime
     collection_date: _datetime.date | None = None
     include_sepa_mail_in_mailing_to: bool | None = None
@@ -593,6 +595,7 @@ class PeopleQuery:
         where: PeopleWhere | dict | str | None = None,
         email_only_where: PeopleWhere | dict | None = None,
         limit: int | None = None,
+        offset: int | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
         collection_date: _datetime.date | str | None = None,
         include_sepa_mail_in_mailing_to: bool | None = None,
@@ -602,6 +605,9 @@ class PeopleQuery:
         self.where = PeopleWhere.normalize_or_none(where)
         self.email_only_where = PeopleWhere.normalize_or_none(email_only_where)
         self.limit = int(limit) if (isinstance(limit, (int, float)) or limit) else None
+        self.offset = (
+            int(offset) if (isinstance(offset, (int, float)) or offset) else None
+        )
         self.now = _util.to_datetime(now)
         self.collection_date = _util.to_date_or_none(collection_date)
         self.include_sepa_mail_in_mailing_to = include_sepa_mail_in_mailing_to

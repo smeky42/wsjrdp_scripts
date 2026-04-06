@@ -29,14 +29,6 @@ def _clear_mailcow(mailcow_client: MailcowClient):
     mailcow_client.delete_domain([d["domain_name"] for d in domain_list])
 
 
-@_contextlib.contextmanager
-def _clear_mailcow_on_exit(mailcow_client: MailcowClient):
-    try:
-        yield
-    finally:
-        _clear_mailcow(mailcow_client)
-
-
 class Test_MailcowClient_Bare:
     @pytest.fixture
     def mailcow_client(self, ctx: wsjrdp2027.WsjRdpContext) -> MailcowClient:
@@ -44,10 +36,9 @@ class Test_MailcowClient_Bare:
 
     @pytest.fixture(autouse=True)
     def _auto_fixture(self, mailcow_client: MailcowClient):
-        with _clear_mailcow_on_exit(mailcow_client):
-            yield
+        _clear_mailcow(mailcow_client)
 
-    def test_create_domain(self, mailcow_client: MailcowClient):
+    def test_add_domain(self, mailcow_client: MailcowClient):
         mailcow_client.add_domain("foo.local")
 
         domain_list = mailcow_client.get_domain_list()
@@ -55,31 +46,98 @@ class Test_MailcowClient_Bare:
         domain_dict = domain_list[0]
         assert domain_dict["domain_name"] == "foo.local"
 
-    def test_create_domain__fails_on_existing(self, mailcow_client: MailcowClient):
+    @pytest.mark.parametrize("allow_cached", [True, False])
+    def test_add_domain__not_updating_on_existing(
+        self, mailcow_client: MailcowClient, allow_cached
+    ):
+        mailcow_client.add_domain("foo.local", aliases=17)
+
+        domain_dict = mailcow_client.get_domain_by_name(
+            "foo.local", allow_cached=allow_cached
+        )
+        assert domain_dict["domain_name"] == "foo.local"
+        assert domain_dict["max_num_aliases_for_domain"] == 17
+
+        mailcow_client.add_domain("foo.local", aliases=19, exist_ok=True)
+
+        domain_dict = mailcow_client.get_domain_by_name(
+            "foo.local", allow_cached=allow_cached
+        )
+        assert domain_dict["max_num_aliases_for_domain"] == 17
+
+    def test_add_domain__fails_on_existing(self, mailcow_client: MailcowClient):
         mailcow_client.add_domain("foo.local")
         with pytest.raises(MailcowError, match="domain_exists"):
             mailcow_client.add_domain("foo.local", exist_ok=False)
         domain_list = mailcow_client.get_domain_list()
         assert len(domain_list) == 1
 
-    def test_create_domain__exist_ok(self, mailcow_client: MailcowClient):
+    def test_add_domain__exist_ok(self, mailcow_client: MailcowClient):
         mailcow_client.add_domain("foo.local")
         mailcow_client.add_domain("foo.local", exist_ok=True)
         domain_list = mailcow_client.get_domain_list()
         assert len(domain_list) == 1
 
-    def test_create_delete_domain(self, mailcow_client: MailcowClient):
+    def test_add_delete_domain(self, mailcow_client: MailcowClient):
         mailcow_client.add_domain("foo.local")
         mailcow_client.delete_domain(["foo.local"])
         domain_list = mailcow_client.get_domain_list(allow_cached=False)
         assert domain_list == []
 
-    def test_create_delete_domain__cached(self, mailcow_client: MailcowClient):
+    def test_add_delete_domain__cached(self, mailcow_client: MailcowClient):
         domain_list = mailcow_client.get_domain_list()  # load all domains
         mailcow_client.add_domain("foo.local")
         mailcow_client.delete_domain(["foo.local"])
         domain_list = mailcow_client.get_domain_list(allow_cached=True)
         assert domain_list == []
+
+    def test_edit_domain__non_existing_domain__create_ok(
+        self, mailcow_client: MailcowClient
+    ):
+        dm = mailcow_client.get_domain_or_none_by_name("foo.local")
+        assert not dm
+
+        mailcow_client.edit_domain("foo.local", active=False, create_ok=True)
+        dm = mailcow_client.get_domain_by_name("foo.local")
+        assert dm.domain_name == "foo.local"
+
+    def test_edit_domain__non_existing_domain__failure(
+        self, mailcow_client: MailcowClient
+    ):
+        dm = mailcow_client.get_domain_or_none_by_name("foo.local")
+        assert not dm
+
+        with pytest.raises(MailcowError):
+            mailcow_client.edit_domain("foo.local", active=False, create_ok=False)
+
+    def test_edit_domain__updating(self, mailcow_client: MailcowClient):
+        dm = mailcow_client.add_domain("foo.local", exist_ok=True)
+        assert dm.active
+        assert dm.max_num_aliases_for_domain == 400
+        assert dm.max_num_mboxes_for_domain == 10
+        assert dm.max_quota_for_domain == 10737418240
+        assert dm.max_quota_for_mbox == 10737418240
+        assert dm.def_quota_for_mbox == 3221225472
+
+        dm = mailcow_client.edit_domain(
+            "foo.local",
+            active=False,
+            aliases=27,
+            mailboxes=29,
+            description="buzz",
+            domain_quota_mib=239,
+            max_mailbox_quota_mib=237,
+            default_mailbox_quota_mib=235,
+        )
+        assert not dm.active
+        assert dm.max_num_aliases_for_domain == 27
+        assert dm.max_num_mboxes_for_domain == 29
+        assert dm.max_quota_for_domain == 239 * 1024 * 1024
+        assert dm.max_quota_for_mbox == 237 * 1024 * 1024
+        assert dm.def_quota_for_mbox == 235 * 1024 * 1024
+        assert dm.max_quota_for_mbox == dm["max_new_mailbox_quota"]
+        assert dm.def_quota_for_mbox == dm["def_new_mailbox_quota"]
+        assert dm.description == "buzz"
 
     def test_delete_domain__non_existing(self, mailcow_client: MailcowClient):
         mailcow_client.add_domain("foo.local")
@@ -200,8 +258,7 @@ class Test_MailcowClient_Bare_DryRun:
 
     @pytest.fixture(autouse=True)
     def _auto_fixture(self, dry_run_client: MailcowClient):
-        with _clear_mailcow_on_exit(dry_run_client):
-            yield
+        _clear_mailcow(dry_run_client)
 
     def test_add_domain(self, dry_run_client: MailcowClient):
         dry_run_client.add_domain("foo.local")
@@ -261,10 +318,9 @@ class Test_MailcowClient_WSJRDP:
 
     @pytest.fixture(autouse=True)
     def _auto_fixture(self, mailcow_client: MailcowClient):
-        with _clear_mailcow_on_exit(mailcow_client):
-            for domain in WSJRDP_DOMAINS:
-                mailcow_client.add_domain(domain)
-            yield
+        _clear_mailcow(mailcow_client)
+        for domain in WSJRDP_DOMAINS:
+            mailcow_client.add_domain(domain)
 
     def test_get_all_domains__wsjrdp_domains(self, mailcow_client: MailcowClient):
         domain_list = mailcow_client.get_domain_list()

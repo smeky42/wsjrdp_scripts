@@ -47,21 +47,23 @@ def load_people_dataframe_for_groupname(
         case _:
             raise RuntimeError(f"Unsupported {groupname=}")
 
+    where = wsjrdp2027.PeopleWhere(
+        role=role,
+        # tag="Finanzverantwortlich",
+        # role=role,
+        # id=[484,486],
+        # id=2480,
+        exclude_deregistered=True,
+        primary_group_id=primary_group_id,
+        exclude_primary_group_id=exclude_primary_group_id,
+    )
     df = wsjrdp2027.load_people_dataframe(
         conn,
-        where=wsjrdp2027.PeopleWhere(
-            role=role,
-            # tag="Finanzverantwortlich",
-            # role=role,
-            # id=[484,486],
-            # id=2480,
-            exclude_deregistered=True,
-            primary_group_id=primary_group_id,
-            exclude_primary_group_id=exclude_primary_group_id,
+        query=wsjrdp2027.PeopleQuery(
+            where=where,
+            limit=None,
+            offset=None,
         ),
-        # where=wsjrdp2027.PeopleWhere(primary_group_id=1, exclude_deregistered=True),
-        # where=wsjrdp2027.PeopleWhere(id=[21, 65, 413], exclude_deregistered=True),
-        # where=wsjrdp2027.PeopleWhere(id=[482], exclude_deregistered=True),
         log_resulting_data_frame=False,
     )
     _LOGGER.info(
@@ -113,72 +115,48 @@ def _check_for_keycloak_user(
     person: wsjrdp2027.Person,
     groupname: str,
     *,
-    email2keycloak_user: dict[str | None, dict],
-    username2keycloak_user: dict[str | None, dict],
-    keycloak_users: list[wsjrdp2027.keycloak.KeycloakUserDict],
     errors: list[str],
     additional_info_updates: list[dict],
-    address2goto: dict[str, list[str]],
 ) -> bool:
-    def _update_alias(email, add_goto):
-        wsjrdp2027.mailbox.update_alias(ctx, email=email, add_goto=add_goto)
-        goto_list = address2goto.setdefault(email, [])
-        if add_goto not in goto_list:
-            goto_list.append(add_goto)
-
     if ctx.keycloak().get_user_for_person_or_none(
-        person, additional_info_updates=additional_info_updates, allow_cached=True
+        person,
+        allow_cached=True,
+        check_role_consistency=True,
+        additional_info_updates=additional_info_updates,
     ):
         return True
 
-    password = wsjrdp2027.generate_password()
     keycloak_username = person.keycloak_username or person.wsjrdp_email
     keycloak_email = person.wsjrdp_email
 
-    if person.id == 1871:
-        _LOGGER.debug(
-            f"{person.role_id_name}: Ignore missing keycloak user (Till Sanders)"
-        )
-        return False
-    elif (
+    if (
         keycloak_username
         and keycloak_email
         and person.moss_email
-        and wsjrdp2027.console_confirm(
+        and person.wsjrdp_email
+        and ctx.console_confirm(
             f"No keycloak user for E-Mail {keycloak_email}\n"
             f"  username: {keycloak_username}\n"
-            f"  password: {password}\n"
             f"  email: {keycloak_email}\n"
             f"  first_name: {person.first_name}\n"
             f"  last_name: {person.last_name}\n"
             f"  attributes:\n"
             f"    mossEmail: {person.moss_email}\n"
             f"    hitobitoId: {person.id}\n"
-            f"Create missing Keycloak user {keycloak_username} for group {groupname}?"
+            f"Create missing Keycloak user {keycloak_username} for group {groupname}?",
+            cache_key="create_missing_keycloak_user",
+            cache_hint="create missing Keycloak user",
         )
     ):
-        if person.wsjrdp_email_should_be_mailbox:
-            raise RuntimeError("Cannot setup mailbox - not supported yet")
-        else:
-            _update_alias(email=keycloak_email, add_goto=person.email)
-            _update_alias(email=person.moss_email, add_goto=person.email)
-
-        ctx.keycloak().create_user(
-            email=keycloak_email,
-            username=keycloak_username,
-            first_name=person.first_name,
-            last_name=person.last_name,
-            password=password,
-            attributes={
-                "mossEmail": [person.moss_email],
-                "hitobitoId": [str(person.id)],
-            },
-        )
-        ctx.keycloak().add_user_to_group(
-            username=keycloak_username, groupname=groupname
-        )
-        additional_info_updates.append(
-            {"id": person.id, "keycloak_initial_password": password}
+        _create_keycloak_user(
+            ctx,
+            conn,
+            person,
+            groupname=groupname,
+            keycloak_username=keycloak_username,
+            keycloak_email=keycloak_email,
+            errors=errors,
+            additional_info_updates=additional_info_updates,
         )
         return True
     else:
@@ -192,40 +170,151 @@ def _check_for_keycloak_user(
         return False
 
 
-def _load_address2goto(ctx: wsjrdp2027.WsjRdpContext) -> dict[str, list[str]]:
-    _LOGGER.debug("Load mailcow aliases to fill address2goto")
-    aliases = wsjrdp2027.mailbox.get_aliases(ctx)
-    result = {alias["address"]: alias["goto"].split(",") for alias in aliases}
-    _LOGGER.info(f"Loaded {len(result)} aliases from mailcow")
-    return result
+def _create_keycloak_user(
+    ctx: wsjrdp2027.WsjRdpContext,
+    conn: _psycopg.Connection,
+    person: wsjrdp2027.Person,
+    *,
+    groupname: str,
+    keycloak_username: str,
+    keycloak_email: str,
+    errors: list[str],
+    additional_info_updates: list[dict],
+) -> None:
+    assert person.wsjrdp_email
+    assert person.moss_email
+
+    password = wsjrdp2027.generate_password()
+
+    _LOGGER.info(
+        f"Create keycloak user {keycloak_username} with email {keycloak_email}"
+    )
+    ctx.keycloak().create_user(
+        email=keycloak_email,
+        username=keycloak_username,
+        first_name=person.first_name,
+        last_name=person.last_name,
+        password=password,
+        attributes={
+            "mossEmail": [person.moss_email],
+            "hitobitoId": [str(person.id)],
+        },
+    )
+    ctx.keycloak().add_user_to_group(username=keycloak_username, groupname=groupname)
+    additional_info_updates.append(
+        {"id": person.id, "keycloak_initial_password": password}
+    )
+    person.set_additional_info("keycloak_initial_password", password)
+
+    new_mailbox = False
+    if person.wsjrdp_email_should_be_mailbox:
+        mb = ctx.mailcow().get_mailbox_or_none_by_username(person.wsjrdp_email)
+        if mb:
+            _LOGGER.info(f"Found Mailcow mailbox for {person.wsjrdp_email}")
+        elif ctx.console_confirm(
+            f"Create Mailcow mailbox for {person.wsjrdp_email}?",
+            cache_key="create_missing_mailcow_user",
+            cache_hint="create missing mailcow user",
+        ):
+            ctx.mailcow().add_mailbox(
+                person.wsjrdp_email,
+                name=person.full_name,
+                password=password,
+                authsource="keycloak",
+            )
+            new_mailbox = True
+        else:
+            errors.append(
+                f"{person.role_id_name}: missing mailcow mailbox for {person.wsjrdp_email}"
+            )
+    else:
+        _LOGGER.info(f"Create/Update mailcow alias {keycloak_email} -> {person.email}")
+        ctx.mailcow().add_alias(keycloak_email, add_goto=person.email)
+        _LOGGER.info(
+            f"Create/Update mailcow alias {person.moss_email} -> {person.email}"
+        )
+        ctx.mailcow().add_alias(person.moss_email, add_goto=person.email)
+
+    if new_mailbox:
+        content = _NEW_ACCOUNT_AND_MAILBOX_MAIL_CONTENT
+        subject = "Dein Jamboree 2027 Mailaccount - {{ person.short_full_name }} (id {{person.id }})"
+    else:
+        content = _NEW_ACCOUNT_MAIL_CONTENT
+        subject = "Dein Jamboree 2027 Account - {{ person.short_full_name }} (id {{person.id }})"
+
+    batch_config = wsjrdp2027.BatchConfig(
+        where=wsjrdp2027.PeopleWhere(id=[]),
+        email_from=person.helpdesk_email,
+        email_subject=subject,
+        extra_email_bcc="david.fritzsche@worldscoutjamboree.de",
+        from_addr="anmeldung@worldscoutjamboree.de",
+        signature=wsjrdp2027.EMAIL_SIGNATURE_CMT,
+        content=content,
+    )
+    prepared = batch_config.prepare(
+        person, dry_run=ctx.dry_run, skip_email=ctx.skip_email, skip_db_updates=True
+    )
+    ctx.send_mailing(prepared, zip_eml=False)
+    ctx.load_people_and_prepare_batch(batch_config)
+
+
+_NEW_ACCOUNT_AND_MAILBOX_MAIL_CONTENT = """
+Hallo {{ p.greeting_name }},
+
+wir haben dir eine Mailadresse eingerichtet:
+
+
+https://mail.worldscoutjamboree.de
+Mailadresse: {{ p.wsjrdp_email }}
+Passwort: {{ p.additional_info.keycloak_initial_password }}
+
+
+Bitte logge dich, über Single Sign-On, dort ein.
+Wir wünschen uns, dass du diese Mailadresse aktiv nutzt, um per E-Mail zu Jamboree-Angelegenheiten zu kommunizieren.
+So sehen die YPs und das CMT, dass du zum German Contingent gehörst.
+
+Falls es technische Probleme oder Fragen gibt schreib uns gerne an helpdesk@worldscoutjamboree.de.
+
+
+Gut Pfad und bis bald
+Dein Contingent Management Team
+""".strip()
+
+
+_NEW_ACCOUNT_MAIL_CONTENT = """
+Hallo {{ p.greeting_name }},
+
+wir haben einen neuen Account für dich eingerichtet.
+
+All unsere Zugänge werden von einer zentralen Instanz Keycloak verwaltet.
+D.h. für dich, dass du dich überall mit dem Button "WSJ Login" oder "Single Sign On" anmeldest.
+Von dort wirst du weiter auf login.worldscoutjamboree.de geleitet wo du deinen Username und Passwort angibst.
+
+
+Nutzer: {{ p.wsjrdp_email }}
+Passwort: {{ p.additional_info.keycloak_initial_password }}
+
+
+Gut Pfad und bis bald
+Dein Contingent Management Team
+""".strip()
 
 
 def sync(
-    ctx: wsjrdp2027.WsjRdpContext,
-    conn: _psycopg.Connection,
-    groupname: str,
-    keycloak_users: list[wsjrdp2027.keycloak.KeycloakUserDict],
+    ctx: wsjrdp2027.WsjRdpContext, conn: _psycopg.Connection, groupname: str
 ) -> bool:
     errors = []
     email2row = {}
-
-    email2keycloak_user = {
-        user.get("email"): user
-        for user in keycloak_users
-        if user.get("enabled") and user.get("email")
-    }
-    username2keycloak_user = {
-        user["username"]: user for user in keycloak_users if user.get("enabled")
-    }
 
     additional_info_updates = []
     keycloak_updates = []
 
     df = load_people_dataframe_for_groupname(conn, groupname=groupname)
 
-    address2goto = _load_address2goto(ctx)
-
     for p in wsjrdp2027.iter_people_dataframe(df):
+        if not p.wsjrdp_email:
+            errors.append(f"{p.role_id_name} has no wsjrdp_email")
+            continue
         email2row[p.wsjrdp_email] = p
 
         if not _check_for_keycloak_user(
@@ -233,16 +322,14 @@ def sync(
             conn,
             person=p,
             groupname=groupname,
-            keycloak_users=keycloak_users,
             errors=errors,
-            email2keycloak_user=email2keycloak_user,
-            username2keycloak_user=username2keycloak_user,
             additional_info_updates=additional_info_updates,
-            address2goto=address2goto,
         ):
             continue
 
-        keycloak_user = email2keycloak_user[p.wsjrdp_email]
+        keycloak_user = ctx.keycloak().get_user_by_email(
+            p.wsjrdp_email, allow_cached=True
+        )
         keycloak_username = keycloak_user["username"]
         keycloak_attributes = keycloak_user.get("attributes", {})
 
@@ -304,17 +391,7 @@ def sync(
             _LOGGER.debug(f"{p.role_id_name} Check {key=} for {email=}")
             if email is None:
                 continue
-            old_goto_list = []
-            goto_list = address2goto.get(email, [])
-            while goto_list != old_goto_list:
-                old_goto_list, goto_list = (
-                    goto_list,
-                    list(
-                        itertools.chain.from_iterable(
-                            address2goto.get(a, [a]) for a in goto_list
-                        )
-                    ),
-                )
+            goto_list = _get_expanded_goto_list(ctx, email)
             _LOGGER.debug(f"{p.role_id_name} {goto_list=}")
             _LOGGER.debug(f"{p.role_id_name} {p.additional_info.get(key)=}")
             if goto_list and goto_list != p.additional_info.get(key):
@@ -330,16 +407,27 @@ def sync(
     return True
 
 
-def _load_keycloak_users_in_groups(ctx: wsjrdp2027.WsjRdpContext, groupnames):
-    all_users = []
-    for groupname in groupnames:
-        _LOGGER.info(f"Load keycloak {groupname=} users")
-        users = ctx.keycloak().get_users_in_group(groupname, enabled=True)
-        _LOGGER.info(f"Found {len(users)} enabled {groupname=} users in Keycloak")
-        all_users.extend(users)
-    if len(groupnames) > 1:
-        _LOGGER.info(f"Found {len(all_users)} enabled users in Keycloak")
-    return all_users
+def _get_expanded_goto_list(ctx: wsjrdp2027.WsjRdpContext, email: str) -> list[str]:
+    import itertools
+
+    def get_goto_list(email, default=None) -> list[str]:
+        user_dict = ctx.keycloak().get_user_or_none_by_email(email, allow_cached=True)
+        if not user_dict:
+            return default or []
+        else:
+            goto = user_dict.get("goto")
+            return goto.split(",") if goto else []
+
+    old_goto_list = []
+    goto_list = get_goto_list(email, [])
+    while goto_list != old_goto_list:
+        old_goto_list, goto_list = (
+            goto_list,
+            list(
+                itertools.chain.from_iterable(get_goto_list(a, [a]) for a in goto_list)
+            ),
+        )
+    return goto_list
 
 
 def main():
@@ -352,11 +440,17 @@ def main():
     log_filename = out_base.with_suffix(".log")
     ctx.configure_log_file(log_filename)
 
-    keycloak_users = _load_keycloak_users_in_groups(ctx, KEYCLOAK_GROUPNAMES_TO_FETCH)
+    _LOGGER.info("Load mailcow aliases to fill cache")
+    _aliases = ctx.mailcow().get_alias_list()
+    _LOGGER.info(f"  ... loaded {len(_aliases)} aliases from mailcow")
+
+    _LOGGER.info("Load keycloak users to fill cache")
+    _users = ctx.keycloak().get_user_list()
+    _LOGGER.info(f"  ... loaded {len(_users)} users from keycloak")
 
     with ctx.psycopg_connect() as conn:
         for groupname in GROUPNAMES_TO_SYNC:
-            if not sync(ctx, conn, groupname=groupname, keycloak_users=keycloak_users):
+            if not sync(ctx, conn, groupname=groupname):
                 return 1
 
     _LOGGER.info("")
