@@ -139,6 +139,7 @@ class Person:
 
     id: int
     primary_group_id: int
+    status: str
 
     @property
     def df(self) -> _pandas.DataFrame:

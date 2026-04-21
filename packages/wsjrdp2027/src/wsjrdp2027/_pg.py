@@ -5,6 +5,8 @@ import logging as _logging
 import textwrap as _textwrap
 import typing as _typing
 
+from psycopg.sql import Composable
+
 from . import _person_pg, _types
 
 
@@ -16,7 +18,7 @@ if _typing.TYPE_CHECKING:
     import psycopg as _psycopg
     import psycopg.sql as _psycopg_sql
 
-    from . import _camt, _payment_role
+    from . import _camt, _payment_role, moss as _moss
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -71,6 +73,8 @@ def col_val_pairs_to_insert_sql_query(
 
     >>> col_val_pairs_to_insert_sql_query("tags", [("name", "Tag")]).as_string()
     'INSERT INTO "tags" ("name") VALUES (\'Tag\') RETURNING "id"'
+    >>> col_val_pairs_to_insert_sql_query("tags", [("name", "Tag")], returning=None, on_conflict='DO NOTHING').as_string()
+    'INSERT INTO "tags" ("name") VALUES (\'Tag\') ON CONFLICT \'DO NOTHING\''
     """
     from psycopg.sql import SQL, Composed, Identifier
 
@@ -102,12 +106,14 @@ def col_val_pairs_to_insert_do_nothing_sql_query(
     matching_colval_pairs,
     other_colval_pairs=None,
     *,
-    returning: str | _psycopg_sql.Composable = "id",
+    returning: str | _psycopg_sql.Composable | None = "id",
 ) -> _psycopg_sql.Composed:
     r"""Return a composed INSERT query.
 
     >>> col_val_pairs_to_insert_do_nothing_sql_query("tags", [("name", "Tag")]).as_string()
     'WITH t AS (INSERT INTO "tags" ("name") VALUES (\'Tag\') ON CONFLICT DO NOTHING RETURNING "id")\nSELECT * FROM t\nUNION\nSELECT "id" FROM "tags" WHERE "name" = \'Tag\''
+    >>> col_val_pairs_to_insert_do_nothing_sql_query("tags", [("name", "Tag")], returning=None).as_string()
+    'INSERT INTO "tags" ("name") VALUES (\'Tag\') ON CONFLICT DO NOTHING'
     """
     from psycopg.sql import SQL, Identifier
 
@@ -128,18 +134,23 @@ def col_val_pairs_to_insert_do_nothing_sql_query(
 
     where_clause = SQL(" AND ").join(sql_cmp(k, v) for k, v in matching_colval_pairs)
 
+    if not returning:
+        returning = None
     insert_query = col_val_pairs_to_insert_sql_query(
         table_name, all_colval_pairs, returning=returning, on_conflict=SQL("DO NOTHING")
     )
-    query = SQL("""WITH t AS ({insert_query})
+    if not returning:
+        query = insert_query
+    else:
+        query = SQL("""WITH t AS ({insert_query})
 SELECT * FROM t
 UNION
 SELECT {returning} FROM {table_name} WHERE {where_clause}""").format(
-        table_name=table_name,
-        insert_query=insert_query,
-        returning=returning,
-        where_clause=where_clause,
-    )
+            table_name=table_name,
+            insert_query=insert_query,
+            returning=returning,
+            where_clause=where_clause,
+        )
     return query
 
 
@@ -1619,3 +1630,58 @@ def pg_update_people_additional_info(
         with conn.cursor() as cur:
             _LOGGER.info(f"{query}" + "".join(f"\n  | {d!r}" for d in key_deletes))
             cur.executemany(query, key_deletes)
+
+
+def insert_moss_balance_movement(
+    conn: _psycopg.Connection,
+    balance_movement: _moss.MossBalanceMovement
+    | _collections_abc.Iterable[_moss.MossBalanceMovement],
+) -> list[tuple[int, str]]:
+    from psycopg.sql import DEFAULT, SQL, Identifier, Literal, as_string
+    from psycopg.types.json import Jsonb
+
+    from . import moss as _moss
+
+    def _pre_process(d: dict) -> dict:
+        def _map(obj):
+            if obj is None:
+                return DEFAULT
+            elif isinstance(obj, dict):
+                return Jsonb(obj)
+            else:
+                return obj
+
+        return {k: _map(v) for k, v in d.items()}
+
+    if isinstance(balance_movement, _moss.MossBalanceMovement):
+        balance_movement = [balance_movement]
+
+    bm_list = [_pre_process(bm.asdict()) for bm in balance_movement]
+    if not bm_list:
+        return []
+    cols = [col for col in bm_list[0].keys()]
+
+    table_name = Identifier("moss_balance_movements")
+    col_names = SQL(", ").join(Identifier(col) for col in cols)
+    base = t"INSERT INTO {table_name:i} ({col_names:q})"
+    query_suffix = (
+        t" ON CONFLICT DO NOTHING RETURNING {'id':i}, {'unique_item_number':i}"
+    )
+    _LOGGER.info(f"{as_string(base)} ...{as_string(query_suffix)};")
+
+    full_query = t""
+
+    for bm in bm_list:
+        values = SQL(", ").join(
+            v if isinstance((v := bm[col]), Composable) else Literal(v) for col in cols
+        )
+        bm_query = t"{base:q} VALUES ( {values:q} ) {query_suffix:q};\n"
+        full_query += bm_query
+        _LOGGER.info(f"  | {as_string(values)}")
+
+    with conn.cursor() as cur:
+        all_results = []
+        cur.execute(full_query)
+        for _ in cur.results():
+            all_results.extend(cur.fetchall())
+    return all_results

@@ -182,7 +182,9 @@ WHERE id = %(id)s"""
         return 1
 
     _LOGGER.info("")
-    _LOGGER.info(f"Moss E-Mail Adresses for eHOC+ ({len(_EXT_EHOC_USERNAMES)} members in list)")
+    _LOGGER.info(
+        f"Moss E-Mail Adresses for eHOC+ ({len(_EXT_EHOC_USERNAMES)} members in list)"
+    )
     for username in _EXT_EHOC_USERNAMES:
         user = username2keycloak_user[username]
         print(user["email"])
