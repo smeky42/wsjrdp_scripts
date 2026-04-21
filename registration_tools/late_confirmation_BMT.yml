@@ -1,0 +1,29 @@
+query:
+  include_sepa_mail_in_mailing_to: true
+  where:
+    role: IST
+    id: [485, 486]  # Test-Accounts
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: ist@worldscoutjamboree.de
+email_subject: "Bestätigung deiner {{ row.wsjrdp_role }} Anmeldung zum Jamboree 2027 in Polen - {{ row.short_full_name }} (id {{ row.id }})"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir freuen uns sehr, deine Teilnahme als Black-Magic-Tent IST am World Scout Jamboree 2027 in Polen hiermit offiziell zu bestätigen!
+
+  {{ render_confirmation_info() }}
+
+
+  Ein aufregendes Abenteuer liegt vor uns, und wir danken dir für dein Engagement.
+
+
+  Damit du keine wichtigen Informationen verpasst und dich optimal mit anderen IST-Mitgliedern vernetzen kannst, laden wir dich herzlich in unsere Telegram-Gruppen ein:
+
+    * IST-Infokanal //t.me/+WlnM89iA9b4wZWJi (Hier erhältst du wichtige Informationen und Updates direkt von uns.)
+    * IST-Austauschgruppe: //t.me/+Nb1UEfJCof1jOTBi (Hier kannst du dich mit anderen IST-Mitgliedern austauschen und vernetzen.)
+
+
+  {{ render_upcoming_payment_text() }}
+  Gut Pfad
+  Dein Contingent Management Team
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
