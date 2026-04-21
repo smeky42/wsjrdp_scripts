@@ -6,13 +6,13 @@ query:
     sepa_status: ['ok']
     status: 'confirmed'
     role: ['CMT', 'UL', 'YP', 'IST']
-    exclude_primary_group_id: [5, 6, 7, 45, 46]
+    exclude_primary_group_id: [5, 6, 7, 46]
   include_sepa_mail_in_mailing_to: true
   email_only_where:
     id: [482]
 from_addr: "anmeldung@worldscoutjamboree.de"
 email_from: "info@worldscoutjamboree.de"
-email_reply_to: "info@worldscoutjamboree.de"
+email_reply_to: "finanzen@worldscoutjamboree.de"
 email_subject: "WSJ 2027 Ankündigung SEPA Lastschrifteinzug {{ row.collection_date | date_de }} - {{ row.payment_role.short_role_name }} {{ row.id_and_name }}"
 signature: "{{ EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION }}"
 content: |
