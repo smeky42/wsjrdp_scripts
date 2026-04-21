@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections.abc as _collections_abc
+import decimal as _decimal
 import logging as _logging
 import math as _math
 import os as _os
@@ -41,6 +42,9 @@ __all__ = [
     "to_date_or_none",
     "to_datetime",
     "to_datetime_or_none",
+    "to_decimal",
+    "to_decimal_or_none",
+    "to_int",
     "to_int_list",
     "to_int_list_or_none",
     "to_int_or_none",
@@ -468,6 +472,8 @@ def to_date_or_none(date: _datetime.date | str | None, /) -> _datetime.date | No
 
       >>> to_date_or_none(None) is None
       True
+      >>> to_date_or_none("") is None
+      True
       >>> to_date_or_none("2025-06-01")
       datetime.date(2025, 6, 1)
       >>> to_date_or_none("01.06.2025")
@@ -476,7 +482,7 @@ def to_date_or_none(date: _datetime.date | str | None, /) -> _datetime.date | No
     import datetime
     import re
 
-    if date is None:
+    if date is None or date == "":
         return None
     elif isinstance(date, str):
         if date.upper() == "TODAY":
@@ -1000,14 +1006,90 @@ def to_str_set(*args: str | _collections_abc.Iterable[str] | None) -> set[str]:
 
 
 @_typing.overload
-def to_int_or_none(obj: int) -> int: ...
+def to_int_or_none(obj: int, /, *, base: int | None = 10) -> int: ...
 @_typing.overload
-def to_int_or_none(obj: object) -> int | None: ...
-def to_int_or_none(obj):
-    try:
-        return int(obj)
-    except Exception:
+def to_int_or_none(obj: object, /, *, base: int | None = 10) -> int | None: ...
+def to_int_or_none(obj, /, *, base: int | None = 10):
+    """Return :int: value of *obj* or `None`.
+
+    >>> to_int_or_none(345)
+    345
+    >>> to_int_or_none("345")
+    345
+    >>> to_int_or_none("0345")
+    345
+    >>> to_int_or_none(345.0)
+    345
+    >>> to_int_or_none("345.0")
+    345
+    >>> import decimal
+    >>> to_int_or_none(decimal.Decimal("345.0"))
+    345
+    >>> import numpy
+    >>> to_int_or_none(numpy.uint64(345))
+    345
+
+    >>> to_int_or_none(None) is None
+    True
+    >>> import math
+    >>> to_int_or_none(math.nan) is None
+    True
+
+    """
+    if obj is None:
         return None
+    elif isinstance(obj, _typing.SupportsInt):
+        try:
+            return int(obj)
+        except Exception:
+            return None
+    else:
+        obj = _re.sub(r"[.][0-9]+\s*$", "", str(obj))
+        try:
+            return int(obj, base=base) if base is not None else int(obj)
+        except Exception:
+            return None
+
+
+def to_int(obj: object, /, *, base: int | None = 10) -> int:
+    """Return :int: for *obj* or raises.
+
+
+    >>> to_int(345)
+    345
+    >>> to_int("345")
+    345
+    >>> to_int("0345")
+    345
+    >>> to_int(345.0)
+    345
+    >>> to_int("345.0")
+    345
+    >>> import decimal
+    >>> to_int(decimal.Decimal("345.0"))
+    345
+    >>> import numpy
+    >>> to_int(numpy.uint64(345))
+    345
+    """
+    if isinstance(obj, _typing.SupportsInt):
+        return int(obj)
+    obj = _re.sub(r"[.][0-9]+\s*$", "", str(obj))
+    return int(obj, base=base) if base is not None else int(obj)
+
+
+def to_decimal(obj: object) -> _decimal.Decimal:
+    return _decimal.Decimal(obj)
+
+
+def to_decimal_or_none(obj: object) -> _decimal.Decimal | None:
+    if obj is None:
+        return None
+    else:
+        try:
+            return _decimal.Decimal(obj)
+        except Exception:
+            return None
 
 
 def to_yaml_str(

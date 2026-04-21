@@ -1225,6 +1225,7 @@ class WsjRdpContext:
         *,
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
+        collection_date: _datetime.date | str | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
         conn: _psycopg.Connection | None = None,
     ) -> _person.Person:
@@ -1234,6 +1235,7 @@ class WsjRdpContext:
             batch_config,
             extra_static_df_cols=extra_static_df_cols,
             extra_mailing_bcc=extra_mailing_bcc,
+            collection_date=collection_date,
             now=now,
             conn=conn,
         )
@@ -1247,6 +1249,7 @@ class WsjRdpContext:
         exclude_deregistered: bool = False,
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
+        collection_date: _datetime.date | str | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
         conn: _psycopg.Connection | None = None,
     ) -> _person.Person:
@@ -1261,6 +1264,7 @@ class WsjRdpContext:
             batch_config,
             extra_static_df_cols=extra_static_df_cols,
             extra_mailing_bcc=extra_mailing_bcc,
+            collection_date=collection_date,
             now=now,
             conn=conn,
         )
@@ -1272,6 +1276,7 @@ class WsjRdpContext:
         *,
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
+        collection_date: _datetime.date | str | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
         conn: _psycopg.Connection | None = None,
     ) -> _pandas.DataFrame:
@@ -1284,6 +1289,7 @@ class WsjRdpContext:
             conn=conn,
             extra_static_df_cols=extra_static_df_cols,
             extra_mailing_bcc=extra_mailing_bcc,
+            collection_date=collection_date,
             log_resulting_data_frame=False,
             now=now,
         )

@@ -485,7 +485,7 @@ OFFSET {offset or 0}
         d_writer.writeheader()
         sum_cents = 0
         for _, row in df.iterrows():
-            amount_currency = row.get("amount_currencty") or "EUR"
+            amount_currency = row.get("amount_currency") or "EUR"
             amount_cents = int(round(row["amount_cents"]))
             amount_eur = amount_cents / 100
             amount_de = str(f"{amount_eur:.2f}").replace(".", ",").replace(",00", "")
