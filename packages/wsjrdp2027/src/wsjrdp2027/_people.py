@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import collections.abc as _collections_abc
 import datetime as _datetime
+import decimal as _decimal
 import logging as _logging
 import typing as _typing
 
@@ -117,8 +118,11 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "accounting_entries_amounts_cents",
     "regular_full_fee_cents",
     "total_fee_cents",
-    "total_fee_reduction_comment",
+    "total_fee_reduction",
     "total_fee_reduction_cents",
+    "total_fee_reduction_hint",
+    "total_fee_reduction_issue",
+    "total_fee_reduction_comment",
     "installments_cents_dict",
     "installments_cents_sum",
     "custom_installments_comment",
@@ -248,7 +252,7 @@ def _compute_installments_cents_dict_from_row(
     fee_rules = id2fee_rules.get(id, {})
     year = _util.to_int_or_none(fee_rules.get("custom_installments_starting_year"))
     custom_installments_cents = fee_rules.get("custom_installments_cents")
-    fee_reduction_cents = fee_rules.get("total_fee_reduction_cents") or 0
+    fee_reduction_cents = row.get("total_fee_reduction_cents") or 0
     if payment_role is None:
         return None
     elif year is None or custom_installments_cents is None:
@@ -403,9 +407,7 @@ SELECT
   custom_installments_issue,
   custom_installments_starting_year,
   custom_installments_cents,
-  (SELECT SUM(cents) FROM UNNEST(custom_installments_cents) cents) AS custom_installments_sum_cents,
-  total_fee_reduction_comment,
-  COALESCE(total_fee_reduction_cents, 0) AS total_fee_reduction_cents
+  (SELECT SUM(cents) FROM UNNEST(custom_installments_cents) cents) AS custom_installments_sum_cents
 FROM wsj27_rdp_fee_rules
 WHERE status IN ({fee_rules_str}) AND deleted_at IS NULL
 ORDER BY array_position(ARRAY[{fee_rules_str}], status) ASC
@@ -576,8 +578,6 @@ def _enrich_people_dataframe(
     df["installments_cents_sum"] = df["installments_cents_dict"].map(
         lambda d: sum(d.values()) if d is not None else None
     )
-    col_from_fee_rules("total_fee_reduction_cents", f=lambda val: val or 0)
-    col_from_fee_rules("total_fee_reduction_comment")
 
     df["total_fee_cents"] = df.apply(_compute_total_fee_cents, axis=1)  # fmt: skip
     df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
@@ -731,6 +731,10 @@ SELECT
   people.additional_emails_for_mailings,
   people.tag_list, people.note_list,
   people.payment_role,
+  people.wsjrdp_total_fee_reduction,
+  people.wsjrdp_total_fee_reduction_issue,
+  people.wsjrdp_total_fee_reduction_hint,
+  people.wsjrdp_total_fee_reduction_comment,
   people.accounting_entries_amounts_cents,
   COALESCE(people.sepa_status, 'ok') AS sepa_status,
   people.sepa_name, people.sepa_address, people.sepa_mail, people.sepa_iban, people.sepa_bic,
@@ -765,6 +769,16 @@ ORDER BY people.id{limit_clause}
     df = pd.DataFrame(rows)
 
     if len(df) != 0:
+        df.rename(
+            columns={
+                "wsjrdp_total_fee_reduction": "total_fee_reduction",
+                "wsjrdp_total_fee_reduction_hint": "total_fee_reduction_hint",
+                "wsjrdp_total_fee_reduction_issue": "total_fee_reduction_issue",
+                "wsjrdp_total_fee_reduction_comment": "total_fee_reduction_comment",
+            },
+            inplace=True,
+        )
+        df["total_fee_reduction_cents"] = df["total_fee_reduction"].map(_eur_to_cents)
         if fee_rules is None:
             fee_rules = "active"
         id2fee_rules = _fetch_id2fee_rules(conn, fee_rules=fee_rules)
@@ -1237,3 +1251,41 @@ def load_person_row(
         raise RuntimeError(err_msg)
     row = df.iloc[0]
     return row
+
+
+# ======================================================================================
+# Helper Functions
+# ======================================================================================
+
+
+def _eur_to_cents(value: _decimal.Decimal | float | str | None) -> int:
+    """Return cents amount for euro amount *value*.
+
+    >>> import decimal, math
+    >>> _eur_to_cents(1.3)
+    130
+    >>> _eur_to_cents("1.3")
+    130
+    >>> _eur_to_cents(decimal.Decimal("1.3"))
+    130
+    >>> _eur_to_cents(decimal.Decimal("1.345"))
+    135
+    >>> _eur_to_cents(None)
+    0
+    >>> _eur_to_cents(math.nan)
+    0
+    >>> _eur_to_cents("nan")
+    0
+    """
+    if not value:
+        return 0
+    else:
+        value = _decimal.Decimal(value)
+        if value.is_nan():
+            return 0
+        else:
+            return int(
+                (value * 100).quantize(
+                    _decimal.Decimal("1"), rounding=_decimal.ROUND_HALF_UP
+                )
+            )
