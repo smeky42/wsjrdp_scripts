@@ -166,7 +166,9 @@ def attach_sondervereinbarung_raten(
 """
         _LOGGER.error("%s", err_msg)
         raise RuntimeError(err_msg)
-    is_jsf = row["total_fee_reduction_comment"] == "JSF"
+    is_jsf = (row.get("total_fee_reduction_hint") == "JSF") or (
+        row.get("total_fee_reduction_comment") == "JSF"
+    )
     if is_jsf:
         special_agreement_title = (
             "Sondervereinbarung Ratenzahlungen & Jamboree Solidarity Fund (JSF)"
