@@ -22,7 +22,7 @@ _SELFDIR = _pathlib.Path(__file__).parent.resolve()
 _LOGGER = logging.getLogger(__name__)
 
 
-COLLECTION_DATE = datetime.date(2025, 12, 5)
+COLLECTION_DATE = datetime.date(2026, 5, 5)
 
 
 def _create_argument_parser():
