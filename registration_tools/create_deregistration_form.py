@@ -41,30 +41,31 @@ def create_argument_parser():
     p = argparse.ArgumentParser()
     p.add_argument("--issue")
     p.add_argument("--refund-amount", type=wsjrdp2027.to_int_or_none, default=None)
+    p.add_argument(
+        "--open-editor",
+        action="store_true",
+        default=False,
+        help="Open E-Mail body content in editor before preparing EML file",
+    )
     p.add_argument("person_id")
     return p
 
 
-def attach_cancellation_request(
-    ctx: wsjrdp2027.WsjRdpContext, prepared: wsjrdp2027.PreparedEmailMessage
-) -> None:
+def write_cancellation_request_pdf(
+    ctx: wsjrdp2027.WsjRdpContext, *, pdf_path: _pathlib.Path, person: wsjrdp2027.Person
+) -> bytes:
     import json
     import pprint
     import textwrap
 
-    assert prepared.message is not None
-    row = prepared.row
-    assert row is not None
+    row = person
 
     _LOGGER.info(
         "id: %s, full_name: %s, row:\n%s",
         row["id"],
         row.get("full_name", None),
-        textwrap.indent(row.to_string(), "  | "),
+        textwrap.indent(person.row.to_string(), "  | "),
     )
-
-    pdf_filename = f"{prepared.mailing_name}.pdf"
-    pdf_path = ctx.make_out_path(pdf_filename)
 
     additional_info = row.get("additional_info", {})
     deregistration_issue = additional_info.get("deregistration_issue", "")
@@ -134,7 +135,18 @@ def attach_cancellation_request(
         SELFDIR / f"{_SELF_NAME}.typ", output=pdf_path, sys_inputs=sys_inputs
     )
     _LOGGER.info(f"Wrote {pdf_path}")
-    pdf_bytes = pdf_path.read_bytes()
+    return pdf_path.read_bytes()
+
+
+def attach_cancellation_request(
+    ctx: wsjrdp2027.WsjRdpContext,
+    *,
+    prepared: wsjrdp2027.PreparedEmailMessage,
+    pdf_filename: str,
+    pdf_bytes: bytes,
+) -> None:
+
+    assert prepared.message is not None
     prepared.message.add_attachment(
         pdf_bytes, maintype="application", subtype="pdf", filename=pdf_filename
     )
@@ -164,10 +176,17 @@ def main(argv=None):
         out_base = ctx.make_out_path(batch_config.name)
         ctx.configure_log_file(out_base.with_suffix(".log"))
 
+        pdf_filename = f"{batch_config.name}.pdf"
+        pdf_path = ctx.make_out_path(pdf_filename)
+        pdf_bytes = write_cancellation_request_pdf(ctx, pdf_path=pdf_path, person=p)
+
         mailing = batch_config.prepare(
             p,
-            msg_cb=lambda p: attach_cancellation_request(ctx, p),
+            msg_cb=lambda p: attach_cancellation_request(
+                ctx, prepared=p, pdf_filename=pdf_filename, pdf_bytes=pdf_bytes
+            ),
             out_dir=ctx.out_dir,
+            open_editor=ctx.parsed_args.open_editor,
         )
         ctx.update_db_and_send_mailing(mailing, conn=conn, zip_eml=False)
 
