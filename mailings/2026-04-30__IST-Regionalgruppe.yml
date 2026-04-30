@@ -1,0 +1,42 @@
+# Run with:
+# uv run tools/mailing_from_yml.py mailings/2026-04-30__IST-Regionalgruppe.yml
+# WSJRDP_SCRIPTS_CONFIG=config-prod.yml uv run tools/mailing_from_yml.py mailings/2026-04-30__IST-Regionalgruppe.yml
+updates:
+  # new_primary_group_id: 49 # Süd
+  # new_primary_group_id: 50 # Süd West
+  # new_primary_group_id: 51 # West
+  new_primary_group_id: 52 # Nord Ost 
+query:
+  include_sepa_mail_in_mailing_to: false
+  where:
+    role: IST
+    status: ['confirmed']
+    primary_group_id: 4
+    # id: [2, 82, 386, 2085 ]  # Peter und IST Manager Accounts 
+    # Süd
+    # id: [5, 6, 251, 253, 271, 327, 330, 378, 380, 385, 437, 439, 474, 481, 557, 584, 688, 699, 714, 715, 716, 747, 750, 799, 843, 859, 871, 887, 1024, 1182, 1186, 1202, 1208, 1274, 1292, 1336, 1362, 1414, 1658, 1715, 1821, 1863, 1957, 2006, 2131, 2154, 2304, 2346, 2353, 2365, 2372, 2377, 2380, 2386, 2431, 2440, 2447, 2449, 2451, 2452, 2453] 
+    # Süd West
+    # id: [28, 136, 241, 244, 254, 258, 297, 350, 365, 369, 395, 397, 401, 421, 528, 578, 600, 727, 855, 857, 1012, 1013, 1033, 1063, 1065, 1072, 1079, 1112, 1195, 1196, 1294, 1350, 1353, 1387, 1462, 1560, 1575, 1789, 1854, 1870, 1878, 1890, 1902, 2107, 2181, 2190, 2191, 2231, 2312, 2317, 2339, 2358, 2392, 2444]
+    # West
+    # id: [223, 235, 237, 245, 249, 255, 256, 257, 277, 324, 328, 331, 332, 351, 355, 371, 381, 432, 435, 473, 530, 536, 704, 724, 771, 903, 905, 906, 1026, 1163, 1218, 1315, 1360, 1587, 1606, 1621, 1625, 1697, 1748, 1780, 1871, 1967, 1976, 1993, 1994, 1995, 2078, 2084, 2189, 2208, 2247, 2268, 2354, 2367, 2374, 2385, 2403, 2412, 2415, 2437]
+    # Nord Ost
+    # id: [228, 238, 291, 309, 314, 323, 418, 560, 652, 700, 703, 828, 830, 841, 1035, 1106, 1142, 1288, 1337, 1361, 1393, 1620, 1634, 1649, 1751, 1792, 1820, 1886, 1907, 2096, 2166, 2281, 2289, 2334, 2359, 2368, 2387]
+
+from_addr: anmeldung@worldscoutjamboree.de
+email_from: ist@worldscoutjamboree.de
+email_subject: "Deine IST Regionalgruppe für das World Scout Jamboree 2027 in Polen! - {{ row.short_full_name }} (id {{ row.id }})"
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  wir freuen uns, dir mitteilen zu können, dass du in deine geplante Regionalgruppe "Nord Ost" verschoben wurdest. 
+
+  Du kannst dich unter https://anmeldung.worldscoutjamboree.de/ mit deinen Zugangsdaten anmelden und deine Gruppe 
+  überprüfen.
+
+  Falls du Fragen oder Änderngswünsche hast, melde dich gerne bei Micha oder antworte auf diese E-Mail.
+
+  Gut Pfad, dein IST-Support-Team
+
+  Micha
