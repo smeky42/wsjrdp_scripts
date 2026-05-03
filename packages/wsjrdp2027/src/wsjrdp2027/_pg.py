@@ -16,9 +16,13 @@ if _typing.TYPE_CHECKING:
 
     import pandas as _pandas
     import psycopg as _psycopg
+    import psycopg.rows as _psycopg_rows
     import psycopg.sql as _psycopg_sql
 
-    from . import _camt, _payment_role, moss as _moss
+    from . import _camt, _payment_role, _psycopg_client, moss as _moss
+
+
+_Row = _typing.TypeVar("_Row", covariant=True, default="_psycopg_rows.TupleRow")
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -211,7 +215,7 @@ def _execute_query_fetch_id(
 
 
 def _execute_query_fetchall(
-    cursor_or_connection: _psycopg.Cursor | _psycopg.Connection,
+    cursor_or_connection: _psycopg.Cursor[_Row] | _psycopg.Connection,
     /,
     query,
     *,
@@ -471,7 +475,7 @@ def pg_fetch_person_dict_for_id(
 
 
 def pg_fetch_person_dicts_for_ids(
-    conn: _psycopg.Connection,
+    conn: _psycopg.Connection | _psycopg_client.PsycopgClient,
     /,
     ids: _collections_abc.Iterable[int],
 ) -> dict[int, _typing.Any]:
@@ -522,7 +526,7 @@ _ROLE_COLS = [
 
 
 def pg_fetch_role_dicts_for_person_ids(
-    conn: _psycopg.Connection,
+    conn: _psycopg.Connection | _psycopg_client.PsycopgClient,
     /,
     ids: _collections_abc.Iterable[int],
     today: _datetime.date | str | None = None,

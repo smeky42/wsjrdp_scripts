@@ -32,6 +32,8 @@ if _typing.TYPE_CHECKING:
         _mailcow_client,
         _people_query,
         _person,
+        _psycopg_client,
+        _ssh_tunnel,
     )
 
 
@@ -192,6 +194,53 @@ class WsjRdpContextConfig:
             **kwargs,  # type: ignore
         )
         return self
+
+    def as_ssh_tunnel_config(
+        self, *, remote_bind_address: tuple[str, int] | _typing.Literal["db"] | None
+    ) -> _ssh_tunnel.SSHTunnelConfig:
+        from . import _ssh_tunnel
+
+        if isinstance(remote_bind_address, str):
+            match remote_bind_address:
+                case "db":
+                    remote_bind_address = (self.db_host, self.db_port)
+                case _:
+                    raise RuntimeError(
+                        f"Invalid remote_bind_address: {remote_bind_address!r}"
+                    )
+
+        return _ssh_tunnel.SSHTunnelConfig(
+            host=self.ssh_host,
+            port=self.ssh_port,
+            username=self.ssh_username,
+            private_key_path=self.ssh_private_key,
+            remote_bind_address=remote_bind_address,
+        )
+
+    def as_psycopg_config(
+        self,
+        *,
+        ssh_tunnel: _ssh_tunnel.SSHTunnel | None = None,
+        autocommit: bool = False,
+        read_only: bool = True,
+    ) -> _psycopg_client.PsycopgConfig:
+        from . import _psycopg_client
+
+        if ssh_tunnel is not None:
+            db_host = ssh_tunnel.local_bind_host
+            db_port = ssh_tunnel.local_bind_port
+        else:
+            db_host = self.db_host
+            db_port = self.db_port
+        return _psycopg_client.PsycopgConfig(
+            host=db_host,
+            port=db_port,
+            user=self.db_username,
+            password=self.db_password,
+            dbname=self.db_name,
+            autocommit=autocommit,
+            read_only=read_only,
+        )
 
 
 class WsjRdpContextKind(_enum.StrEnum):
@@ -749,6 +798,12 @@ class WsjRdpContext:
         )
         self.require_approval_to_run_in_prod(prompt=prompt)
 
+    def _get_resource_for_keys(self, keys: _typing.Iterable[str]):
+        for key in keys:
+            old = self._resources.get(key)
+            if old is not None:
+                return old
+
     def _get_or_create_resource(
         self,
         key: str,
@@ -757,6 +812,7 @@ class WsjRdpContext:
         force_new: bool = False,
         dry_run: bool | None = None,
         audithook: _collections_abc.Callable | bool | None = None,
+        create_kwargs: dict | None = None,
     ):
         old = self._resources.get(key)
         if force_new or old is None:
@@ -766,7 +822,7 @@ class WsjRdpContext:
                 audithook = self.create_audithook(key)
             elif audithook is False:
                 audithook = None
-            new = create(dry_run=dry_run, audithook=audithook)
+            new = create(dry_run=dry_run, audithook=audithook, **(create_kwargs or {}))
 
             def callback():
                 if callable(close := getattr(new, "close", None)):
@@ -820,6 +876,112 @@ class WsjRdpContext:
             config, dry_run=dry_run, audithook=audithook
         )
 
+    def _hitobito_db_ssh_tunnel(
+        self, force_new: bool = False
+    ) -> _ssh_tunnel.SSHTunnel | None:
+        if not self._config.use_ssh_tunnel:
+            return None
+        return self._get_or_create_resource(
+            "hitobito_ssh_tunnel",
+            create=self.__create_hitobito_db_ssh_tunnel,
+            force_new=force_new,
+        )
+
+    def __create_hitobito_db_ssh_tunnel(
+        self, *, dry_run: bool, audithook: _collections_abc.Callable | None = None
+    ) -> _ssh_tunnel.SSHTunnel:
+        from . import _ssh_tunnel
+
+        ssh_tunnel_config = self._config.as_ssh_tunnel_config(remote_bind_address="db")
+        self._logger.debug(f"Create SSH tunnel: {ssh_tunnel_config}")
+        return _ssh_tunnel.SSHTunnel(config=ssh_tunnel_config)
+
+    def hitobito_psycopg_client(
+        self,
+        *,
+        force_new: bool = False,
+        autocommit: bool | None = None,
+        read_only: bool | None = None,
+        audithook: _psycopg_client.PsycopgAudithook | bool | None = None,
+    ) -> _psycopg_client.PsycopgClient:
+        if self.dry_run and not read_only:
+            read_only = True
+            self._logger.info(f"Set {read_only=} due to dry_run={self.dry_run}")
+        if not force_new:
+            keys = [
+                self.__hitobito_psycopg_resource_key(ro_ac)
+                for ro_ac in self.__hitobito_psycopg_resource_ro_ac_pairs(
+                    read_only=read_only, autocommit=autocommit
+                )
+            ]
+            if (client := self._get_resource_for_keys(keys)) is not None:
+                return client
+        if read_only is None:
+            read_only = True
+            self._logger.debug(f"Argument read_only not given, set {read_only=}")
+        autocommit = bool(autocommit)
+        ro_ac = (read_only, autocommit)
+        key = self.__hitobito_psycopg_resource_key(ro_ac)
+        if audithook is None or audithook is True:
+            if read_only:
+                audithook = False
+            else:
+                audithook = self.create_audithook("Hitobito DB")
+
+        ssh_tunnel = self._hitobito_db_ssh_tunnel()
+        return self._get_or_create_resource(
+            key,
+            create=self._create_hitobito_psycopg_client,
+            force_new=force_new,
+            dry_run=self.dry_run,
+            audithook=audithook,
+            create_kwargs={
+                "autocommit": autocommit,
+                "read_only": read_only,
+                "ssh_tunnel": ssh_tunnel,
+            },
+        )
+
+    def __hitobito_psycopg_resource_ro_ac_pairs(
+        self, read_only=None, autocommit=None
+    ) -> list[tuple[bool, bool]]:
+        def to_vals(val):
+            if val is None:
+                return [True, False]
+            else:
+                return [True] if val else [False]
+
+        return [(ro, ac) for ro in to_vals(read_only) for ac in to_vals(autocommit)]
+
+    _PSYCOPG_RO_AC_TO_NAME = {
+        (True, True): "ro_autocommit",
+        (True, False): "ro",
+        (False, True): "rw_autocommit",
+        (False, False): "rw",
+    }
+
+    @classmethod
+    def __hitobito_psycopg_resource_key(cls, ro_ac) -> str:
+        return f"hitobito_{cls._PSYCOPG_RO_AC_TO_NAME[ro_ac]}_psycopg_client"
+
+    def _create_hitobito_psycopg_client(
+        self,
+        *,
+        dry_run: bool,
+        audithook: _collections_abc.Callable | None = None,
+        autocommit: bool = False,
+        read_only: bool | None = None,
+        ssh_tunnel: _ssh_tunnel.SSHTunnel | None = None,
+    ) -> _psycopg_client.PsycopgClient:
+        from . import _psycopg_client
+
+        if read_only is None:
+            read_only = True
+        psycopg_config = self._config.as_psycopg_config(
+            ssh_tunnel=ssh_tunnel, autocommit=autocommit, read_only=read_only
+        )
+        return _psycopg_client.PsycopgClient(config=psycopg_config, audithook=audithook)
+
     def __create_ssh_forwarder(
         self, *, remote_bind_address: tuple[str, int]
     ) -> _sshtunnel.SSHTunnelForwarder:
@@ -842,48 +1004,16 @@ class WsjRdpContext:
 """.strip("\n ")
 
     @_contextlib.contextmanager
-    def psycopg_connect(self) -> _typing.Iterator[_psycopg.Connection]:
-        import contextlib
+    def psycopg_connect(self) -> _typing.Generator[_psycopg.Connection]:
+        from . import _psycopg_client
 
-        import psycopg
-        import psycopg.types
-        import psycopg.types.hstore
+        ssh_tunnel = self._hitobito_db_ssh_tunnel()
+        if ssh_tunnel:
+            self._logger.info(f"psycopg_connect: SSH tunnel:\n{ssh_tunnel}")
 
-        with contextlib.ExitStack() as exit_stack:
-            if self._config.use_ssh_tunnel:
-                forwarder = self.__create_ssh_forwarder(
-                    remote_bind_address=(self._config.db_host, self._config.db_port)
-                )
-                self._logger.info(
-                    "psycopg_connect: Start SSH tunnel:\n%s",
-                    self.__ssh_forwarder_to_str(forwarder),
-                )
-                exit_stack.enter_context(forwarder)
-
-                db_host = forwarder.local_bind_host
-                db_port = forwarder.local_bind_port
-            else:
-                db_host = self._config.db_host
-                db_port = self._config.db_port
-
-            conn = psycopg.connect(
-                host=db_host,
-                port=db_port,
-                user=self._config.db_username,
-                password=self._config.db_password,
-                dbname=self._config.db_name,
-            )
-            hstore_info = psycopg.types.TypeInfo.fetch(conn, "hstore")
-            if hstore_info is not None:
-                self._logger.debug("psycopg_connect: hstore_info: %s", str(hstore_info))
-                self._logger.info("psycopg_connect: Register HSTORE type info")
-                psycopg.types.hstore.register_hstore(hstore_info, conn)
-            else:
-                self._logger.debug(
-                    "psycopg_connect: No HSTORE type info found => HSTORE not registered"
-                )
-            exit_stack.enter_context(conn)
-            yield conn
+        psycopg_config = self._config.as_psycopg_config(ssh_tunnel=ssh_tunnel)
+        with _psycopg_client.PsycopgClient(config=psycopg_config) as client:
+            yield client.get_connection()
 
     def pg_dump(
         self,
@@ -1216,6 +1346,17 @@ class WsjRdpContext:
             out_dir=self.out_dir,
             zip_eml=zip_eml,
             silent_skip_email=silent_skip_email,
+        )
+
+    def load_people_dataframe(
+        self,
+        query: _people_query.PeopleQuery | None = None,
+        where: str | _people_query.PeopleWhere | None = "",
+    ) -> _pandas.DataFrame:
+        from . import _people
+
+        return _people.load_people_dataframe(
+            conn=self.hitobito_psycopg_client(), query=query, where=where
         )
 
     def load_person_for_batch(
