@@ -15,6 +15,8 @@ if _typing.TYPE_CHECKING:
     import pandas as _pandas
     import psycopg as _psycopg
 
+    from . import _payment_role, _psycopg_client
+
 
 _LOGGER = _logging.getLogger(__name__)
 
@@ -384,13 +386,13 @@ def _row_to_sepa_mandat_id(row: _pandas.Series) -> str:
 
 
 def _fetch_id2fee_rules(
-    conn: _psycopg.Connection,
+    conn: _psycopg.Connection | _psycopg_client.PsycopgClient,
     fee_rules: str | _collections_abc.Iterable[str] = "active",
 ) -> dict:
     import re
     import textwrap
 
-    import psycopg
+    import psycopg.rows
 
     if isinstance(fee_rules, str):
         fee_rules = [fee_rules]
@@ -433,7 +435,7 @@ ORDER BY array_position(ARRAY[{fee_rules_str}], status) ASC
 
 
 def _fetch_id2roles(
-    conn: _psycopg.Connection,
+    conn: _psycopg.Connection | _psycopg_client.PsycopgClient,
     /,
     *,
     df: _pandas.DataFrame,
@@ -447,7 +449,10 @@ def _fetch_id2roles(
 
 
 def _fetch_id2person_dicts(
-    conn: _psycopg.Connection, /, *, df: _pandas.DataFrame
+    conn: _psycopg.Connection | _psycopg_client.PsycopgClient,
+    /,
+    *,
+    df: _pandas.DataFrame,
 ) -> dict[int, dict[str, _typing.Any]]:
     from . import _pg
 
@@ -493,6 +498,16 @@ def _compute_short_full_name(row) -> str:
 def _compute_role_id_name(row) -> str:
     short_role_name = getattr(row.get("payment_role"), "short_role_name", None)
     return _filtered_join(short_role_name, row["id"], row["short_full_name"])
+
+
+def _compute_payment_role(row) -> _payment_role.PaymentRole | None:
+    from ._payment_role import PaymentRole
+
+    string = row.get("payment_role")
+    if string is None or string in ("RegularPayer::", "EarlyPayer::"):
+        return None
+    else:
+        return PaymentRole(string)
 
 
 def _enrich_people_dataframe(
@@ -556,7 +571,7 @@ def _enrich_people_dataframe(
     df["sepa_mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
 
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
-    df["payment_role"] = df["payment_role"].map(lambda s: PaymentRole(s) if s else None)  # fmt: skip
+    df["payment_role"] = df.apply(_compute_payment_role, axis=1)
     df["role_id_name"] = df.apply(_compute_role_id_name, axis=1)
     df["regular_full_fee_cents"] = df.apply(_compute_regular_full_fee_cents, axis=1)
 
@@ -610,7 +625,7 @@ def _enrich_people_dataframe(
 
 
 def load_people_dataframe(
-    conn: _psycopg.Connection,
+    conn: _psycopg.Connection | _psycopg_client.PsycopgClient,
     *,
     extra_cols: str | list[str] | None = None,
     join: str = "",
