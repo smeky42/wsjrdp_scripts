@@ -56,7 +56,9 @@ def main(argv=None):
     }
     _LOGGER.info(f"Update {impersonation_username} using {impersonation_payload}")
     ctx.keycloak().update_user(impersonation_username, impersonation_payload)
-    moss_impersonation_user = ctx.keycloak().get_user_by_username(impersonation_username)
+    moss_impersonation_user = ctx.keycloak().get_user_by_username(
+        impersonation_username
+    )
     _LOGGER.info(
         f"{impersonation_username} keycloak user:\n{pprint.pformat(moss_impersonation_user)}"
     )

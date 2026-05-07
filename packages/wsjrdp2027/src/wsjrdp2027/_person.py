@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as _datetime
+import logging as _logging
 import math as _math
 import re as _re
 import typing as _typing
@@ -14,7 +15,10 @@ if _typing.TYPE_CHECKING:
     import pandas as _pandas
     import psycopg as _psycopg
 
-    from . import _groups
+    from . import _context, _groups
+
+
+_LOGGER = _logging.getLogger(__name__)
 
 
 _CMT_KEYCLOAK_USERNAME_REGEX = _re.compile(r"^[a-z]+$")
@@ -157,7 +161,7 @@ class Person:
                 "This Person object has no underlying Pandas dataframe row"
             )
         else:
-            return self._df.iloc[self._index]  # type: ignore
+            return self._df.iloc[self._index]
 
     def __normalize_val(self, key, val) -> _typing.Any:
         if (
@@ -208,7 +212,11 @@ class Person:
     @property
     def primary_group(self) -> _groups.Group:
         if self._primary_group is None:
-            raise RuntimeError("Missing primary group object")
+            from . import _groups
+
+            self._primary_group = _groups.Group.db_load_for_group_id(
+                conn=None, group_id=self.primary_group_id
+            )
         return self._primary_group
 
     @primary_group.setter
@@ -580,6 +588,19 @@ class Person:
     def wsj27_email_regex(self) -> _re.Pattern:
         escaped = _re.escape(f"wsj27-{self.id}@worldscoutjamboree.de")
         return _re.compile("^" + escaped + "$")
+
+    def move_to_group(
+        self,
+        new_group: int | str | _groups.Group,
+        *,
+        ctx: _context.WsjRdpContext | None = None,
+        batch_name: str | None = None,
+    ) -> None:
+        from ._internal.move_to_group import move_person_to_group
+
+        move_person_to_group(
+            ctx, person=self, new_group=new_group, batch_name=batch_name
+        )
 
 
 Person._cls_keys = frozenset(Person.__dict__.keys())

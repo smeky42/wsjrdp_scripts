@@ -19,13 +19,18 @@ if _typing.TYPE_CHECKING:
     import psycopg.rows as _psycopg_rows
     import psycopg.sql as _psycopg_sql
 
-    from . import _camt, _payment_role, _psycopg_client, moss as _moss
+    from . import _camt, _context, _payment_role, _psycopg_client, moss as _moss
 
 
 _Row = _typing.TypeVar("_Row", covariant=True, default="_psycopg_rows.TupleRow")
 
 
 _LOGGER = _logging.getLogger(__name__)
+
+
+ConnectionLike = _typing.Union[
+    "_psycopg.Connection", "_psycopg_client.PsycopgClient", "_context.WsjRdpContext"
+]
 
 
 def pg_literal(obj):
@@ -240,15 +245,12 @@ def _execute_query_fetchall(
 
 
 def _execute_query_fetchall_dicts(
-    connection: _psycopg.Connection,
-    /,
-    query,
-    *,
-    show_result: bool | None = None,
+    connection: ConnectionLike, /, query, *, show_result: bool | None = None
 ):
     import psycopg.rows
 
-    with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
+    conn = to_connection(connection)
+    with conn.cursor(row_factory=psycopg.rows.dict_row) as cursor:
         return _execute_query_fetchall(
             cursor,
             query,
@@ -352,7 +354,7 @@ def _upsert_tagging(
 
 
 def pg_select_dict_rows(
-    conn: _psycopg.Connection,
+    conn: ConnectionLike | None,
     query: str | _psycopg_sql.Composed | _string_templatelib.Template,
     *,
     show_result: bool | None = None,
@@ -368,7 +370,7 @@ def pg_select_dict_rows(
 
 
 def pg_select_dataframe(
-    conn: _psycopg.Connection,
+    conn: ConnectionLike | None,
     query: str | _psycopg_sql.Composed | _string_templatelib.Template,
 ) -> _pandas.DataFrame:
     import pandas as _pandas
@@ -377,7 +379,7 @@ def pg_select_dataframe(
 
 
 def pg_select_groups_dicts_for_where(
-    conn: _psycopg.Connection,
+    conn: ConnectionLike | None,
     /,
     where: _psycopg_sql.Composable | _string_templatelib.Template,
 ) -> list[dict]:
@@ -388,12 +390,13 @@ def pg_select_groups_dicts_for_where(
 
 
 def pg_select_group_dict_for_where(
-    conn: _psycopg.Connection,
+    conn: ConnectionLike | None,
     /,
     where: _psycopg_sql.Composable | _string_templatelib.Template,
 ) -> dict:
     from psycopg.sql import as_string
 
+    conn = to_connection(conn)
     where_str = as_string(where, context=conn)
     list_of_rows = pg_select_groups_dicts_for_where(conn, where)
     if len(list_of_rows) == 0:
@@ -1689,3 +1692,19 @@ def insert_moss_balance_movement(
         for _ in cur.results():
             all_results.extend(cur.fetchall())
     return all_results
+
+
+def to_connection(
+    conn: ConnectionLike | None, read_only: bool | None = None
+) -> _psycopg.Connection:
+    from . import _context, _psycopg_client
+
+    if conn is None:
+        ctx = _context.get_thread_local_ctx_or_raise()
+        return ctx.hitobito_psycopg_client(read_only=read_only).get_connection()
+    elif isinstance(conn, _context.WsjRdpContext):
+        return conn.hitobito_psycopg_client(read_only=read_only).get_connection()
+    elif isinstance(conn, _psycopg_client.PsycopgClient):
+        return conn.get_connection()
+    else:
+        return conn

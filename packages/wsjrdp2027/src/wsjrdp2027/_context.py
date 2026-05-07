@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib as _contextlib
+import contextvars as _contextvars
 import dataclasses as _dataclasses
 import enum as _enum
 import logging as _logging
@@ -9,6 +10,7 @@ import os as _os
 import pathlib as _pathlib
 import sys as _sys
 import typing as _typing
+import weakref as _weakref
 
 from . import _types
 
@@ -32,6 +34,7 @@ if _typing.TYPE_CHECKING:
         _mailcow_client,
         _people_query,
         _person,
+        _pg,
         _psycopg_client,
         _ssh_tunnel,
     )
@@ -381,6 +384,7 @@ class WsjRdpContext:
             self._skip_email = skip_email
         if skip_db_updates is not None:
             self._skip_db_updates = skip_db_updates
+        set_thread_local_ctx_if_not_set(self)
 
     def __del__(self):
         """Clear this context.
@@ -695,6 +699,11 @@ class WsjRdpContext:
             _logging.getLogger().removeHandler(buffering_handler)
         return file_handler
 
+    @_contextlib.contextmanager
+    def as_thread_local_ctx(self) -> _typing.Generator[_typing.Self]:
+        with set_thread_local_ctx(self):
+            yield self
+
     @property
     def _exit_stack(self) -> _contextlib.ExitStack:
         return self.__exit_stacks[-1]
@@ -703,6 +712,8 @@ class WsjRdpContext:
         exit_stack = _contextlib.ExitStack()
         exit_stack.__enter__()
         self.__exit_stacks.append(exit_stack)
+        reset_token = set_thread_local_ctx(self)
+        exit_stack.enter_context(reset_token)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -1011,7 +1022,9 @@ class WsjRdpContext:
         if ssh_tunnel:
             self._logger.info(f"psycopg_connect: SSH tunnel:\n{ssh_tunnel}")
 
-        psycopg_config = self._config.as_psycopg_config(ssh_tunnel=ssh_tunnel)
+        psycopg_config = self._config.as_psycopg_config(
+            ssh_tunnel=ssh_tunnel, read_only=False, autocommit=False
+        )
         with _psycopg_client.PsycopgClient(config=psycopg_config) as client:
             yield client.get_connection()
 
@@ -1488,37 +1501,35 @@ class WsjRdpContext:
         df: _pandas.DataFrame,
         /,
         *,
-        conn: _psycopg.Connection | None = None,
+        conn: _pg.ConnectionLike | None = None,
         write_versions: bool | None = None,
         dry_run: bool | None = None,
         skip_db_updates: bool | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
     ) -> None:
-        from . import _people
+        from . import _people, _pg
 
         if dry_run is None:
             dry_run = self.dry_run
 
-        with _contextlib.ExitStack() as exit_stack:
-            if conn is None:
-                conn = exit_stack.enter_context(self.psycopg_connect())
-            with conn.cursor() as cursor:
-                _people.update_postgres_db_for_dataframe(
-                    cursor,
-                    df,
-                    write_versions=write_versions,
-                    dry_run=dry_run,
-                    skip_db_updates=skip_db_updates,
-                    logger=self._logger,
-                    ctx=self,
-                    now=now,
-                )
+        conn = _pg.to_connection(conn, read_only=False)
+        with conn.cursor() as cursor:
+            _people.update_postgres_db_for_dataframe(
+                cursor,
+                df,
+                write_versions=write_versions,
+                dry_run=dry_run,
+                skip_db_updates=skip_db_updates,
+                logger=self._logger,
+                ctx=self,
+                now=now,
+            )
 
     def update_db_and_send_mailing(
         self,
         prepared_batch: _batch.PreparedBatch,
         *,
-        conn: _psycopg.Connection | None = None,
+        conn: _pg.ConnectionLike | None = None,
         zip_eml: bool | None = None,
         dry_run: bool | None = None,
         silent_skip_email: bool = False,
@@ -1643,3 +1654,37 @@ def _to_bool(name: str, value: bool | str) -> bool:
         return False
     else:
         raise ValueError(f"Invalid config {name}! Expected bool, got {value!r}")
+
+
+_thread_local_ctx: _contextvars.ContextVar[
+    _weakref.ReferenceType[WsjRdpContext] | None
+] = _contextvars.ContextVar("_thread_local_ctx", default=None)
+
+
+def get_thread_local_ctx() -> WsjRdpContext | None:
+    if (ref := _thread_local_ctx.get()) is not None:
+        return ref()
+    else:
+        return None
+
+
+def set_thread_local_ctx(ctx: WsjRdpContext | None) -> _contextvars.Token:
+    _LOGGER.debug(f"Set thread-local ctx to {ctx!r}")
+    ref = _weakref.ref(ctx) if ctx is not None else None
+    return _thread_local_ctx.set(ref)
+
+
+def set_thread_local_ctx_if_not_set(ctx: WsjRdpContext | None) -> None:
+    old = get_thread_local_ctx()
+    if old is None:
+        _LOGGER.debug(f"Set thread-local ctx to {ctx!r} (was not set)")
+        ref = _weakref.ref(ctx) if ctx is not None else None
+        _thread_local_ctx.set(ref)
+    else:
+        _LOGGER.debug(f"Keep thread-local ctx {old!r}")
+
+
+def get_thread_local_ctx_or_raise() -> WsjRdpContext:
+    if (ctx := get_thread_local_ctx()) is None:
+        raise RuntimeError("No WsjRdpContext set in this thread-local context")
+    return ctx

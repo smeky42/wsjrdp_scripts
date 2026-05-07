@@ -73,6 +73,20 @@ class PsycopgClient:
         """`True` if the underlying HTTP session is already closed."""
         return self.__is_closed
 
+    @property
+    def adapters(self):
+        conn = self.__connection
+        if conn:
+            return conn.adapters
+        else:
+            from psycopg.adapt import AdaptersMap
+
+            return AdaptersMap()
+
+    @property
+    def connection(self) -> _psycopg.Connection | None:
+        return self.__connection
+
     def get_connection(self) -> _psycopg.Connection:
         if self._audithook:
             self._audithook("get connection")

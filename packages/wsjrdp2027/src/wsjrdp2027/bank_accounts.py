@@ -49,7 +49,7 @@ class BankAccount:
             key = field.name
             if (val := kwargs.get(key, _MISSING)) is not _MISSING:
                 if key == "opening_balance_date":
-                    val = _util.to_date_or_none(val)  # type: ignore
+                    val = _util.to_date_or_none(val)
                 object.__setattr__(self, field.name, val)
 
     def asdict(self) -> BankAccountDict:

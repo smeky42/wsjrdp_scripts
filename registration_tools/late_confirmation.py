@@ -8,7 +8,6 @@ import sys
 import typing as _typing
 
 import jinja2
-import pandas as _pandas
 import psycopg as _psycopg
 import wsjrdp2027
 
