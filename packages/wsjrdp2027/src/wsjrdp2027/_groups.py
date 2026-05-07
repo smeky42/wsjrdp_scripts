@@ -8,8 +8,9 @@ if _typing.TYPE_CHECKING:
     import collections.abc as _collections_abc
     import string.templatelib as _string_templatelib
 
-    import psycopg as _psycopg
     import psycopg.sql as _psycopg_sql
+
+    from . import _pg
 
 
 @_dataclasses.dataclass(kw_only=True)
@@ -47,37 +48,55 @@ class Group:
             raise KeyError(key) from None
 
     @classmethod
+    def to_group(
+        cls, group: int | str | "Group", *, conn: _pg.ConnectionLike | None = None
+    ) -> _typing.Self:
+        if isinstance(group, Group):
+            return group  # type: ignore
+        else:
+            return cls.db_load(conn=conn, group_arg=group)
+
+    @classmethod
     def db_load_for_where(
         cls,
-        conn: _psycopg.Connection,
+        conn: _pg.ConnectionLike | None,
         where: _psycopg_sql.Composable | _string_templatelib.Template,
     ) -> _typing.Self:
         from . import _pg
 
+        conn = _pg.to_connection(conn)
         return cls(**_pg.pg_select_group_dict_for_where(conn, where=where))
 
     @classmethod
     def db_load_for_group_name(
-        cls, conn: _psycopg.Connection, group_name: str
+        cls,
+        conn: _pg.ConnectionLike | None,
+        group_name: str,
     ) -> _typing.Self:
         return cls.db_load_for_where(
-            conn,
-            t'"name" = {group_name} OR "short_name" = {group_name} OR "additional_info"->>\'group_code\' = {group_name}',
+            conn=conn,
+            where=t'"name" = {group_name} OR "short_name" = {group_name} OR "additional_info"->>\'group_code\' = {group_name}',
         )
 
     @classmethod
     def db_load_for_group_id(
-        cls, conn: _psycopg.Connection, group_id: int
+        cls,
+        conn: _pg.ConnectionLike | None,
+        group_id: int,
     ) -> _typing.Self:
-        return cls.db_load_for_where(conn, t'"id" = {group_id}')
+        return cls.db_load_for_where(conn=conn, where=t'"id" = {group_id}')
 
     @classmethod
     def load_for_group_ids(
-        cls, conn: _psycopg.Connection, group_ids: _collections_abc.Iterable[str | int]
+        cls,
+        conn: _pg.ConnectionLike | None,
+        group_ids: _collections_abc.Iterable[str | int],
     ) -> list[_typing.Self]:
         from psycopg.sql import SQL
 
         from . import _pg, _util
+
+        conn = _pg.to_connection(conn)
 
         where = SQL(_util.in_expr("id", list(group_ids)))
         results = _pg.pg_select_groups_dicts_for_where(conn, where=where)
@@ -86,7 +105,7 @@ class Group:
     @classmethod
     def db_load(
         cls,
-        conn: _psycopg.Connection,
+        conn: _pg.ConnectionLike | None,
         group_arg: str | int,
         *,
         auto_group_id: int | None = None,

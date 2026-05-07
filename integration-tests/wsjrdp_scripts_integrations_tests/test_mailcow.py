@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib as _contextlib
 import logging
 
 import pytest

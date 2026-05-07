@@ -54,7 +54,6 @@ def _clear_mailcow(mailcow_client: wsjrdp2027.MailcowClient):
 
 
 def main():
-    import wsjrdp2027
 
     ctx = new_ctx()
 

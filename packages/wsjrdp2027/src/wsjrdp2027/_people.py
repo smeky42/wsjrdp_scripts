@@ -238,7 +238,7 @@ def find_short_first_name(row) -> str:
 def _compute_installments_cents_dict_from_row(
     row, id2fee_rules
 ) -> dict[tuple[int, int], int] | None:
-    from . import _payment_role, _util
+    from . import _util
 
     id = row["id"]
     payment_role: _payment_role.PaymentRole = row["payment_role"]
@@ -523,7 +523,6 @@ def _enrich_people_dataframe(
     skip_db_updates: bool | None = None,
 ) -> None:
     from . import _util
-    from ._payment_role import PaymentRole
 
     df["short_first_name"] = df.apply(find_short_first_name, axis=1)
     df["greeting_name"] = df.apply(
@@ -1025,7 +1024,7 @@ def update_postgres_db_for_dataframe(
         return
     logger.info("Update DB")
     if ctx:
-        ctx.require_approval_to_run_in_prod()
+        ctx.require_approval_to_run_in_prod(category="Hitobito DB")
 
     skipped_ids = set()
     failed_ids = set()
