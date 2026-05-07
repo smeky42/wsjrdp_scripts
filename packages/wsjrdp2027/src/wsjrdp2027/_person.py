@@ -242,7 +242,7 @@ class Person:
                     return "UL"
                 case 3 | 6:
                     return "YP"
-                case 4 | 7 | 45:
+                case 4 | 7 | 45 | 49 | 50 | 51 | 52:
                     return "IST"
                 case 48:
                     return "EXT"
@@ -261,7 +261,7 @@ class Person:
                 return "UL"
             case 3 | 6:
                 return "YP"
-            case 4 | 7:
+            case 4 | 7 | 49 | 50 | 51 | 52:
                 return "IST"
             case 45:  # BMT
                 return "BMT"
