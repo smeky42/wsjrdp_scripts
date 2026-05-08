@@ -16,6 +16,7 @@ class Test_KeyCloakClient:
     @pytest.fixture(autouse=True)
     def _setup(self, keycloak_client: KeycloakClient):
         keycloak_client.create_group("UL", exist_ok=True)
+        keycloak_client.create_group("IST", exist_ok=True)
         try:
             yield
         finally:
