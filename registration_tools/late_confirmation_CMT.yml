@@ -16,6 +16,8 @@ content: |
 
   Vielen Dank, dass du bereit bist, Verantwortung zu übernehmen und dieses große Abenteuer gemeinsam mit uns für die Teilnehmenden zu gestalten. Deine Rolle ist ein wichtiger Beitrag zum Erfolg unseres deutschen Kontingents.
 
+  Stelle bitte sicher, dass unsere E-Mails nicht im Spam landen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
+
   Willkommen im Kontingent – wir freuen uns auf die Zusammenarbeit mit dir und auf die nächsten Schritte auf dem Weg zum Jamboree!
 
   {{ render_upcoming_payment_text() }}
