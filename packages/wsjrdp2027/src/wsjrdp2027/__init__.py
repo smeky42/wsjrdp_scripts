@@ -223,6 +223,8 @@ EMAIL_SIGNATURE_CMT = (
 World Scout Jamboree 2027 Poland
 Contingent Management Team
 
+Alle Jamboree E-Mails empfangen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
+
 Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
 Chausseestr. 128/129
 10115 Berlin
@@ -236,6 +238,8 @@ EMAIL_SIGNATURE_HOC = (
     + """
 World Scout Jamboree 2027 Poland
 Head of Contingent
+
+Alle Jamboree E-Mails empfangen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
 
 Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
 Chausseestr. 128/129
@@ -251,6 +255,8 @@ EMAIL_SIGNATURE_ORG = (
 World Scout Jamboree 2027 Poland
 Head of Organisation
 
+Alle Jamboree E-Mails empfangen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
+
 Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
 Chausseestr. 128/129
 10115 Berlin
@@ -263,8 +269,10 @@ EMAIL_SIGNATURE_DAVID_FRITZSCHE = (
     "\n-- "
     + """
 World Scout Jamboree 2027 Poland
-German Contingent
+German Contingent | Kontyngent Niemiecki
 Head of Finance Team
+
+Alle Jamboree E-Mails empfangen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
 
 Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
 Chausseestr. 128/129
@@ -276,6 +284,8 @@ EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION = (
     "\n-- "
     + """
 Falls du Fragen hast, schau auf unserer Homepage https://worldscoutjamboree.de vorbei oder wende dich an info@worldscoutjamboree.de.
+
+Alle Jamboree E-Mails empfangen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
 
 German Contingent | Kontyngent Niemiecki
 World Scout Jamboree 2027 Poland
