@@ -346,7 +346,10 @@ class KeycloakClient:
         group: KeycloakGroupDict | None
         if group := self._cache.get_group_by_name(groupname):
             return group
-        group = self._admin.get_group_by_path(groupname)  # type: ignore
+        try:
+            group = self._admin.get_group_by_path(groupname)  # type: ignore
+        except _keycloak_python.exceptions.KeycloakGetError as exc:
+            raise RuntimeError(f"Failed to get group with name {groupname=}: {exc}")
         if not group:
             raise RuntimeError(f"Failed to get group with name {groupname=}")
         self._cache.add_group(group)

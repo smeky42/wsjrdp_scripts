@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import itertools
 import logging as _logging
+import pathlib as _pathlib
 import pprint
 
 import pandas as _pandas
@@ -12,12 +13,15 @@ import wsjrdp2027
 
 _LOGGER = _logging.getLogger(__name__)
 
+_SELF_NAME = _pathlib.Path(__file__).stem
+
 WAITING_LIST_GROUPS = [5, 6, 7]
 BMT_GROUPS = [45]
 EXT_GROUPS = [48]
 
 
 GROUPNAMES_TO_SYNC = ["CMT", "UL", "IST", "BMT", "EXT"]
+GROUPNAMES_TO_SYNC = ["UL"]
 
 
 KEYCLOAK_GROUPNAMES_TO_FETCH = ["CMT", "UL", "IST", "BMT", "EXT"]
@@ -243,6 +247,7 @@ def _create_keycloak_user(
         subject = "Dein Jamboree 2027 Account - {{ person.short_full_name }} (id {{person.id }})"
 
     batch_config = wsjrdp2027.BatchConfig(
+        name=f"{_SELF_NAME}_{person.id_and_name}".replace(" ", "_"),
         where=wsjrdp2027.PeopleWhere(id=[]),
         email_from=person.helpdesk_email,
         email_subject=subject,
@@ -255,7 +260,6 @@ def _create_keycloak_user(
         person, dry_run=ctx.dry_run, skip_email=ctx.skip_email, skip_db_updates=True
     )
     ctx.send_mailing(prepared, zip_eml=False)
-    ctx.load_people_and_prepare_batch(batch_config)
 
 
 _NEW_ACCOUNT_AND_MAILBOX_MAIL_CONTENT = """
@@ -408,7 +412,6 @@ def sync(
 
 
 def _get_expanded_goto_list(ctx: wsjrdp2027.WsjRdpContext, email: str) -> list[str]:
-    import itertools
 
     def get_goto_list(email, default=None) -> list[str]:
         user_dict = ctx.keycloak().get_user_or_none_by_email(email, allow_cached=True)
@@ -436,7 +439,7 @@ def main():
         # dry_run=True,
         # log_level=_logging.DEBUG,
     )
-    out_base = ctx.make_out_path("sync_cmt_keycloak__{{ filename_suffix }}")
+    out_base = ctx.make_out_path(_SELF_NAME + "__{{ filename_suffix }}")
     log_filename = out_base.with_suffix(".log")
     ctx.configure_log_file(log_filename)
 
