@@ -227,10 +227,6 @@ def _confirm_person(
         if old_primary_group_id is not None
         else None
     )
-    person_additional_info = person.get("additional_info", {}) or {}
-    late_confirmation_issue = person_additional_info.get(
-        "late_confirmation_issue", None
-    )
 
     old_tag_list = person.get("tag_list") or []
     group_arg: str | int | None = ctx.parsed_args.group
@@ -306,17 +302,9 @@ def _confirm_person(
         batch_config.extend_extra_email_bcc(support_cmt_mail_addresses)
 
     # Handle late_confirmation_issue
-    if late_confirmation_issue:
-        batch_config.email_subject += f" {late_confirmation_issue}"
-        match person.wsjrdp_role:
-            case "YP" | "UL":
-                batch_config.extend_extra_email_bcc(
-                    "unit-management@worldscoutjamboree.de"
-                )
-            case "IST" | "BMT":
-                batch_config.extend_extra_email_bcc("ist@worldscoutjamboree.de")
-            case _:
-                batch_config.extend_extra_email_bcc("info@worldscoutjamboree.de")
+    if person.late_confirmation_issue:
+        batch_config.email_subject += f" {person.late_confirmation_issue}"
+        batch_config.extend_extra_email_bcc(person.helpdesk_email)
 
     batch_config.query.where = wsjrdp2027.PeopleWhere(id=person_id)
     if ctx.parsed_args.collection_date:

@@ -350,6 +350,14 @@ class Person:
             additional_info[key] = value
 
     @property
+    def late_confirmation_issue(self) -> str | None:
+        return self.additional_info.get("late_confirmation_issue")
+
+    @late_confirmation_issue.setter
+    def late_confirmation_issue(self, value: str | None) -> None:
+        self.set_additional_info("late_confirmation_issue", value)
+
+    @property
     def deregistration_issue(self) -> str | None:
         return self.additional_info.get("deregistration_issue")
 
