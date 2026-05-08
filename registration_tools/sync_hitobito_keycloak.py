@@ -56,15 +56,11 @@ def load_people_dataframe_for_groupname(
         # tag="Finanzverantwortlich",
         # role=role,
         # id=[484,486],
-        # id=2480,
-        id=2468,
         exclude_deregistered=True,
         primary_group_id=primary_group_id,
         exclude_primary_group_id=exclude_primary_group_id,
     )
-    # where = wsjrdp2027.PeopleWhere(id=1422)
     # where=wsjrdp2027.PeopleWhere(primary_group_id=1, exclude_deregistered=True)
-    # where=wsjrdp2027.PeopleWhere(id=[21, 65, 413], exclude_deregistered=True)
     # where=wsjrdp2027.PeopleWhere(id=[482], exclude_deregistered=True)
     df = wsjrdp2027.load_people_dataframe(
         conn,
