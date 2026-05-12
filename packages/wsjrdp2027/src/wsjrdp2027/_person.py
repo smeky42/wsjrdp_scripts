@@ -339,6 +339,12 @@ class Person:
         return _filtered_join(self.wsjrdp_role, self.id, self.short_full_name)
 
     @property
+    def role_id_name_for_filename(self) -> str:
+        return _filtered_join(self.wsjrdp_role, self.id, self.short_full_name).replace(
+            " ", "_"
+        )
+
+    @property
     def additional_info(self) -> dict[str, _typing.Any]:
         return self._data.get("additional_info", {})
 
@@ -364,6 +370,14 @@ class Person:
     @deregistration_issue.setter
     def deregistration_issue(self, value: str | None) -> None:
         self.set_additional_info("deregistration_issue", value)
+
+    @property
+    def debit_return_issue(self) -> str | None:
+        return self.additional_info.get("debit_return_issue")
+
+    @debit_return_issue.setter
+    def debit_return_issue(self, value: str | None) -> None:
+        self.set_additional_info("debit_return_issue", value)
 
     @property
     def wsjrdp_email_or_none(self) -> str | None:

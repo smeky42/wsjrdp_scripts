@@ -1079,7 +1079,15 @@ def to_int(obj: object, /, *, base: int | None = 10) -> int:
 
 
 def to_decimal(obj: object) -> _decimal.Decimal:
-    return _decimal.Decimal(obj)
+    if obj is None:
+        return _decimal.Decimal(0)
+    elif isinstance(obj, _decimal.Decimal):
+        return obj
+    else:
+        try:
+            return _decimal.Decimal(obj)  # type: ignore
+        except Exception:
+            return _decimal.Decimal(str(obj))
 
 
 def to_decimal_or_none(obj: object) -> _decimal.Decimal | None:
@@ -1087,7 +1095,7 @@ def to_decimal_or_none(obj: object) -> _decimal.Decimal | None:
         return None
     else:
         try:
-            return _decimal.Decimal(obj)
+            return _decimal.Decimal(obj)  # type: ignore
         except Exception:
             return None
 

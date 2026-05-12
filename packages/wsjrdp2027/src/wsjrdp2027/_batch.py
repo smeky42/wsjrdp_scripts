@@ -1108,7 +1108,7 @@ def _email_message_from_person(
     email_date = _util.to_datetime(email_date)
     msg_date = email.utils.format_datetime(email_date)
 
-    email_subject = render_template(email_subject)
+    email_subject = render_template(email_subject).rstrip()
 
     if policy is None:
         policy = _util.get_default_email_policy()
