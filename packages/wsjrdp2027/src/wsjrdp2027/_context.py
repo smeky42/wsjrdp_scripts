@@ -281,6 +281,8 @@ class WsjRdpContext:
     _approved_categories: set[str] = _typing.cast(set, frozenset([]))
     _resources: dict[str, _typing.Any]
     _console_confirm_cache: dict
+    _output_files: list[tuple[str, str | _pathlib.Path]]
+    _output_files_reported: bool = False
 
     def __init__(
         self,
@@ -378,6 +380,8 @@ class WsjRdpContext:
         # start_time, output_directory, ...
         self._start_time = self._determine_start_time(start_time=start_time)
         self._out_dir = self._determine_out_dir(out_dir, dunder_file=__file__)
+        self._output_files = []
+        self._output_files_reported = False
         if dry_run is not None:
             self._dry_run = dry_run
         if skip_email is not None:
@@ -393,18 +397,8 @@ class WsjRdpContext:
         """
         if _sys.is_finalizing():
             return
-        level = len(self.__exit_stacks)
         while len(self.__exit_stacks) > 0:
-            exit_stack = self.__exit_stacks.pop()
-            level -= 1
-            try:
-                _LOGGER.debug(f"Start context cleanup ({level=})")
-                result = exit_stack.__exit__(None, None, None)
-                _LOGGER.debug(f"Finished context cleanup ({level=}): {result=}")
-            except Exception as exc:
-                _LOGGER.exception(
-                    f"Error during context cleanup ({level=}): {exc}\nWill continue anyway"
-                )
+            self.__exit(None, None, None, raise_on_cleanup_failure=False)
 
     def __get_env(
         self, env_name: str, /, *, env=None, ignore_in_prod: bool = True
@@ -690,7 +684,8 @@ class WsjRdpContext:
     ) -> _logging.Handler:
         from . import _util
 
-        _LOGGER.info("[ctx] Writing log file %s", filename)
+        self._logger.info("Writing log file %s", filename)
+        self._output_files.append(("Log file", filename))
         file_handler = _util.configure_file_logging(filename, level=level)
         if self._buffering_handler is not None:
             buffering_handler, self._buffering_handler = self._buffering_handler, None
@@ -716,11 +711,52 @@ class WsjRdpContext:
         exit_stack.enter_context(reset_token)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if len(self.__exit_stacks) < 2:
-            raise RuntimeError("Cannot exit non-entered context")
+    def __report_output(self):
+        log_level = _logging.INFO
+        self._logger.log(log_level, "")
+        self._logger.log(log_level, f"Output directory: {self.out_dir}")
+        for key, path in self._output_files:
+            self._logger.log(log_level, f"  {key}: {path}")
+        self._output_files_reported = True
+
+    def __exit(
+        self,
+        exc_type,
+        exc_val,
+        exc_tb,
+        *,
+        raise_on_cleanup_failure: bool = True,
+        report_output: bool = False,
+    ):
         exit_stack = self.__exit_stacks.pop()
-        return exit_stack.__exit__(exc_type, exc_val, exc_tb)
+        level = len(self.__exit_stacks)
+        result = None
+        try:
+            self._logger.debug(f"Start context cleanup ({level=})")
+            result = exit_stack.__exit__(exc_type, exc_val, exc_tb)
+            self._logger.debug(f"Finished context cleanup ({level=}): {result=}")
+            if report_output:
+                self.__report_output()
+        except Exception as exc:
+            if raise_on_cleanup_failure:
+                raise
+            else:
+                self._logger.exception(
+                    f"Error during context cleanup ({level=}): {exc}\nWill continue anyway"
+                )
+        return result
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        level = len(self.__exit_stacks) - 1
+        if level <= 0:
+            raise RuntimeError("Cannot exit non-entered context")
+        return self.__exit(
+            exc_type,
+            exc_val,
+            exc_tb,
+            raise_on_cleanup_failure=True,
+            report_output=(level == 1),
+        )
 
     def is_action_approved_for_prod(self, category: str, action: str | None) -> bool:
         return category in self._approved_categories
@@ -835,12 +871,20 @@ class WsjRdpContext:
                 audithook = None
             new = create(dry_run=dry_run, audithook=audithook, **(create_kwargs or {}))
 
-            def callback():
-                if callable(close := getattr(new, "close", None)):
-                    close()
-                self._resources[key] = old
+            if isinstance(new, _contextlib.AbstractContextManager):
+                self._logger.debug(f"Add {new} to current exit stack")
+                self._exit_stack.enter_context(new)
+            else:
+                self._logger.debug(
+                    f"Add closing callback for {new} to current exit stack"
+                )
 
-            self._exit_stack.callback(callback)
+                def callback():
+                    if callable(close := getattr(new, "close", None)):
+                        close()
+                    self._resources[key] = old
+
+                self._exit_stack.callback(callback)
             self._resources[key] = new
             return new
         else:
@@ -906,6 +950,21 @@ class WsjRdpContext:
         ssh_tunnel_config = self._config.as_ssh_tunnel_config(remote_bind_address="db")
         self._logger.debug(f"Create SSH tunnel: {ssh_tunnel_config}")
         return _ssh_tunnel.SSHTunnel(config=ssh_tunnel_config)
+
+    def hitobito_psycopg_connection(
+        self,
+        *,
+        force_new: bool = False,
+        autocommit: bool | None = None,
+        read_only: bool | None = None,
+        audithook: _psycopg_client.PsycopgAudithook | bool | None = None,
+    ) -> _psycopg.Connection:
+        return self.hitobito_psycopg_client(
+            force_new=force_new,
+            autocommit=autocommit,
+            read_only=read_only,
+            audithook=audithook,
+        ).get_connection()
 
     def hitobito_psycopg_client(
         self,
@@ -1381,7 +1440,7 @@ class WsjRdpContext:
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         collection_date: _datetime.date | str | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
-        conn: _psycopg.Connection | None = None,
+        conn: _pg.ConnectionLike | None = None,
     ) -> _person.Person:
         from . import _person
 
@@ -1405,7 +1464,7 @@ class WsjRdpContext:
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         collection_date: _datetime.date | str | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
-        conn: _psycopg.Connection | None = None,
+        conn: _pg.ConnectionLike | None = None,
     ) -> _person.Person:
         from . import _batch, _people_query
 
@@ -1432,9 +1491,11 @@ class WsjRdpContext:
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         collection_date: _datetime.date | str | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
-        conn: _psycopg.Connection | None = None,
+        conn: _pg.ConnectionLike | None = None,
     ) -> _pandas.DataFrame:
         import textwrap
+
+        conn = self._to_connection(conn, read_only=True)
 
         if now is None:
             now = self.start_time
@@ -1496,6 +1557,23 @@ class WsjRdpContext:
             prepared_batch.out_dir = self.__compute_batch_out_dir(prepared_batch)
         return prepared_batch
 
+    def _to_connection(
+        self,
+        conn: _pg.ConnectionLike | None,
+        /,
+        *,
+        read_only: bool | None = None,
+        autocommit: bool | None = None,
+    ) -> _psycopg.Connection:
+        if conn is None:
+            return self.hitobito_psycopg_connection(
+                read_only=read_only, autocommit=autocommit
+            )
+        else:
+            from . import _pg
+
+            return _pg.to_connection(conn, read_only=read_only)
+
     def update_db_for_dataframe(
         self,
         df: _pandas.DataFrame,
@@ -1507,12 +1585,14 @@ class WsjRdpContext:
         skip_db_updates: bool | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
     ) -> None:
-        from . import _people, _pg
+        from . import _people
 
         if dry_run is None:
             dry_run = self.dry_run
 
-        conn = _pg.to_connection(conn, read_only=False)
+        read_only = bool(False or dry_run or skip_db_updates)
+        conn = self._to_connection(conn, read_only=read_only)
+
         with conn.cursor() as cursor:
             _people.update_postgres_db_for_dataframe(
                 cursor,

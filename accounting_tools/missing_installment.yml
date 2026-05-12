@@ -1,26 +1,26 @@
 query:
-  collection_date: 2026-04-07  # Datum des nächsten Einzugs!
+  collection_date: 2026-06-05  # Datum des nächsten Einzugs!
   include_sepa_mail_in_mailing_to: true
   where:
     id: []
 from_addr: finanzen@worldscoutjamboree.de
 email_from: finanzen@worldscoutjamboree.de
 extra_email_bcc: ["finanzen@worldscoutjamboree.de", "finance-team@worldscoutjamboree.de"]
-email_subject: WSJ27 Einzug {{ missing_installment_year_month }} Retoure {{ role_id_name }} {{ debit_return_issue }}
+email_subject: WSJ27 Einzug {{ missing_installment_year_month }} Retoure {{ person.role_id_name }} {{ person.debit_return_issue if person.debit_return_issue }}
 content: |
-  Hallo {{ row.greeting_name }},
+  Hallo {{ person.greeting_name }},
 
   wir haben festgestellt, dass der {{ estimated_collection_date | month_de }}-Lastschrifteinzug bei dir fehlgeschlagen ist. Bei uns ist eine Rücklastschrift in Höhe von {{ retoure_cents | format_cents_as_eur_de }} eingegangen. Davon sind {{ bank_fees_cents | format_cents_as_eur_de }} Gebühren, die wir auf den zu zahlenden Betrag aufschlagen müssen.
 
-  Wir bitten dich, uns bis spätestens {{ response_due_date | date_de }} zu bestätigen, dass wir den fehlenden Betrag im {{ upcoming_collection_date | month_de }} (mit der {{ upcoming_collection_date | month_de }}-Rate) einziehen können. Das ergibt dann einen Einzug in Höhe von {{ row.open_amount_cents | format_cents_as_eur_de }}.
+  Wir bitten dich, uns bis spätestens {{ response_due_date | date_de }} zu bestätigen, dass wir den fehlenden Betrag im {{ upcoming_collection_date | month_de }} (mit der {{ upcoming_collection_date | month_de }}-Rate) einziehen können. Das ergibt dann einen Einzug in Höhe von {{ person.open_amount_cents | format_cents_as_eur_de }}.
 
   Nimm bitte sofort mit uns Kontakt auf, wenn dir das finanziell nicht möglich ist. Wir können auch über eine Anpassung des Zahlungsplans reden und wollen weitere Rücklastschrift-Gebühren vermeiden.
 
   Überprüfe bitte auch die hinterlege Kontoverbindung:
 
-  Kontoinhaber*in: {{ row.sepa_name }}
-  IBAN: {{ row.sepa_iban }}
-  {% if (row.sepa_bank_name is defined) and (row.sepa_bank_name) %}Bank: {{ row.sepa_bank_name }}
+  Kontoinhaber*in: {{ person.sepa_name }}
+  IBAN: {{ person.sepa_iban }}
+  {% if (person.sepa_bank_name is defined) and (person.sepa_bank_name) %}Bank: {{ person.sepa_bank_name }}
   {% endif %}
 
   Liebe Grüße und Gut Pfad

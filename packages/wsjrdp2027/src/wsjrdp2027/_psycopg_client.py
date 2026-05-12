@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import contextlib as _contextlib
 import dataclasses as _dataclasses
+import itertools as _itertools
 import logging as _logging
+import threading as _threading
 import typing as _typing
 
 
@@ -32,7 +34,12 @@ class PsycopgAudithook(_typing.Protocol):
     def __call__(self, action, /, **kwargs) -> object: ...
 
 
+_cnt_lock = _threading.Lock()
+_cnt = _itertools.count()
+
+
 class PsycopgClient:
+    __count: int = -1
     _config: PsycopgConfig
     _dry_run: bool = False
     __exit_stack: _contextlib.ExitStack
@@ -50,13 +57,21 @@ class PsycopgClient:
     ) -> None:
         from . import _logging_util
 
-        self._logger = _logging_util.to_logger_or_adapter(
-            logger, prefix=f"Psycopg-{id(self)}"
-        )
+        with _cnt_lock:
+            self.__count = next(_cnt)
+
         self._config = config
         self._dry_run = bool(dry_run)
         self._audithook = audithook
+        self._logger = _logging_util.to_logger_or_adapter(logger, prefix=str(self))
         self.__exit_stack = _contextlib.ExitStack()
+
+    def __is_read_only(self) -> bool:
+        return self._dry_run or self._config.read_only
+
+    def __str__(self) -> str:
+        ro = " (RO)" if (self.__is_read_only()) else ""
+        return f"Psycopg-{self.__count}{ro}"
 
     @property
     def config(self) -> PsycopgConfig:
@@ -64,8 +79,12 @@ class PsycopgClient:
 
     def close(self) -> None:
         if (connection := self.__connection) is not None:
+            self._logger.debug(f"Close ({connection=})")
             connection.close()
             self.__connection = None
+            self.__exit_stack.close()
+        else:
+            self._logger.debug(f"Close (no connection created)")
         self.__is_closed = True
 
     @property
@@ -93,10 +112,20 @@ class PsycopgClient:
         return self._get_connection()
 
     def __enter__(self) -> _typing.Self:
+        self._logger.debug("Enter context (does not create a connection)")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if connection := self.__connection:
+            self._logger.debug(f"Exit context ({connection=})")
+            if not connection.closed and not exc_type:
+                log_level = _logging.DEBUG if self.__is_read_only() else _logging.INFO
+                self._logger.log(log_level, "COMMIT")
+                connection.commit()
+        else:
+            self._logger.debug(f"Exit context (no connection created)")
         self.__exit_stack.__exit__(exc_type, exc_val, exc_tb)
+        self.__connection = None
 
     @_typing.overload
     def cursor(self, *, binary: bool = False) -> _psycopg.Cursor[_Row]: ...
@@ -120,6 +149,7 @@ class PsycopgClient:
             if self.__is_closed:
                 raise RuntimeError("PsycopgClient already closed")
             self.__connection = conn = self.__create_connection()
+            self._logger.debug(f"Enter connection context")
             self.__exit_stack.enter_context(conn)
         return self.__connection
 
@@ -141,7 +171,7 @@ class PsycopgClient:
         logger = _logging_util.PrefixLoggerAdapter(
             self._logger, prefix=f"{self.__class__.__qualname__}.__create_connection: "
         )
-        if self._config.read_only:
+        if self.__is_read_only():
             if conn.autocommit:
                 conn.execute("SET default_transaction_read_only TO TRUE;")
                 logger.info("SET default_transaction_read_only TO TRUE;")

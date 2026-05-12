@@ -24,6 +24,7 @@ def create_argument_parser():
     p = argparse.ArgumentParser()
     p.add_argument("--skip-db-updates", action="store_true", default=None)
     p.add_argument("--skip-email", action="store_true", default=None)
+    p.add_argument("--skip-create-fin-issue", action="store_true", default=False)
     p.add_argument("id", type=int)
     return p
 
@@ -65,28 +66,87 @@ def _find_tx_row(conn: _psycopg.Connection, *, id: int | None) -> _pandas.Series
         return None
 
 
+def _truish_list(*args):
+    return [x for x in args if x]
+
+
+def _update_ae(
+    ctx: wsjrdp2027.WsjRdpContext,
+    ae_row: _pandas.Series | None,
+    person: wsjrdp2027.Person,
+) -> None:
+    from wsjrdp2027 import _pg
+
+    if ae_row is None:
+        return
+
+    if skip_reasons := _truish_list(
+        f"existing comment {ae_row['comment']!r}" if ae_row["comment"] else None,
+        "skip_db_updates set" if ctx.skip_db_updates else None,
+        "dry_run set" if ctx.dry_run else None,
+        "no debit_return_issue" if not person.debit_return_issue else None,
+    ):
+        _LOGGER.info(
+            f"Skip updating accounting_entry {ae_row['id']}: {','.join(skip_reasons)}"
+        )
+    else:
+        _pg._execute_query_fetch_id(
+            ctx.hitobito_psycopg_connection(read_only=False),
+            t"""UPDATE accounting_entries SET comment = {person.debit_return_issue} WHERE id = {ae_row["id"]} RETURNING id;""",
+        )
+        _LOGGER.info(
+            f"Updated comment of accounting_entry {ae_row['id']} to {person.debit_return_issue!r}"
+        )
+
+
+def _update_tx(
+    ctx: wsjrdp2027.WsjRdpContext,
+    tx_row: _pandas.Series | None,
+    person: wsjrdp2027.Person,
+) -> None:
+    from wsjrdp2027 import _pg
+
+    if tx_row is None:
+        return
+
+    if skip_reasons := _truish_list(
+        f"existing camt tx comment {tx_row['comment']!r}"
+        if tx_row["comment"]
+        else None,
+        "skip_db_updates set" if ctx.skip_db_updates else None,
+        "dry_run set" if ctx.dry_run else None,
+        "no debit_return_issue" if not person.debit_return_issue else None,
+    ):
+        _LOGGER.info(f"Skip updating camt tx {tx_row['id']}: {','.join(skip_reasons)}")
+    else:
+        _pg._execute_query_fetch_id(
+            ctx.hitobito_psycopg_connection(read_only=False),
+            t"""UPDATE wsjrdp_camt_transactions SET comment = {person.debit_return_issue} WHERE id = {tx_row["id"]} RETURNING id;""",
+        )
+        _LOGGER.info(
+            f"Updated comment of camt tx {tx_row['id']} to {person.debit_return_issue!r}"
+        )
+
+
 def _create_fin_issue(
     *,
     ctx: wsjrdp2027.WsjRdpContext,
-    conn: _psycopg.Connection,
-    person_row: _pandas.Series,
+    person: wsjrdp2027.Person,
     estimated_collection_date: _datetime.date,
     upcoming_collection_date: _datetime.date,
     batch_config: wsjrdp2027.BatchConfig,
 ) -> str:
     from wsjrdp2027 import _pg
 
-    person_id = person_row["id"]
-
     collection_year_month = estimated_collection_date.strftime("%Y-%m")
-    summary = f"Einzug {collection_year_month} Retoure {person_row['role_id_name']}"
+    summary = f"Einzug {collection_year_month} Retoure {person.role_id_name}"
     email_addrs = wsjrdp2027.merge_mail_addresses(
-        person_row.get("sepa_mailing_to"), person_row.get("sepa_mailing_cc"), default=[]
+        person.get("sepa_mailing_to"), person.get("sepa_mailing_cc"), default=[]
     )
     email_addrs_list_text = "\n".join(
         f"* [{addr}|mailto:{addr}]" for addr in email_addrs
     )
-    description = f"""{person_row["greeting_name"]} in Hitobito: [https://anmeldung.worldscoutjamboree.de/people/{person_id}]
+    description = f"""{person.greeting_name} in Hitobito: [https://anmeldung.worldscoutjamboree.de/people/{person.id}]
 
 E-Mail Adressen:
 {email_addrs_list_text}
@@ -94,7 +154,7 @@ E-Mail Adressen:
 
     labels = ["Retoure", "Rücklastschrift", f"Einzug-{collection_year_month}"]
 
-    reporter = person_row.get("sepa_mail") or person_row["email"]
+    reporter = person.get("sepa_mail") or person.email
     participants = [addr for addr in email_addrs if addr != reporter]
 
     with ctx.login_helpdesk() as helpdesk:
@@ -117,8 +177,8 @@ E-Mail Adressen:
         )
 
     _pg._execute_query_fetch_id(
-        conn,
-        t"UPDATE people SET additional_info['debit_return_issue'] = to_jsonb({debit_return_issue}::text) WHERE id = {person_id} RETURNING id;",
+        ctx.hitobito_psycopg_connection(read_only=False),
+        t"UPDATE people SET additional_info['debit_return_issue'] = to_jsonb({debit_return_issue}::text) WHERE id = {person.id} RETURNING id;",
     )
     return debit_return_issue
 
@@ -126,50 +186,33 @@ E-Mail Adressen:
 def _send_missing_installment_notification(
     *,
     ctx: wsjrdp2027.WsjRdpContext,
-    conn: _psycopg.Connection,
-    person_row: _pandas.Series,
-    wsj_role: str,
+    person: wsjrdp2027.Person,
     batch_name: str,
+    skip_create_fin_issue: bool = False,
 ) -> None:
-    from wsjrdp2027 import _pg
 
-    person_id: int = int(person_row["id"])
-    primary_group_id = int(person_row["primary_group_id"])
-    group = wsjrdp2027.Group.db_load(conn, group_arg=primary_group_id)
-    role_id_name = f"{wsj_role} {person_row['id_and_name']}"
-
-    # create new batch config
-    debit_return_issue = person_row.get("additional_info", {}).get(
-        "debit_return_issue", "FIN-000"
-    )
     batch_config = ctx.load_batch_config_from_yaml(
         _SELFDIR / f"{_SELF_NAME}.yml",
         name=batch_name,
-        where=wsjrdp2027.PeopleWhere(id=person_id),
+        where=wsjrdp2027.PeopleWhere(id=person.id),
         jinja_extra_globals={
-            "role_id_name": role_id_name,
-            "debit_return_issue": debit_return_issue,
             "response_due_date": ctx.today + _datetime.timedelta(days=7),
         },
     )
     assert batch_config.jinja_extra_globals is not None
     upcoming_collection_date = batch_config.query.collection_date
     assert upcoming_collection_date is not None
-    person_row = wsjrdp2027.load_person_row(
-        conn, person_id=person_id, collection_date=upcoming_collection_date
-    )
+    person = ctx.load_person_for_id(person.id, collection_date=upcoming_collection_date)
 
     estimated_collection_date = (
         upcoming_collection_date - _datetime.timedelta(days=30)
     ).replace(day=5)
 
-    prev_month_person_row = wsjrdp2027.load_person_row(
-        conn,
-        person_id=person_id,
-        collection_date=estimated_collection_date,
+    prev_month_person = ctx.load_person_for_id(
+        person.id, collection_date=estimated_collection_date
     )
-    retoure_cents = prev_month_person_row["open_amount_cents"]
-    missing_installment_cents = prev_month_person_row[
+    retoure_cents = prev_month_person.open_amount_cents
+    missing_installment_cents = prev_month_person[
         "amount_due_in_collection_date_month_cents"
     ]
     bank_fees_cents = retoure_cents - missing_installment_cents
@@ -188,13 +231,14 @@ def _send_missing_installment_notification(
     )
 
     ae_row = _find_retoure_row(
-        conn,
-        person_id=person_id,
+        ctx.hitobito_psycopg_connection(read_only=True),
+        person_id=person.id,
         retoure_cents=retoure_cents,
         estimated_collection_date=estimated_collection_date,
     )
     tx_row = _find_tx_row(
-        conn, id=(ae_row["camt_transaction_id"] if ae_row is not None else None)
+        ctx.hitobito_psycopg_connection(read_only=True),
+        id=(ae_row["camt_transaction_id"] if ae_row is not None else None),
     )
 
     print(flush=True)
@@ -207,10 +251,10 @@ def _send_missing_installment_notification(
             "retoure camt tx:\n%s", textwrap.indent(tx_row.to_string(), "  | ")
         )
     _LOGGER.info("")
-    _LOGGER.info(f"role_id_name: {role_id_name}")
+    _LOGGER.info(f"role_id_name: {person.role_id_name}")
     _LOGGER.info(f"retoure_cents: {retoure_cents} (prev month open_amount_cents)")
     _LOGGER.info(f"missing_installment_cents: {missing_installment_cents} (prev month)")
-    _LOGGER.info(f"debit_return_issue: {debit_return_issue}")
+    _LOGGER.info(f"debit_return_issue: {person.debit_return_issue}")
     print(flush=True)
 
     ctx.require_approval_to_run_in_prod()
@@ -218,81 +262,47 @@ def _send_missing_installment_notification(
     # support_cmt_mail_addresses = group.additional_info.get("support_cmt_mail_addresses")
     # batch_config.extend_extra_email_bcc(support_cmt_mail_addresses)
 
-    if debit_return_issue in (None, "", "FIN-000"):
-        debit_return_issue = _create_fin_issue(
-            ctx=ctx,
-            conn=conn,
-            batch_config=batch_config,
-            estimated_collection_date=estimated_collection_date,
-            upcoming_collection_date=upcoming_collection_date,
-            person_row=person_row,
-        )
-        batch_config.jinja_extra_globals["debit_return_issue"] = debit_return_issue
+    if person.debit_return_issue in (None, "", "FIN-000"):
+        if not skip_create_fin_issue:
+            person.debit_return_issue = _create_fin_issue(
+                ctx=ctx,
+                batch_config=batch_config,
+                estimated_collection_date=estimated_collection_date,
+                upcoming_collection_date=upcoming_collection_date,
+                person=person,
+            )
+            prev_month_person.debit_return_issue = person.debit_return_issue
 
-    if ae_row is not None and not ae_row["comment"]:
-        _pg._execute_query_fetch_id(
-            conn,
-            t"""UPDATE accounting_entries SET comment = {debit_return_issue} WHERE id = {ae_row["id"]} RETURNING id;""",
-        )
-        _LOGGER.info(
-            f"Updated comment of accounting_entry {ae_row['id']} to {debit_return_issue!r}"
-        )
+    _update_ae(ctx, ae_row, person)
+    _update_tx(ctx, tx_row, person)
 
-    if tx_row is not None and not tx_row["comment"]:
-        _pg._execute_query_fetch_id(
-            conn,
-            t"""UPDATE wsjrdp_camt_transactions SET comment = {debit_return_issue} WHERE id = {tx_row["id"]} RETURNING id;""",
-        )
-        _LOGGER.info(
-            f"Updated comment of camt tx {tx_row['id']} to {debit_return_issue!r}"
-        )
-
-    prepared_batch = ctx.load_people_and_prepare_batch(
-        batch_config, log_resulting_data_frame=False
+    prepared = batch_config.prepare(
+        person, dry_run=ctx.dry_run, skip_email=ctx.skip_email
     )
-    ctx.update_db_and_send_mailing(prepared_batch, zip_eml=False)
+    ctx.send_mailing(prepared, zip_eml=False)
 
 
 def main(argv=None):
-    ctx = wsjrdp2027.WsjRdpContext(
-        argument_parser=create_argument_parser(),
-        argv=argv,
-        __file__=__file__,
-    )
+    with wsjrdp2027.WsjRdpContext(
+        argument_parser=create_argument_parser(), argv=argv, __file__=__file__
+    ) as ctx:
+        person_id = int(ctx.parsed_args.id)
+        print(flush=True)
+        _LOGGER.info(f"Send missing installment notification to {person_id}")
 
-    person_id = int(ctx.parsed_args.id)
-
-    print(flush=True)
-    _LOGGER.info(f"Send missing installment notification to {person_id}")
-    with ctx.psycopg_connect() as conn:
-        person_row = wsjrdp2027.load_person_row(conn, person_id=person_id)
-        short_role_name = person_row["payment_role"].short_role_name
-        role_id_name = "-".join(
-            [
-                short_role_name,
-                str(person_id),
-                person_row["short_full_name"].replace(" ", "_"),
-            ]
-        )
-        batch_name = f"{_SELF_NAME}_{role_id_name}"
+        person = ctx.load_person_for_id(person_id)
         out_base = ctx.make_out_path(
-            f"{_SELF_NAME}_{role_id_name}_{{{{ filename_suffix }}}}"
+            f"{_SELF_NAME}_{person.role_id_name_for_filename}"
+            + "_{{ filename_suffix }}"
         )
-        batch_name = out_base.name
-        log_filename = out_base.with_suffix(".log")
-        ctx.configure_log_file(log_filename)
+        ctx.configure_log_file(out_base.with_suffix(".log"))
 
         _send_missing_installment_notification(
             ctx=ctx,
-            conn=conn,
-            person_row=person_row,
-            wsj_role=short_role_name,
-            batch_name=batch_name,
+            person=person,
+            batch_name=out_base.name,
+            skip_create_fin_issue=ctx.dry_run or ctx.parsed_args.skip_create_fin_issue,
         )
-
-    _LOGGER.info("")
-    _LOGGER.info("Output directory: %s", ctx.out_dir)
-    _LOGGER.info("  Log file: %s", log_filename)
 
 
 if __name__ == "__main__":
