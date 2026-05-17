@@ -3,32 +3,32 @@ updates:
 query:
   include_sepa_mail_in_mailing_to: false
   where:
-    id: 2
-    #id: [30,244,320,328,399,521,572,684,685,998,1164,1734,1741,1767,1944,1979,2175,2220,2343] 
+    #id: 2
+    id: [30, 521, 1164, 1741, 685, 684, 1734, 320, 2175, 244, 399, 998, 328, 1767, 2220, 2343, 572, 1979] 
 from_addr: anmeldung@worldscoutjamboree.de
-email_from: helpdesk@worldscoutjamboree.de
+email_from: info@worldscoutjamboree.de
 email_subject: "Einwilligung zur Nutzung von Fotos & Videos - {{ row.short_full_name }} (id {{ row.id }})"
 summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
 signature: "{{ EMAIL_SIGNATURE_CMT }}"
 content: |
-  Hallo {{ row.greeting_name }},
+  Gut Pfad {{ row.greeting_name }},
 
-  das Jamboree wirft seine Schatten voraus. Die ersten Treffen rücken näher und die Vorfreude steigt! Ein so großes Ereignis verdient natürlich auch eine tolle Erinnerung, die wir in Bildern und Videos festhalten möchten. Da der Nutzung von Fotos mit der Anmeldung widersprochen wurde, möchten wir an dieser Stelle ein paar wichtige Hinweise und Gedanken mit auf den Weg geben:
+  das Jamboree wirft seine Schatten voraus. Die ersten Treffen rücken näher und die Vorfreude steigt! Ein so großes Ereignis verdient natürlich auch eine tolle Erinnerung, die wir in Bildern und Videos festhalten möchten. 
 
-  • Im deutschen Kontingent achten wir darauf, dass das Fotoverbot eingehalten wird. Wir können aber nicht garantieren, dass Fotografierende aus anderen Kontingenten, oder Fotografierende des Veranstalters ebenfalls darauf achten. Auf dem Jamboree selbst gelten andere Foto-Regeln, da es sich um eine öffentliche Veranstaltung handelt. Wie bei vergangenen Jamborees gehen wir davon aus, dass der Veranstalter keine Rücksicht auf den Widerspruch zur Fotogenehmigung nehmen wird.
+  Da für die mit dieser Mail angeschriebenen Teilnehmenden derzeit keine Zustimmung zur Nutzung von Foto- und Videoaufnahmen vorliegt, möchten wir einige wichtige Hinweise zum Umgang damit im Rahmen der Vorbereitungstreffen und der Veranstaltung geben:
 
-  • Wenn Sie sich weiterhin gegen eine Fotogenehmigung entscheiden, sind wir sowohl auf Ihre Mitarbeit als auch auf die Ihres Kindes angewiesen. Kinder, für die keine Zustimmung vorliegt, müssen während aller Aktivitäten – von Vorbereitungstreffen bis zur Veranstaltung selbst – eine deutlich sichtbare Kennzeichnung tragen, die darauf hinweist, dass sie nicht fotografiert werden dürfen. Das ist wichtig für das Fotoverbot, kann sich aber für Ihr Kind unangenehm anfühlen. Wenn diese Kennzeichnung nicht getragen wird, gilt dies im Umkehrschluss als eine - für den Einzelfall - erteilte Erlaubnis.
+  • Im deutschen Kontingent achten wir darauf, dass das Fotoverbot eingehalten wird. Wir können aber nicht garantieren, dass Fotografierende aus anderen Kontingenten, oder Fotografierende des Veranstalters ebenfalls darauf achten. Auf dem Jamboree selbst gelten andere Foto-Regeln, da es sich um eine öffentliche Veranstaltung handelt. Wie bei vergangenen Jamborees gehen wir davon aus, dass der Veranstalter keine Rücksicht auf Ihren Widerspruch zur Fotogenehmigung nehmen wird.
 
-  • Die Nichterteilung ihrer Fotogenehmigung gilt auch für Gruppenfotos bzw. -videos.
+  • Liegt keine Fotogenehmigung vor, ist bei allen Aktivitäten – von Vorbereitungstreffen bis zur Veranstaltung selbst – eine deutlich sichtbare Kennzeichnung des jeweiligen Teilnehmenden erforderlich, die auf das Fotoverbot hinweist. Dies dient der besseren Umsetzung des Wunsches, nicht fotografiert zu werden. Gleichzeitig kann eine solche Kennzeichnung im Alltag der Veranstaltung für den Einzelnen als unangenehm empfunden werden. Wenn diese Kennzeichnung nicht getragen wird, gilt dies im Umkehrschluss als eine - für den Einzelfall - erteilte Erlaubnis.
 
-  • In der Nachberichterstattung, etwa im offiziellen Film oder dem Erinnerungsbuch, wird ihr Kind nicht vorkommen. Das wäre schade, weil so ein Stück der gemeinschaftlichen Erinnerung fehlt.
+  • Die fehlende Zustimmung zur Fotogenehmigung gilt ebenfalls für Gruppenfotos und Gruppenaufnahmen.
 
-  Wir würden uns wirklich freuen, wenn Sie Ihre Entscheidung noch einmal überdenken und Ihrem Kind die Möglichkeit geben, auf den Erinnerungen an dieses besondere Abenteuer mit aufzutauchen. Bitte besprechen Sie die obigen Punkte mit Ihrem Kind und binden Sie es in die Entscheidung mit ein. Wenn Sie Ihre Entscheidung ändern möchten, können Sie sich gerne bei uns per Email melden. 
+  • In der Nachberichterstattung, etwa im offiziellen Film oder dem Erinnerungsbuch, werden Personen ohne Fotogenehmigung nicht vorkommen. Das wäre schade, weil so ein Stück der gemeinschaftlichen Erinnerung fehlt.
 
-  Falls Sie noch Fragen oder Bedenken haben, kommen wir gerne ins Gespräch. Melden Sie sich einfach bei uns!
+  Wir möchten daher darum bitten, die genannten Punkte sorgfältig abzuwägen und ggf. gemeinsam innerhalb der Familie zu besprechen. Sollte eine Änderung der bisherigen Entscheidung gewünscht sein, ist dies jederzeit per E-Mail möglich.
 
+  Für Rückfragen, Bedenken oder ein persönliches Gespräch stehen wir gerne zur Verfügung.
 
   Herzlich Gut Pfad
 
-  Deine HOC (Head of Contingent) Caro, Fox & Ines
-
+  Caro, Fox & Ines (HOC, Heads of Contingent)
