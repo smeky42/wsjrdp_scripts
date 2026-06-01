@@ -15,7 +15,7 @@ if _typing.TYPE_CHECKING:
     import pandas as _pandas
     import psycopg as _psycopg
 
-    from . import _context, _groups
+    from . import _accounting_entry, _batch, _context, _groups, _pg
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -331,6 +331,26 @@ class Person:
                 return "info@worldscoutjamboree.de"
 
     @property
+    def short_first_name(self) -> str:
+        nickname = self.nickname
+        first_names = self.first_name.split(" ")
+        if nickname and (
+            (nickname in first_names)
+            or any(nickname in f_name.split("-") for f_name in first_names)
+        ):
+            return nickname
+        else:
+            return first_names[0]
+
+    @property
+    def short_full_name(self) -> str:
+        maybe_short_last_name = self.get("additional_info", {}).get("short_last_name")
+        if maybe_short_last_name:
+            return _filtered_join(self.short_first_name, str(maybe_short_last_name))
+        else:
+            return _filtered_join(self.short_first_name, self.last_name)
+
+    @property
     def id_and_name(self) -> str:
         return _filtered_join(self.id, self.short_full_name)
 
@@ -617,11 +637,26 @@ class Person:
         *,
         ctx: _context.WsjRdpContext | None = None,
         batch_name: str | None = None,
+        batch_config: _batch.BatchConfig | None = None,
     ) -> None:
         from ._internal.move_to_group import move_person_to_group
 
         move_person_to_group(
-            ctx, person=self, new_group=new_group, batch_name=batch_name
+            ctx,
+            person=self,
+            new_group=new_group,
+            batch_name=batch_name,
+            batch_config=batch_config,
+        )
+
+    def load_accounting_entries(
+        self, conn: _pg.ConnectionLike | None
+    ) -> list[_accounting_entry.AccountingEntry]:
+
+        from . import _accounting_entry
+
+        return _accounting_entry.AccountingEntry.load_entries_for_where(
+            where=t"subject_id = {self.id}", conn=conn
         )
 
 

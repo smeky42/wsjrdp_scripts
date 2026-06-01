@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import logging as _logging
 import pprint as _pprint
+import typing as _typing
 
 from .. import _context, _groups, _people_query, _person
+
+
+if _typing.TYPE_CHECKING:
+    from .. import _batch
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -15,6 +20,7 @@ def move_person_to_group(
     person: _person.Person,
     new_group: str | int | _groups.Group,
     batch_name: str | None = None,
+    batch_config: _batch.BatchConfig | None = None,
 ) -> None:
     if ctx is None:
         ctx = _context.get_thread_local_ctx_or_raise()
@@ -30,39 +36,36 @@ def move_person_to_group(
         new_group = _groups.Group.to_group(new_group, conn=ctx)
         unit_code: str | None = new_group.unit_code if new_group else None
 
-        # create new batch config
-        batch_config = ctx.new_batch_config(
-            name=batch_name,
-            where=_people_query.PeopleWhere(id=person.id),
-        )
+        if batch_config is not None:
+            local_batch_config = batch_config
+        else:
+            local_batch_config = ctx.new_batch_config(
+                name=batch_name,
+                where=_people_query.PeopleWhere(id=person.id),
+            )
 
         if new_group.id != person.primary_group_id:
             _LOGGER.info(
                 f"Set new_primary_group_id={new_group.id} (derived from new_group={new_group_arg})"
             )
-            batch_config.updates["new_primary_group_id"] = new_group.id
+            local_batch_config.updates["new_primary_group_id"] = new_group.id
         if note := _confirmation_note(ctx, old_group=old_group, new_group=new_group):
-            batch_config.updates["add_note"] = note
+            local_batch_config.updates["add_note"] = note
         if is_yp_or_ul and (unit_code := new_group.unit_code):
             _LOGGER.info(
                 f"Set new_unit_code={unit_code!r} (derived from new_group={new_group_arg})"
             )
             if unit_code != person.unit_code:
-                batch_config.updates["new_unit_code"] = unit_code
-        _LOGGER.info("Query:\n%s", batch_config.query)
+                local_batch_config.updates["new_unit_code"] = unit_code
+        _LOGGER.debug("Query:\n%s", local_batch_config.query)
 
-        print(flush=True)
-        _LOGGER.info(person.role_id_name)
-        if batch_config.updates:
-            _LOGGER.info("Updates:\n%s", _pprint.pformat(batch_config.updates))
-        else:
-            _LOGGER.info("Updates: %r", batch_config.updates)
-        print(flush=True)
-
-        prepared_batch = ctx.load_people_and_prepare_batch(
-            batch_config, log_resulting_data_frame=False
-        )
-        ctx.update_db_and_send_mailing(prepared_batch, silent_skip_email=True)
+        if batch_config is None:
+            prepared_batch = ctx.load_people_and_prepare_batch(
+                local_batch_config,
+                log_resulting_data_frame=False,
+                report_all_updates=True,
+            )
+            ctx.update_db_and_send_mailing(prepared_batch, silent_skip_email=True)
 
 
 def _confirmation_note(
