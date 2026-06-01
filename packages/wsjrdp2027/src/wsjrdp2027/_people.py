@@ -999,6 +999,7 @@ def update_postgres_db_for_dataframe(
     skip_db_updates: bool | None = None,
     now: _datetime.datetime | _datetime.date | str | int | float | None = None,
     logger: _logging.Logger | _logging.LoggerAdapter = _LOGGER,
+    report_all_updates: bool | None = None,
     ctx=None,
 ) -> None:
     import psycopg as _psycopg
@@ -1029,6 +1030,7 @@ def update_postgres_db_for_dataframe(
     skipped_ids = set()
     failed_ids = set()
     df_len = len(df)
+    report_update_log_level = _logging.INFO if report_all_updates else _logging.DEBUG
     with cursor.connection.transaction() as db_tx:
         for i, (_, row) in enumerate(df.iterrows(), start=1):
             pcnt = (i / df_len) * 100.0
@@ -1040,11 +1042,17 @@ def update_postgres_db_for_dataframe(
             logger.info(summary)
             if not db_changes:
                 skipped_ids.add(id)
-                logger.debug("  Skip %s (no changes)", id_and_name)
+                logger.log(
+                    report_update_log_level, "  Skip %s (no changes)", id_and_name
+                )
                 continue
             elif _util.nan_to_none(row.get("skip_db_updates")):
                 skipped_ids.add(id)
-                logger.info("  Skip %s (due to row['skip_db_updates'])", id_and_name)
+                logger.log(
+                    report_update_log_level,
+                    "  Skip %s (due to row['skip_db_updates'])",
+                    id_and_name,
+                )
                 continue
             try:
                 _update_person_from_row(
@@ -1054,6 +1062,7 @@ def update_postgres_db_for_dataframe(
                     now=now,
                     logger=logger,
                     transaction=db_tx,
+                    report_all_updates=report_all_updates,
                 )
             except Exception as exc:
                 logger.exception("Failed to update %s: %s", id_and_name, str(exc))
@@ -1079,6 +1088,7 @@ def _update_person_from_row(
     logger: _logging.Logger | _logging.LoggerAdapter,
     now: _datetime.datetime | _datetime.date | str | int | float | None = None,
     transaction: _psycopg.Transaction,
+    report_all_updates: bool | None = None,
 ) -> None:
     from . import _person_pg, _pg, _util
 

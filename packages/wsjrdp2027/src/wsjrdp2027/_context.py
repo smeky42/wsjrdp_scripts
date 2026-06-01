@@ -1535,6 +1535,7 @@ class WsjRdpContext:
         df_cb: _collections_abc.Callable[[_pandas.DataFrame], _pandas.DataFrame]
         | None = None,
         log_resulting_data_frame: bool | None = None,
+        report_all_updates: bool | None = None,
     ) -> _batch.PreparedBatch:
         from . import _util
 
@@ -1552,6 +1553,7 @@ class WsjRdpContext:
             now=now,
             df_cb=df_cb,
             log_resulting_data_frame=log_resulting_data_frame,
+            report_all_updates=report_all_updates,
         )
         if not out_dir:
             prepared_batch.out_dir = self.__compute_batch_out_dir(prepared_batch)
@@ -1584,6 +1586,7 @@ class WsjRdpContext:
         dry_run: bool | None = None,
         skip_db_updates: bool | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        report_all_updates: bool | None = None,
     ) -> None:
         from . import _people
 
@@ -1603,6 +1606,7 @@ class WsjRdpContext:
                 logger=self._logger,
                 ctx=self,
                 now=now,
+                report_all_updates=report_all_updates,
             )
 
     def update_db_and_send_mailing(
@@ -1613,6 +1617,7 @@ class WsjRdpContext:
         zip_eml: bool | None = None,
         dry_run: bool | None = None,
         silent_skip_email: bool = False,
+        report_all_updates: bool | None = None,
     ) -> None:
         if not prepared_batch.out_dir:
             prepared_batch.out_dir = self.__compute_batch_out_dir(prepared_batch)
@@ -1625,6 +1630,7 @@ class WsjRdpContext:
             now=prepared_batch.now,
             dry_run=dry_run,
             skip_db_updates=prepared_batch.skip_db_updates,
+            report_all_updates=report_all_updates,
         )
 
         if skip_email_reasons := prepared_batch.get_skip_email_reasons(dry_run=dry_run):

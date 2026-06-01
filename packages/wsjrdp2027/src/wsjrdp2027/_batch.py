@@ -281,6 +281,9 @@ class PreparedBatch:
                     raise
 
 
+_DEFAULT_SUMMARY = "{{ row.role_id_name }}; status: {{ row.status }}{% if msg %}; To: {{ msg.to }}; Cc: {{ msg.cc }}{% if msg.bcc %}; Bcc: {{msg.bcc }}{% endif %}{% endif %}"
+
+
 @_dataclasses.dataclass(kw_only=True)
 class BatchConfig:
     query: _people_query.PeopleQuery
@@ -297,7 +300,7 @@ class BatchConfig:
     html_content: str | None = None
     html_content_file: _pathlib.Path | None = None
     name: str = "batch"
-    summary: str = "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}{% if msg %}; To: {{ msg.to }}; Cc: {{ msg.cc }}{% endif %}"
+    summary: str = _DEFAULT_SUMMARY
     jinja_extra_globals: dict | None = None
     action_arguments: dict
     updates: dict
@@ -397,10 +400,7 @@ class BatchConfig:
         else:
             self.html_content_file = None
 
-        self.summary = (
-            summary
-            or "{{ row.payment_role.short_role_name }} {{ row.id_and_name }}; status: {{ row.status }}{% if msg %}; To: {{ msg.to }}; Cc: {{ msg.cc }}{% endif %}"
-        )
+        self.summary = summary or _DEFAULT_SUMMARY
         self.jinja_extra_globals = jinja_extra_globals
         self.action_arguments = action_arguments if action_arguments is not None else {}
         self.dry_run = dry_run if dry_run is not None else False
@@ -808,6 +808,7 @@ class BatchConfig:
         | float
         | None
         | _types.MissingType = _types.MISSING,
+        report_all_updates: bool | None = None,
     ) -> PreparedBatch:
         from . import _util
 
@@ -841,6 +842,7 @@ class BatchConfig:
                 msgid_idstring=msgid_idstring,
                 msgid_domain=msgid_domain,
                 now=now,
+                report_all_updates=report_all_updates,
             )
 
     def prepare(
@@ -858,7 +860,9 @@ class BatchConfig:
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
         open_editor: bool | None = None,
+        report_all_updates: bool | None = None,
     ) -> PreparedBatch:
+        import pprint
         import time
 
         import pandas as _pandas
@@ -898,6 +902,14 @@ class BatchConfig:
         if len(people) > 1:
             _LOGGER.info("Prepare mailing...")
         tic = time.monotonic()
+        if report_all_updates:
+            _LOGGER.info("")
+            if self.updates:
+                _LOGGER.info("Updates:\n%s", pprint.pformat(self.updates))
+            else:
+                _LOGGER.info("Updates: %r", self.updates)
+            print(flush=True)
+
         messages = tuple(
             self._prepare_email_message_for_person(
                 p,
