@@ -268,12 +268,12 @@ class WsjRdpKeycloakAdapter:
             self.__check_person_is_consistent(
                 person, additional_info_updates=additional_info_updates
             )
-        if username := person.keycloak_username:
+        if username := person.get_keycloak_username_expected():
             if user_dict := self.get_user_or_none_by_name(
                 username, allow_cached=allow_cached
             ):
                 return user_dict
-        if wsjrdp_email := person.wsjrdp_email_or_none:
+        if wsjrdp_email := person.get_wsjrdp_email_expected():
             if user_dict := self.get_user_or_none_by_email(
                 wsjrdp_email, allow_cached=allow_cached
             ):

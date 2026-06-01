@@ -119,6 +119,7 @@ if _typing.TYPE_CHECKING:
         iter_people_dataframe as iter_people_dataframe,
         load_primary_groups_for_people as load_primary_groups_for_people,
     )
+    from ._util import dedup as dedup
 
 
 __all__ = [
@@ -157,6 +158,7 @@ __all__ = [
     "configure_file_logging",
     "console_confirm",
     "create_dir",
+    "dedup",
     "format_cents_as_eur_de",
     "format_iban",
     "generate_mail_username",
@@ -335,6 +337,7 @@ __ALIASES__ = {
     "Person": ("._person", "Person"),
     "bank_accounts": (".bank_accounts", ""),
     "datev": ("._datev", ""),
+    "dedup": ("._util", "dedup"),
     "iter_people_dataframe": ("._person", "iter_people_dataframe"),
     "keycloak": (".keycloak", ""),
     "load_primary_groups_for_people": ("._person", "load_primary_groups_for_people"),

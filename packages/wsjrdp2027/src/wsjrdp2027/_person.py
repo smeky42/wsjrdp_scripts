@@ -557,6 +557,13 @@ class Person:
             additional_info = self._data.setdefault("additional_info", {})
             additional_info["keycloak_username"] = value
 
+    def get_keycloak_username_or_default(self, wsjrdp_role: str | None = None) -> str:
+        return (
+            self.keycloak_username
+            or self.get_keycloak_username_default(wsjrdp_role=wsjrdp_role)
+            or ""
+        )
+
     def get_keycloak_username_default(
         self, wsjrdp_role: str | None = None
     ) -> str | None:
