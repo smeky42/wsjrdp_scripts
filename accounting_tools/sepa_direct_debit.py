@@ -221,26 +221,46 @@ def _report_df(
 
 
 def _write_mail_txt(path, pain_message: wsjrdp2027.PainMessage) -> None:
-    pmt_inf = pain_message.payment_infos[0]
-    collection_date = pmt_inf.requested_collection_date
-    amount_cents = pain_message.control_sum_cents
+    assert len(pain_message.payment_infos) >= 1
+    collection_date = pain_message.payment_infos[0].requested_collection_date
+    pain_message.payment_infos[0].debit_sequence_type
+    match len(pain_message.payment_infos):
+        case 1:
+            num_pmts_de = "einen Sammeleinzug"
+        case 2:
+            num_pmts_de = "zwei Sammeleinzüge"
+        case _:
+            num_pmts_de = f"{len(pain_message.payment_infos)} Sammeleinzüge"
 
     msg = wsjrdp2027.render_template(
-        """Hallo Jessi,
+        """Hallo,
 
+ich habe gerade die SEPA Lastschrift Datei für den {{ collection_date | month_year_de }} Jamboree Einzug eingespielt.
+ODER
 die SEPA Lastschrift Datei für den {{ collection_date | month_year_de }} Jamboree Einzug findest du hier: <NEXTCLOUD-LINK>
-
 Kannst du sie bitte einspielen. Einzugsdatum ist der {{ collection_date | date_de }}, die E-Mail Ankündigungen haben wir am <DD.MM.YYYY> verschickt.
 
-Die Datei enthält einen Batch mit {{ pain_message.number_of_transactions }} Buchungen und der Gesamt-Betrag ist {{ amount_cents | format_cents_as_eur_de }}:
+Die Datei enthält {{ num_pmts_de }} mit {{ pain_message.number_of_transactions }} Buchungen.
+Der Gesamt-Betrag ist {{ pain_message.control_sum_cents | format_cents_as_eur_de }}.
 
-Zahl der Buchungen: {{ pain_message.number_of_transactions }}
-Gesamt-Betrag: {{ amount_cents | format_cents_as_eur_de }}
-Empfänger-Konto:
-  IBAN {{ pmt_inf.cdtr_iban }}
-  BIC {{ pmt_inf.cdtr_bic }}
-Gläubiger-Identifikationsnummer: {{ pmt_inf.creditor_id }}
-Einzugsdatum: {{ collection_date | date_de }}
+{% for pmt_inf in pain_message.payment_infos %}
+{% if (pain_message.payment_infos | length) > 1 %}Sammeleinzug {{ loop.index }}:{% endif %}
+    Zahl der Buchungen: {{ pmt_inf.number_of_transactions }}
+    Gesamt-Betrag: {{ pmt_inf.control_sum_cents | format_cents_as_eur_de }}
+    Sequenz-Typ: {{ pmt_inf.debit_sequence_type }}
+    Empfänger-Konto:
+        IBAN {{ pmt_inf.cdtr_iban }}
+        BIC {{ pmt_inf.cdtr_bic }}
+    Gläubiger-Identifikationsnummer: {{ pmt_inf.creditor_id }}
+    Einzugsdatum: {{ pmt_inf.requested_collection_date | date_de }}
+{% endfor %}
+
+
+== DATEV Buchungen ==
+
+Wichtig: Den DATEV Buchungs-Stapel bitte erst einspielen, wenn das Geld eingezogen wurde.
+
+Die Datei mit dem DATEV-Buchungs-Stapel gibt es hier: <NEXTCLOUD-LINK>
 
 
 Liebe Grüße und Gut Pfad
@@ -248,9 +268,8 @@ Daffi
 """,
         context=dict(
             pain_message=pain_message,
-            pmt_inf=pmt_inf,
-            amount_cents=amount_cents,
             collection_date=collection_date,
+            num_pmts_de=num_pmts_de,
         ),
     )
 
