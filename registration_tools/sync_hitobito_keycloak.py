@@ -1,13 +1,14 @@
 #!/usr/bin/env -S uv run
 from __future__ import annotations
 
+import argparse as _argparse
+import dataclasses as _dataclasses
 import itertools
 import logging as _logging
 import pathlib as _pathlib
 import pprint
 
 import pandas as _pandas
-import psycopg as _psycopg
 import wsjrdp2027
 
 
@@ -21,14 +22,78 @@ EXT_GROUPS = [48]
 
 
 GROUPNAMES_TO_SYNC = ["CMT", "UL", "IST", "BMT", "EXT"]
-GROUPNAMES_TO_SYNC = ["UL"]
+GROUPNAMES_TO_SYNC = []
 
 
 KEYCLOAK_GROUPNAMES_TO_FETCH = ["CMT", "UL", "IST", "BMT", "EXT"]
 
 
+@_dataclasses.dataclass(kw_only=True)
+class SyncOptions:
+    groups: list[str] = _dataclasses.field(default_factory=lambda: [])
+    limit: int | None = None
+    status: list[str] = _dataclasses.field(default_factory=lambda: [])
+    create_missing_keycloak_user: bool = True
+
+
+def _parse_args(args: _argparse.Namespace) -> SyncOptions:
+    kwargs = {}
+    if args.groups:
+        groups = []
+        for g in args.groups:
+            if g == "all":
+                groups.extend(KEYCLOAK_GROUPNAMES_TO_FETCH)
+            elif g in KEYCLOAK_GROUPNAMES_TO_FETCH:
+                groups.append(g)
+            else:
+                raise RuntimeError(f"Invalid groupname {g}")
+        kwargs["groups"] = wsjrdp2027.dedup(groups)
+    if args.limit:
+        kwargs["limit"] = int(args.limit)
+    if args.status:
+        kwargs["status"] = args.status
+    else:
+        kwargs["status"] = ["confirmed"]
+    if args.create_missing_keycloak_user is not None:
+        kwargs["create_missing_keycloak_user"] = bool(args.create_missing_keycloak_user)
+    return SyncOptions(**kwargs)
+
+
+def _create_argument_parser():
+    import argparse
+
+    p = argparse.ArgumentParser()
+    p.add_argument("--skip-email", action="store_true", default=None)
+    p.add_argument("--skip-db-updates", action="store_true", default=None)
+    p.add_argument(
+        "--open-editor",
+        action="store_true",
+        default=False,
+        help="Open E-Mail body content in editor before preparing EML file",
+    )
+    p.add_argument(
+        "--group",
+        "-g",
+        dest="groups",
+        required=False,
+        action="append",
+        default=None,
+        help="""Name or id of the group the deregistered person should be moved to.""",
+        choices=KEYCLOAK_GROUPNAMES_TO_FETCH + ["all"],
+    )
+    p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--status", action="append", default=None)
+    p.add_argument("--create-missing-keycloak-user", action="store_true", default=None)
+    p.add_argument(
+        "--no-create-missing-keycloak-user",
+        dest="create_missing_keycloak_user",
+        action="store_false",
+    )
+    return p
+
+
 def load_people_dataframe_for_groupname(
-    conn: _psycopg.Connection, groupname: str
+    ctx: wsjrdp2027.WsjRdpContext, *, groupname: str, args: SyncOptions
 ) -> _pandas.DataFrame:
     primary_group_id = None
     exclude_primary_group_id = None
@@ -59,16 +124,25 @@ def load_people_dataframe_for_groupname(
         exclude_deregistered=True,
         primary_group_id=primary_group_id,
         exclude_primary_group_id=exclude_primary_group_id,
+        status=args.status,
     )
+    query = wsjrdp2027.PeopleQuery(
+        where=where,
+        limit=args.limit,
+        offset=None,
+    )
+
+    print(flush=True)
+    _LOGGER.info(f"{where=}")
+    _LOGGER.info(f"WHERE: {where.as_where_condition()}")
+    _LOGGER.info(f"{query=}")
+    print(flush=True)
+
     # where=wsjrdp2027.PeopleWhere(primary_group_id=1, exclude_deregistered=True)
     # where=wsjrdp2027.PeopleWhere(id=[482], exclude_deregistered=True)
     df = wsjrdp2027.load_people_dataframe(
-        conn,
-        query=wsjrdp2027.PeopleQuery(
-            where=where,
-            limit=None,
-            offset=None,
-        ),
+        conn=ctx.hitobito_psycopg_connection(read_only=True),
+        query=query,
         log_resulting_data_frame=False,
     )
     _LOGGER.info(
@@ -77,8 +151,11 @@ def load_people_dataframe_for_groupname(
     return df
 
 
-def update_additional_info(
-    conn: _psycopg.Connection, updates: list[dict], *, console_confirm: bool = False
+def _update_additional_info(
+    ctx: wsjrdp2027.WsjRdpContext,
+    updates: list[dict],
+    *,
+    console_confirm: bool = False,
 ) -> None:
     if not updates:
         _LOGGER.info("No updates to people additional_info")
@@ -88,14 +165,14 @@ def update_additional_info(
         if not wsjrdp2027.console_confirm("Update additional_info in DB?"):
             _LOGGER.info("!! Skipped updates to additional_info")
             return
-
     updates_by_key: dict[str, list[dict]] = {}
-
     for upd in updates:
         p_id = upd["id"]
         for k, v in upd.items():
             if k != "id":
                 updates_by_key.setdefault(k, []).append({"id": p_id, k: v})
+
+    conn = ctx.hitobito_psycopg_connection(read_only=False)
     for key, values in updates_by_key.items():
         if key in ("wsjrdp_email", "moss_email"):
             _LOGGER.info(f"Update {key} for {len(values)} people")
@@ -116,12 +193,12 @@ def update_additional_info(
 
 def _check_for_keycloak_user(
     ctx: wsjrdp2027.WsjRdpContext,
-    conn: _psycopg.Connection,
     person: wsjrdp2027.Person,
     groupname: str,
     *,
     errors: list[str],
     additional_info_updates: list[dict],
+    create_missing_keycloak_user: bool = False,
 ) -> bool:
     if ctx.keycloak().get_user_for_person_or_none(
         person,
@@ -134,7 +211,9 @@ def _check_for_keycloak_user(
     keycloak_username = person.keycloak_username or person.wsjrdp_email
     keycloak_email = person.wsjrdp_email
 
-    if (
+    if not create_missing_keycloak_user:
+        return False
+    elif (
         keycloak_username
         and keycloak_email
         and person.moss_email
@@ -155,8 +234,7 @@ def _check_for_keycloak_user(
     ):
         _create_keycloak_user(
             ctx,
-            conn,
-            person,
+            person=person,
             groupname=groupname,
             keycloak_username=keycloak_username,
             keycloak_email=keycloak_email,
@@ -177,7 +255,6 @@ def _check_for_keycloak_user(
 
 def _create_keycloak_user(
     ctx: wsjrdp2027.WsjRdpContext,
-    conn: _psycopg.Connection,
     person: wsjrdp2027.Person,
     *,
     groupname: str,
@@ -289,9 +366,8 @@ Dein Contingent Management Team
 _NEW_ACCOUNT_MAIL_CONTENT = """
 Hallo {{ p.greeting_name }},
 
-wir haben einen neuen Account für dich eingerichtet.
-
-All unsere Zugänge werden von einer zentralen Instanz Keycloak verwaltet.
+wir haben einen neuen Keycloak Account für dich eingerichtet, damit du auf weitere Dienste wie Confluence zugreifen kannst.
+All unsere Zugänge (außer dem Anmeldesystem) werden von einer zentralen Keycloak Instanz verwaltet.
 D.h. für dich, dass du dich überall mit dem Button "WSJ Login" oder "Single Sign On" anmeldest.
 Von dort wirst du weiter auf login.worldscoutjamboree.de geleitet wo du deinen Username und Passwort angibst.
 
@@ -300,21 +376,22 @@ Nutzer: {{ p.wsjrdp_email }}
 Passwort: {{ p.additional_info.keycloak_initial_password }}
 
 
+Confluence: https://wiki.worldscoutjamboree.de/
+
+
 Gut Pfad und bis bald
 Dein Contingent Management Team
 """.strip()
 
 
-def sync(
-    ctx: wsjrdp2027.WsjRdpContext, conn: _psycopg.Connection, groupname: str
-) -> bool:
+def sync(ctx: wsjrdp2027.WsjRdpContext, groupname: str, args: SyncOptions) -> bool:
     errors = []
     email2row = {}
 
     additional_info_updates = []
     keycloak_updates = []
 
-    df = load_people_dataframe_for_groupname(conn, groupname=groupname)
+    df = load_people_dataframe_for_groupname(ctx, groupname=groupname, args=args)
 
     for p in wsjrdp2027.iter_people_dataframe(df):
         if not p.wsjrdp_email:
@@ -324,12 +401,13 @@ def sync(
 
         if not _check_for_keycloak_user(
             ctx,
-            conn,
             person=p,
             groupname=groupname,
             errors=errors,
             additional_info_updates=additional_info_updates,
+            create_missing_keycloak_user=args.create_missing_keycloak_user,
         ):
+            _LOGGER.info(f"Skip {p.role_id_name}, no keycloak user found")
             continue
 
         keycloak_user = ctx.keycloak().get_user_by_email(
@@ -407,7 +485,7 @@ def sync(
             _LOGGER.error(err)
         return False
 
-    update_additional_info(conn, additional_info_updates, console_confirm=True)
+    _update_additional_info(ctx, additional_info_updates, console_confirm=True)
     ctx.keycloak().update_users(keycloak_updates, console_confirm=True)
     return True
 
@@ -434,32 +512,31 @@ def _get_expanded_goto_list(ctx: wsjrdp2027.WsjRdpContext, email: str) -> list[s
     return goto_list
 
 
-def main():
-    ctx = wsjrdp2027.WsjRdpContext(
+def main(argv=None):
+    with wsjrdp2027.WsjRdpContext(
+        argument_parser=_create_argument_parser(),
+        argv=argv,
         __file__=__file__,
         # dry_run=True,
         # log_level=_logging.DEBUG,
-    )
-    out_base = ctx.make_out_path(_SELF_NAME + "__{{ filename_suffix }}")
-    log_filename = out_base.with_suffix(".log")
-    ctx.configure_log_file(log_filename)
+    ) as ctx:
+        args = _parse_args(ctx.parsed_args)
 
-    _LOGGER.info("Load mailcow aliases to fill cache")
-    _aliases = ctx.mailcow().get_alias_list()
-    _LOGGER.info(f"  ... loaded {len(_aliases)} aliases from mailcow")
+        out_base = ctx.make_out_path(_SELF_NAME + "__{{ filename_suffix }}")
+        log_filename = out_base.with_suffix(".log")
+        ctx.configure_log_file(log_filename)
 
-    _LOGGER.info("Load keycloak users to fill cache")
-    _users = ctx.keycloak().get_user_list()
-    _LOGGER.info(f"  ... loaded {len(_users)} users from keycloak")
+        _LOGGER.info("Load mailcow aliases to fill cache")
+        _aliases = ctx.mailcow().get_alias_list()
+        _LOGGER.info(f"  ... loaded {len(_aliases)} aliases from mailcow")
 
-    with ctx.psycopg_connect() as conn:
-        for groupname in GROUPNAMES_TO_SYNC:
-            if not sync(ctx, conn, groupname=groupname):
+        _LOGGER.info("Load keycloak users to fill cache")
+        _users = ctx.keycloak().get_user_list(allow_cached=False)
+        _LOGGER.info(f"  ... loaded {len(_users)} users from keycloak")
+
+        for groupname in args.groups:
+            if not sync(ctx, groupname=groupname, args=args):
                 return 1
-
-    _LOGGER.info("")
-    _LOGGER.info("Output directory: %s", ctx.out_dir)
-    _LOGGER.info("  Log file: %s", log_filename)
 
 
 if __name__ == "__main__":
