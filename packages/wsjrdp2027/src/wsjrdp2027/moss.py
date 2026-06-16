@@ -5,6 +5,7 @@ import contextlib as _contextlib
 import dataclasses as _dataclasses
 import datetime as _datetime
 import decimal as _decimal
+import logging as _logging
 import pathlib as _pathlib
 import re as _re
 import typing as _typing
@@ -16,28 +17,32 @@ if _typing.TYPE_CHECKING:
 
     from . import _context, _person
 
+_LOGGER = _logging.getLogger(__name__)
+
 
 def ensure_moss_email_mailbox_or_alias(
     ctx: _context.WsjRdpContext, *, people: _collections_abc.Iterable[_person.Person]
 ) -> None:
-    from . import mailbox
+
     from ._util import console_confirm
 
-    all_mail_aliases = mailbox.get_aliases(ctx)
-    addr2goto = {
-        a["address"]: frozenset(a["goto"].split(",")) for a in all_mail_aliases
-    }
+    all_mail_aliases = ctx.mailcow().get_alias_list(allow_cached=True)
+    addr2goto = {a.address: frozenset(a.goto) for a in all_mail_aliases}
 
     for p in people:
+        if not p.moss_email or not p.moss_email_expected_goto:
+            continue
         expected_goto = p.moss_email_expected_goto
-        if expected_goto and (expected_goto != p.moss_email):
-            print(p.unit_or_role, p.moss_email, "->", expected_goto)
-            goto_addrs = set(s.lower() for s in addr2goto.get(p.moss_email, set()))
+        goto_addrs = addr2goto.get(p.moss_email, set())
+        goto_addrs_l = set(s.lower() for s in goto_addrs)
+        if expected_goto and (expected_goto.lower() not in goto_addrs_l):
+            _LOGGER.info(f"{p.unit_or_role} {p.moss_email} -> {sorted(goto_addrs)}")
             if expected_goto.lower() not in goto_addrs:
-                print(f"    ! Missing alias {p.moss_email} -> {expected_goto}")
-                print(f"    {p.primary_group.name}  status: {p.status}")
-                if console_confirm("Add missing mail alias?"):
-                    mailbox.add_alias(ctx, p.moss_email, goto=expected_goto)
+                _LOGGER.info(f"  ! {p.role_id_name} {p.primary_group.name}")
+                _LOGGER.info(f"  !     status: {p.status}")
+                _LOGGER.info(f"  ! Expected alias {p.moss_email} -> {expected_goto}")
+                if console_confirm(f"Add/Set alias {p.moss_email} -> {expected_goto}?"):
+                    ctx.mailcow().add_alias(p.moss_email, goto=expected_goto)
 
 
 def moss_email_with_expected_goto(p: _person.Person, /) -> str:
