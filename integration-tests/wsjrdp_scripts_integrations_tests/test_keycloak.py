@@ -4,15 +4,46 @@ import unittest.mock
 
 import pytest
 import wsjrdp2027
-from wsjrdp2027 import KeycloakClient
+from wsjrdp2027 import KeycloakClient, WsjRdpKeycloakAdapter
+from wsjrdp2027.keycloak import delete_user
 
 
 @pytest.fixture
-def keycloak_client(ctx: wsjrdp2027.WsjRdpContext):
-    return ctx.keycloak()._client
+def keycloak_adapter(ctx: wsjrdp2027.WsjRdpContext):
+    return ctx.keycloak()
 
 
-class Test_KeyCloakClient:
+@pytest.fixture
+def keycloak_client(adapter: WsjRdpKeycloakAdapter):
+    return adapter._client
+
+
+class Test_KeyCloak_Adapter:
+    @pytest.fixture(autouse=True)
+    def _setup(self, keycloak_adapter: KeycloakClient):
+        keycloak_adapter.create_group("UL", exist_ok=True)
+        keycloak_adapter.create_group("IST", exist_ok=True)
+        try:
+            yield
+        finally:
+            pass
+
+    def test_disable_enable_user(self, keycloak_adapter: WsjRdpKeycloakAdapter):
+        user1 = keycloak_adapter.create_user("foo@foo", "pw123")
+        assert user1["enabled"]
+
+        keycloak_adapter.disable_user("foo@foo")
+        user1 = keycloak_adapter.get_user_by_username("foo@foo")
+        assert not user1["enabled"]
+
+        keycloak_adapter.enable_user("foo@foo")
+        user1 = keycloak_adapter.get_user_by_username("foo@foo")
+        assert user1["enabled"]
+
+        keycloak_adapter.delete_user_by_username("foo@foo")
+
+
+class Test_KeyCloak_Client:
     @pytest.fixture(autouse=True)
     def _setup(self, keycloak_client: KeycloakClient):
         keycloak_client.create_group("UL", exist_ok=True)

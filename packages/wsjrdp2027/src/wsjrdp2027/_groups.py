@@ -15,6 +15,10 @@ if _typing.TYPE_CHECKING:
 
 @_dataclasses.dataclass(kw_only=True)
 class Group:
+    WAITING_LIST_GROUPS = [5, 6, 7]
+    BMT_GROUPS = [45]
+    EXT_GROUPS = [48]
+
     id: int
     parent_id: int | None = None
     short_name: str | None = None

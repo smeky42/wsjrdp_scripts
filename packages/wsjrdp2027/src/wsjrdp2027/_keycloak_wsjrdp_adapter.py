@@ -18,6 +18,7 @@ _LOGGER = __import__("logging").getLogger(__name__)
 
 class WsjRdpKeycloakAdapter:
     _ctx = _weakref_util.WeakrefAttr["_context.WsjRdpContext"]()
+    _dry_run: bool | None = None
     _client: _keycloak_client.KeycloakClient
 
     _username2user: dict[str, _keycloak_client.KeycloakUserDict]
@@ -25,9 +26,15 @@ class WsjRdpKeycloakAdapter:
     _username2id: dict[str, str]
 
     def __init__(
-        self, context: _context.WsjRdpContext, /, *, verify: bool = True
+        self,
+        context: _context.WsjRdpContext,
+        /,
+        *,
+        verify: bool = True,
+        dry_run: bool | None = None,
     ) -> None:
         self._ctx = context
+        self._dry_run = dry_run
         config = context.config
         self._client = _keycloak_client.KeycloakClient(
             server_url=config.keycloak_url,
@@ -119,6 +126,70 @@ class WsjRdpKeycloakAdapter:
             audit=lambda s: self.__audit("update_user", s),
         )
 
+    def create_or_update_user(
+        self,
+        email: str,
+        password: str,
+        *,
+        username: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        enabled: bool | None = None,
+        attributes: dict[str, list[str]] | None = None,
+        payload: dict | None = None,
+        dry_run: bool | None = None,
+    ) -> _keycloak_client.KeycloakUserDict:
+        if dry_run is None:
+            dry_run = self.dry_run
+        return self._client.create_or_update_user(
+            email=email,
+            password=password,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            enabled=enabled,
+            attributes=attributes,
+            payload=payload,
+            dry_run=dry_run,
+            audit=lambda s: self.__audit("create_or_update_user", s),
+        )
+
+    def disable_user(self, username: str, dry_run: bool | None = None) -> None:
+        if dry_run is None:
+            dry_run = self.dry_run
+        self._client.update_user(
+            username=username,
+            payload={"enabled": False},
+            dry_run=dry_run,
+            audit=lambda s: self.__audit("disable_user", s),
+        )
+
+    def enable_user(self, username: str, dry_run: bool | None = None) -> None:
+        if dry_run is None:
+            dry_run = self.dry_run
+        self._client.update_user(
+            username=username,
+            payload={"enabled": True},
+            dry_run=dry_run,
+            audit=lambda s: self.__audit("enable_user", s),
+        )
+
+    def delete_user_by_username(
+        self,
+        username: str,
+        *,
+        raise_on_missing: bool | None = None,
+        dry_run: bool | None = None,
+    ) -> None:
+        if dry_run is None:
+            dry_run = self.dry_run
+        self._client.delete_user_by_username(
+            username,
+            raise_on_missing=raise_on_missing,
+            audit=lambda s: self.__audit("delete_user_by_username", s),
+            dry_run=dry_run,
+        )
+
     def delete_user_by_id(
         self,
         user_id: str,
@@ -170,7 +241,7 @@ class WsjRdpKeycloakAdapter:
 
     @property
     def dry_run(self) -> bool:
-        return self._ctx.dry_run
+        return self._dry_run or self._ctx.dry_run
 
     def get_users_in_group(
         self, groupname: str, *, enabled: bool | None = None
@@ -263,10 +334,13 @@ class WsjRdpKeycloakAdapter:
         additional_info_updates: list[dict],
         allow_cached: bool = False,
         check_role_consistency: bool = True,
+        autofix_role_consistency: bool | None = None,
     ) -> _keycloak_client.KeycloakUserDict | None:
         if check_role_consistency:
             self.__check_person_is_consistent(
-                person, additional_info_updates=additional_info_updates
+                person,
+                additional_info_updates=additional_info_updates,
+                autofix_role_consistency=autofix_role_consistency,
             )
         if username := person.get_keycloak_username_expected():
             if user_dict := self.get_user_or_none_by_name(
@@ -281,17 +355,22 @@ class WsjRdpKeycloakAdapter:
         return None
 
     def __check_person_is_consistent(
-        self, person: _person.Person, *, additional_info_updates: list[dict]
+        self,
+        person: _person.Person,
+        *,
+        additional_info_updates: list[dict],
+        autofix_role_consistency: bool | None = None,
     ) -> None:
         updates = person.find_role_consistency_updates()
         if not updates:
             return
-        prompt = f"Found inconsistent attributes for {person.role_id_name}:\n"
+        msg = f"Found inconsistent attributes for {person.role_id_name}:\n"
         for key, new in updates.items():
             old = getattr(person, key, None)
-            prompt += f"  {key}: {old} -> {new}\n"
-        prompt += f"Adjust {person.role_id_name}?"
-        if self._ctx.console_confirm(prompt):
+            msg += f"  {key}: {old} -> {new}\n"
+        if autofix_role_consistency or self._ctx.console_confirm(
+            f"{msg}Adjust {person.role_id_name}?"
+        ):
             for key, val in updates.items():
                 setattr(person, key, val)
             additional_info_updates.extend(

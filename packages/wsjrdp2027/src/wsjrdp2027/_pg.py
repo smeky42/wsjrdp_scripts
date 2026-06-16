@@ -1547,18 +1547,6 @@ def pg_upsert_fin_account(
     return _execute_query_fetch_id(cursor_or_connection, query)
 
 
-def pg_update_people_wsjrdp_emails(
-    conn: _psycopg.Connection, values: _collections_abc.Iterable[dict], *, now=None
-) -> None:
-    return pg_update_people_additional_info_email(conn, "wsjrdp_email", values, now=now)
-
-
-def pg_update_people_moss_emails(
-    conn: _psycopg.Connection, values: _collections_abc.Iterable[dict], *, now=None
-) -> None:
-    return pg_update_people_additional_info_email(conn, "moss_email", values, now=now)
-
-
 def pg_update_people_additional_info_email(
     conn: _psycopg.Connection,
     key: str,
@@ -1590,7 +1578,7 @@ SET
    additional_info['{key}_updated_at'] = %(now)s
 WHERE id = %(id)s"""
         with conn.cursor() as cur:
-            print(query)
+            _LOGGER.debug(f"{query}" + "".join(f"\n  | {d!r}" for d in values))
             cur.executemany(query, values)
 
 
@@ -1635,7 +1623,7 @@ def pg_update_people_additional_info(
     if key_deletes:
         query = f"""UPDATE people SET additional_info = additional_info - %(key)s WHERE id = %(delete_id)s"""
         with conn.cursor() as cur:
-            _LOGGER.info(f"{query}" + "".join(f"\n  | {d!r}" for d in key_deletes))
+            _LOGGER.debug(f"{query}" + "".join(f"\n  | {d!r}" for d in key_deletes))
             cur.executemany(query, key_deletes)
 
 

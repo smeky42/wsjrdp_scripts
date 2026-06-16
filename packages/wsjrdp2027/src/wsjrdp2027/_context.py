@@ -275,6 +275,7 @@ class WsjRdpContext:
     _start_time: _datetime.datetime
     _out_dir: _pathlib.Path = _typing.cast("_pathlib.Path", None)
     _dry_run: bool | None = None
+    _keycloak_dry_run: bool | None = None
     _skip_email: bool | None = None
     _skip_db_updates: bool | None = None
     _parsed_args: _argparse.Namespace | None = None
@@ -283,6 +284,7 @@ class WsjRdpContext:
     _console_confirm_cache: dict
     _output_files: list[tuple[str, str | _pathlib.Path]]
     _output_files_reported: bool = False
+    _dunder_file: str | None = None
 
     def __init__(
         self,
@@ -293,6 +295,7 @@ class WsjRdpContext:
         start_time: _datetime.datetime | str | None = None,
         out_dir: _pathlib.Path | str | None = None,
         dry_run: bool | None = None,
+        keycloak_dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
         parse_arguments: bool = True,
@@ -378,12 +381,15 @@ class WsjRdpContext:
         )
 
         # start_time, output_directory, ...
+        self._dunder_file = __file__ or None
         self._start_time = self._determine_start_time(start_time=start_time)
         self._out_dir = self._determine_out_dir(out_dir, dunder_file=__file__)
         self._output_files = []
         self._output_files_reported = False
         if dry_run is not None:
             self._dry_run = dry_run
+        if keycloak_dry_run is not None:
+            self._keycloak_dry_run = keycloak_dry_run
         if skip_email is not None:
             self._skip_email = skip_email
         if skip_db_updates is not None:
@@ -526,6 +532,10 @@ class WsjRdpContext:
         )
         return out_dir
 
+    @property
+    def logger(self) -> _logging.Logger | _logging.LoggerAdapter:
+        return self._logger
+
     def add_common_argument_parser_arguments(
         self, p: _argparse.ArgumentParser, /
     ) -> None:
@@ -570,7 +580,7 @@ class WsjRdpContext:
         self.add_common_argument_parser_arguments(p)
 
         args = p.parse_args(argv[1:])
-        for key in ("dry_run", "skip_email", "skip_db_updates"):
+        for key in ("dry_run", "keycloak_dry_run", "skip_email", "skip_db_updates"):
             val = getattr(args, key, None)
             if val is not None:
                 setattr(self, f"_{key}", val)
@@ -610,6 +620,20 @@ class WsjRdpContext:
     @dry_run.setter
     def dry_run(self, value: bool | None) -> None:
         self._dry_run = value
+
+    @property
+    def keycloak_dry_run_or_none(self) -> bool | None:
+        """`True` if in dry run mode, `False` or `None` otherwise."""
+        return self._keycloak_dry_run
+
+    @property
+    def keycloak_dry_run(self) -> bool:
+        """`True` if in dry run mode, `False` otherwise."""
+        return bool(self._keycloak_dry_run)
+
+    @keycloak_dry_run.setter
+    def keycloak_dry_run(self, value: bool | None) -> None:
+        self._keycloak_dry_run = value
 
     @property
     def skip_email_or_none(self) -> bool | None:
@@ -893,16 +917,20 @@ class WsjRdpContext:
     def keycloak(
         self, *, force_new: bool = False
     ) -> _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter:
+        dry_run = self._keycloak_dry_run or self._dry_run
         return self._get_or_create_resource(
-            "keycloak", create=self._create_keycloak_adapter, force_new=force_new
+            "keycloak",
+            create=self._create_keycloak_adapter,
+            force_new=force_new,
+            dry_run=dry_run,
         )
 
     def _create_keycloak_adapter(
-        self, *, dry_run: bool, audithook: _collections_abc.Callable
+        self, *, dry_run: bool | None, audithook: _collections_abc.Callable
     ) -> _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter:
         from . import _keycloak_wsjrdp_adapter
 
-        return _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter(self)
+        return _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter(self, dry_run=dry_run)
 
     def mailcow(
         self,
@@ -1051,6 +1079,31 @@ class WsjRdpContext:
             ssh_tunnel=ssh_tunnel, autocommit=autocommit, read_only=read_only
         )
         return _psycopg_client.PsycopgClient(config=psycopg_config, audithook=audithook)
+
+    def sync_hitobito_keycloak_mailcow(
+        self,
+        people: _pandas.DataFrame
+        | _person.Person
+        | _collections_abc.Iterable[_person.Person],
+        *,
+        keycloak_groupname: str,
+        create_missing_keycloak_user: bool = False,
+        self_name: str | None = None,
+        batch_name_suffix: str = "",
+    ) -> None:
+        from ._internal.sync_hitobito_keycloak import sync
+
+        if not self_name and self._dunder_file:
+            self_name = _os.path.basename(self._dunder_file) or None
+
+        return sync(
+            ctx=self,
+            people=people,
+            keycloak_groupname=keycloak_groupname,
+            create_missing_keycloak_user=create_missing_keycloak_user,
+            self_name=self_name,
+            batch_name_suffix=batch_name_suffix,
+        )
 
     def __create_ssh_forwarder(
         self, *, remote_bind_address: tuple[str, int]
@@ -1367,6 +1420,7 @@ class WsjRdpContext:
         query: _people_query.PeopleQuery | dict | None = None,
         where: _people_query.PeopleWhere | dict | str | None = None,
         jinja_extra_globals: dict | None = None,
+        updates: _collections_abc.Mapping | None = None,
     ) -> _batch.BatchConfig:
         from . import _batch
 
@@ -1375,6 +1429,7 @@ class WsjRdpContext:
             name=name,
             query=query,
             where=where,
+            updates=updates,
             jinja_extra_globals=jinja_extra_globals,
             dry_run=self.dry_run_or_none,
             skip_email=self.skip_email_or_none,
@@ -1418,6 +1473,18 @@ class WsjRdpContext:
             out_dir=self.out_dir,
             zip_eml=zip_eml,
             silent_skip_email=silent_skip_email,
+        )
+
+    def update_people_additional_info(
+        self,
+        updates: _collections_abc.Iterable[_collections_abc.Mapping],
+        *,
+        console_confirm: bool = False,
+    ) -> None:
+        from ._internal import update_additional_info
+
+        update_additional_info.update_people_additional_info(
+            self, updates, console_confirm=console_confirm
         )
 
     def load_people_dataframe(

@@ -107,7 +107,13 @@ if _typing.TYPE_CHECKING:
     from ._groups import (
         Group as Group,
     )
+    from ._internal.signatures import (
+        EMAIL_SIGNATURE_BMT as EMAIL_SIGNATURE_BMT,
+        EMAIL_SIGNATURE_CMT as EMAIL_SIGNATURE_CMT,
+        EMAIL_SIGNATURE_HOC as EMAIL_SIGNATURE_HOC,
+    )
     from ._keycloak_client import KeycloakClient as KeycloakClient
+    from ._keycloak_wsjrdp_adapter import WsjRdpKeycloakAdapter as WsjRdpKeycloakAdapter
     from ._mailcow_client import (
         MailcowClient as MailcowClient,
         MailcowConfig as MailcowConfig,
@@ -128,6 +134,7 @@ __all__ = [
     "DB_PEOPLE_ALL_STATUS",
     "DEFAULT_MSGID_DOMAIN",
     "DEFAULT_MSGID_IDSTRING",
+    "EMAIL_SIGNATURE_BMT",
     "EMAIL_SIGNATURE_CMT",
     "EMAIL_SIGNATURE_HOC",
     "EMAIL_SIGNATURE_ORG",
@@ -155,6 +162,7 @@ __all__ = [
     "SepaDirectDebitPayment",
     "WsjRdpContext",
     "WsjRdpContextConfig",
+    "WsjRdpKeycloakAdapter",
     "configure_file_logging",
     "console_confirm",
     "create_dir",
@@ -218,37 +226,6 @@ __all__ = [
     "moss",
     "pg",
 ]
-
-EMAIL_SIGNATURE_CMT = (
-    "\n-- "
-    + """
-World Scout Jamboree 2027 Poland
-Contingent Management Team
-
-Alle Jamboree E-Mails empfangen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
-
-Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
-Chausseestr. 128/129
-10115 Berlin
-
-https://worldscoutjamboree.de"""
-)
-
-
-EMAIL_SIGNATURE_HOC = (
-    "\n-- "
-    + """
-World Scout Jamboree 2027 Poland
-Head of Contingent
-
-Alle Jamboree E-Mails empfangen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
-
-Ring deutscher Pfadfinder*innenverbände e.V. (rdp)
-Chausseestr. 128/129
-10115 Berlin
-
-https://worldscoutjamboree.de"""
-)
 
 
 EMAIL_SIGNATURE_ORG = (
@@ -325,6 +302,10 @@ This set was fixed before sending the Pre-Notification.
 
 
 __ALIASES__ = {
+    "EMAIL_SIGNATURE_BMT": ("._internal.signatures", "EMAIL_SIGNATURE_BMT"),
+    "EMAIL_SIGNATURE_CMT": ("._internal.signatures", "EMAIL_SIGNATURE_CMT"),
+    "EMAIL_SIGNATURE_HOC": ("._internal.signatures", "EMAIL_SIGNATURE_HOC"),
+    #
     "CamtMessage": (f"._camt", "CamtMessage"),
     "CamtTransactionDetails": (f"._camt", "CamtTransactionDetails"),
     "CamtTxUniqueDbKey": (f"._camt", "CamtTxUniqueDbKey"),
@@ -335,6 +316,7 @@ __ALIASES__ = {
     "MailcowError": ("._mailcow_client", "MailcowError"),
     "PainMessage": (f"._pain", "PainMessage"),
     "Person": ("._person", "Person"),
+    "WsjRdpKeycloakAdapter": ("._keycloak_wsjrdp_adapter", "WsjRdpKeycloakAdapter"),
     "bank_accounts": (".bank_accounts", ""),
     "datev": ("._datev", ""),
     "dedup": ("._util", "dedup"),
