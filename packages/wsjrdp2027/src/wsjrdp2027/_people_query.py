@@ -350,7 +350,7 @@ class PeopleWhere:
                 primary_group_id = [45]
             case "IST":
                 role = "IST"
-                primary_group_id = [4]
+                primary_group_id = _groups.Group.IST_GROUPS
             case "CMT":
                 role = "CMT"
                 primary_group_id = [1]

@@ -365,14 +365,11 @@ class WsjRdpKeycloakAdapter:
         if not updates:
             return
         msg = f"Found inconsistent attributes for {person.role_id_name}:\n"
-        for key, new in updates.items():
-            old = getattr(person, key, None)
+        for key, (old, new) in updates.items():
             msg += f"  {key}: {old} -> {new}\n"
         if autofix_role_consistency or self._ctx.console_confirm(
             f"{msg}Adjust {person.role_id_name}?"
         ):
-            for key, val in updates.items():
-                setattr(person, key, val)
-            additional_info_updates.extend(
-                {"id": person.id, key: val} for key, val in updates.items()
-            )
+            for key, old_new in updates.items():
+                setattr(person, key, old_new[1])
+                additional_info_updates.append({"id": person.id, key: old_new})

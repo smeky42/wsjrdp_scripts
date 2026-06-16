@@ -1082,9 +1082,12 @@ def _email_message_from_person(
     import wsjrdp2027
 
     from . import DEFAULT_MSGID_DOMAIN, DEFAULT_MSGID_IDSTRING, _util
+    from ._internal import signatures
 
     SIGNATURES = {
         k: v for k, v in wsjrdp2027.__dict__.items() if k.startswith("EMAIL_SIGNATURE_")
+    } | {
+        k: v for k, v in signatures.__dict__.items() if k.startswith("EMAIL_SIGNATURE_")
     }
     context = context or {}
 

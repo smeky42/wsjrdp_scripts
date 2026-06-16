@@ -16,6 +16,7 @@ if _typing.TYPE_CHECKING:
 @_dataclasses.dataclass(kw_only=True)
 class Group:
     WAITING_LIST_GROUPS = [5, 6, 7]
+    IST_GROUPS = [4, 7, 49, 50, 51, 52]  # including 7 (waiting list)
     BMT_GROUPS = [45]
     EXT_GROUPS = [48]
 

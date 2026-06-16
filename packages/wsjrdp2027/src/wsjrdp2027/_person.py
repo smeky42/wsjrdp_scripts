@@ -651,27 +651,16 @@ class Person:
         else:
             return self.get_keycloak_username_default()
 
-    def find_role_consistency_updates(self) -> dict:
+    def find_role_consistency_updates(self) -> dict[str, tuple]:
         updates = {}
-        for key, val, expected in [
-            (
-                "keycloak_username",
-                self.keycloak_username,
-                self.get_keycloak_username_expected(),
-            ),
-            (
-                "wsjrdp_email",
-                self.wsjrdp_email,
-                self.get_wsjrdp_email_expected(),
-            ),
-            (
-                "moss_email",
-                self.moss_email,
-                self.get_moss_email_expected(),
-            ),
+        for key, expected in [
+            ("keycloak_username", self.get_keycloak_username_expected()),
+            ("wsjrdp_email", self.get_wsjrdp_email_expected()),
+            ("moss_email", self.get_moss_email_expected()),
         ]:
+            val = getattr(self, key, None)
             if val and expected and (val != expected):
-                updates[key] = expected
+                updates[key] = (val, expected)
 
         return updates
 
