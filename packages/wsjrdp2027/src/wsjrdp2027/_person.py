@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib as _contextlib
 import datetime as _datetime
 import logging as _logging
 import math as _math
@@ -221,8 +222,8 @@ class Person:
 
     @primary_group.setter
     def primary_group(self, value: _groups.Group) -> None:
-        assert value.id == self.primary_group_id
         self._primary_group = value
+        self.primary_group_id = self._primary_group.id
 
     @property
     def full_name(self) -> str:
@@ -365,15 +366,51 @@ class Person:
         )
 
     @property
+    def additional_info_changed(self) -> bool:
+        return "_additional_info_was" in self._data
+
+    @property
+    def additional_info_was(self) -> dict[str, _typing.Any]:
+        was = self._data.get("_additional_info_was")
+        if was is None:
+            return self._data.get("additional_info", {}).copy()
+        else:
+            return was.copy()
+
+    def additional_info_updates_dict(self) -> dict:
+        return self._data.get("_additional_info_updates", {})
+
+    def additional_info_updates_list(self) -> list[dict]:
+        return [
+            {"id": self.id, k: old_new}
+            for k, old_new in self._data.get("_additional_info_updates", {}).items()
+        ]
+
+    @property
     def additional_info(self) -> dict[str, _typing.Any]:
         return self._data.get("additional_info", {})
 
+    def del_additional_info(self, key: str) -> None:
+        self.set_additional_info(key, None)
+
     def set_additional_info(self, key: str, value) -> None:
+        additional_info = self._data.setdefault("additional_info", {})
+        old = additional_info.get(key)
+        if value == old:
+            return
+        if "_additional_info_was" not in self._data:
+            self._data.setdefault("_additional_info_was", additional_info.copy())
         if value is None:
-            self._date.get("additional_info", {}).pop(key, None)
+            additional_info.pop(key, None)
         else:
-            additional_info = self._data.setdefault("additional_info", {})
             additional_info[key] = value
+        additional_info_updates = self._data.setdefault("_additional_info_updates", {})
+        upd = additional_info_updates.setdefault(key, [old, value])
+        upd[1] = value
+        if upd[0] == upd[1]:
+            additional_info_updates.pop(key, None)
+            if not additional_info_updates:
+                self._data.pop("_additional_info_was", None)
 
     @property
     def late_confirmation_issue(self) -> str | None:
@@ -481,7 +518,7 @@ class Person:
             return self.get_moss_email_default()
 
     @moss_email.setter
-    def moss_email(self, value: bool | None) -> None:
+    def moss_email(self, value: str | None) -> None:
         self.set_additional_info("moss_email", value)
 
     def get_moss_email_default(self, wsjrdp_role: str | None = None) -> str | None:
@@ -551,11 +588,15 @@ class Person:
 
     @keycloak_username.setter
     def keycloak_username(self, value: str | None) -> None:
-        if not value:
-            self.additional_info.pop("keycloak_username", None)
-        else:
-            additional_info = self._data.setdefault("additional_info", {})
-            additional_info["keycloak_username"] = value
+        self.set_additional_info("keycloak_username", value)
+
+    @property
+    def keycloak_initial_password(self) -> str | None:
+        return self.additional_info.get("keycloak_initial_password")
+
+    @keycloak_initial_password.setter
+    def keycloak_initial_password(self, value: str | None) -> None:
+        self.set_additional_info("keycloak_initial_password", value)
 
     def get_keycloak_username_or_default(self, wsjrdp_role: str | None = None) -> str:
         return (
@@ -644,6 +685,7 @@ class Person:
         *,
         ctx: _context.WsjRdpContext | None = None,
         batch_name: str | None = None,
+        updates: _collections_abc.Mapping | None = None,
         batch_config: _batch.BatchConfig | None = None,
     ) -> None:
         from ._internal.move_to_group import move_person_to_group
@@ -653,6 +695,7 @@ class Person:
             person=self,
             new_group=new_group,
             batch_name=batch_name,
+            updates=updates,
             batch_config=batch_config,
         )
 
@@ -675,6 +718,21 @@ def iter_people_dataframe(
 ) -> _collections_abc.Iterator[Person]:
     for idx, row in df.iterrows():
         yield Person.from_pandas_row(row, dataframe=df, index=idx)
+
+
+def iter_people(
+    data: _pandas.DataFrame | Person | _collections_abc.Iterable[Person], /
+) -> _collections_abc.Generator[Person]:
+    import pandas as _pandas
+
+    if isinstance(data, Person):
+        yield data
+    elif isinstance(data, _pandas.DataFrame):
+        for idx, row in data.iterrows():
+            yield Person.from_pandas_row(row, dataframe=data, index=idx)
+    else:
+        for p in data:
+            yield p
 
 
 def _filtered_join(*args, sep=" "):

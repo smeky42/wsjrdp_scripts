@@ -450,9 +450,7 @@ class KeycloakClient:
         username = _coalesce_username(email, username=username, payload=payload)
         cls_name = self.__class__.__qualname__
         description = f"{cls_name}.create_user({email!r}, {password!r}, ...)"
-        maybe_user_id = self.get_user_id_or_none(username)
-        if maybe_user_id:
-            user_id = maybe_user_id
+        if exist_ok and (user_id := self.get_user_id_or_none(username)):
             _LOGGER.debug(
                 f"{description}"
                 f" :: Found existing {user_id=} {username=}, return existing user"
@@ -524,14 +522,15 @@ class KeycloakClient:
             )
             self.update_user(username, payload=payload, dry_run=dry_run, audit=audit)
             return self.get_user_by_id(user_id)
-        return self.create_user(
-            email=email,
-            password=password,
-            payload=payload,
-            dry_run=dry_run,
-            audit=audit,
-            exist_ok=False,
-        )
+        else:
+            return self.create_user(
+                email=email,
+                password=password,
+                payload=payload,
+                dry_run=dry_run,
+                audit=audit,
+                exist_ok=False,
+            )
 
     def _mk_create_or_update_user_payload(
         self,

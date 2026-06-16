@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import collections.abc as _collections_abc
 import logging as _logging
-import pprint as _pprint
 import typing as _typing
 
 from .. import _context, _groups, _people_query, _person
@@ -20,6 +20,7 @@ def move_person_to_group(
     person: _person.Person,
     new_group: str | int | _groups.Group,
     batch_name: str | None = None,
+    updates: _collections_abc.Mapping | None = None,
     batch_config: _batch.BatchConfig | None = None,
 ) -> None:
     if ctx is None:
@@ -42,6 +43,7 @@ def move_person_to_group(
             local_batch_config = ctx.new_batch_config(
                 name=batch_name,
                 where=_people_query.PeopleWhere(id=person.id),
+                updates=updates,
             )
 
         if new_group.id != person.primary_group_id:
@@ -49,6 +51,7 @@ def move_person_to_group(
                 f"Set new_primary_group_id={new_group.id} (derived from new_group={new_group_arg})"
             )
             local_batch_config.updates["new_primary_group_id"] = new_group.id
+            person.primary_group = new_group
         if note := _confirmation_note(ctx, old_group=old_group, new_group=new_group):
             local_batch_config.updates["add_note"] = note
         if is_yp_or_ul and (unit_code := new_group.unit_code):

@@ -24,6 +24,12 @@ def create_argument_parser():
         required=True,
         help="""Name or id of the group the confirmed person should be moved to.""",
     )
+    p.add_argument(
+        "--tag",
+        dest="add_tags",
+        action="append",
+        help="Tag, welches gesetzt werdens soll",
+    )
     p.add_argument("id", type=int)
     return p
 
@@ -54,7 +60,12 @@ def main(argv=None):
             _LOGGER.error(f"Missing --group to move to: {person.role_id_name}")
             raise SystemExit(1)
 
-        person.move_to_group(new_group, ctx=ctx, batch_name=batch_name)
+        person.move_to_group(
+            new_group,
+            ctx=ctx,
+            batch_name=batch_name,
+            updates={"add_tags": ctx.parsed_args.add_tags},
+        )
 
     _LOGGER.info("")
     _LOGGER.info("Output directory: %s", ctx.out_dir)

@@ -172,6 +172,7 @@ _ArrayMatchLike = ArrayMatchExpr | ArrayMatchDict | str | _collections_abc.Itera
 @_dataclasses.dataclass(kw_only=True)
 class PeopleWhere:
     exclude_deregistered: bool | None = None
+    exclude_waiting_lists: bool | None = None
     role: tuple[_role.WsjRole, ...] | None = None
     email: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     exclude_email: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
@@ -206,6 +207,7 @@ class PeopleWhere:
         self,
         *,
         exclude_deregistered: bool | None = None,
+        exclude_waiting_lists: bool | None = None,
         role: str
         | _role.WsjRole
         | _collections_abc.Iterable[str | _role.WsjRole]
@@ -252,6 +254,8 @@ class PeopleWhere:
 
         if exclude_deregistered is not None:
             self.exclude_deregistered = exclude_deregistered
+        if exclude_waiting_lists is not None:
+            self.exclude_waiting_lists = exclude_waiting_lists
         if role is not None:
             if isinstance(role, (str, _role.WsjRole)):
                 self.role = (_role.WsjRole.from_any(role),)
@@ -322,6 +326,52 @@ class PeopleWhere:
                 d["or_"] = [cls.from_dict(d) for d in or_list]
         return cls(**d)
 
+    @classmethod
+    def from_keycloak_group(
+        cls,
+        groupname: str,
+        *,
+        exclude_deregistered: bool | None = None,
+        exclude_waiting_lists: bool | None = None,
+        status: _StrOrNullIterable | None = None,
+    ) -> _typing.Self:
+        from . import _groups
+
+        if exclude_deregistered is None:
+            exclude_deregistered = True
+        if exclude_waiting_lists is None:
+            exclude_waiting_lists = True
+
+        primary_group_id = None
+        exclude_primary_group_id = None
+        match groupname:
+            case "BMT":
+                role = "IST"
+                primary_group_id = [45]
+            case "IST":
+                role = "IST"
+                primary_group_id = [4]
+            case "CMT":
+                role = "CMT"
+                primary_group_id = [1]
+            case "UL" | "CMT" | "YP":
+                role = groupname
+            case "EXT":
+                role = None
+                primary_group_id = _groups.Group.EXT_GROUPS
+            case _:
+                raise RuntimeError(f"Unsupported {groupname=}")
+
+        where = cls(
+            role=role,
+            exclude_deregistered=exclude_deregistered,
+            exclude_waiting_lists=exclude_waiting_lists,
+            primary_group_id=primary_group_id,
+            exclude_primary_group_id=exclude_primary_group_id,
+            status=status,
+        )
+        return where
+
     def to_dict(self) -> dict:
         def null_or_not_to_bool(x):
             if isinstance(x, _types.NullOrNotType):
@@ -381,6 +431,7 @@ class PeopleWhere:
 
         d = {
             "exclude_deregistered": self.exclude_deregistered,
+            "exclude_waiting_lists": self.exclude_waiting_lists,
             "role": to_out(self.role, map=str),
             "early_payer": self.early_payer,
             "foto_permission": self.foto_permission,
@@ -420,6 +471,7 @@ class PeopleWhere:
     __str__ = __repr__
 
     def as_where_condition(self, *, people_table: str = "people") -> str:
+        from ._groups import Group
         from ._util import combine_where, in_expr, not_in_expr
 
         where = ""
@@ -428,6 +480,10 @@ class PeopleWhere:
             where = combine_where(
                 where,
                 f"{people_table}.status NOT IN ('deregistration_noted', 'deregistered')",
+            )
+        if self.exclude_waiting_lists:
+            where = combine_where(
+                where, not_in_expr("primary_group_id", Group.WAITING_LIST_GROUPS)
             )
         if self.role is not None:
             payment_roles = []

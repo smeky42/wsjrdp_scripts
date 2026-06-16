@@ -118,6 +118,11 @@ class PreparedBatch:
         if self.now is None:
             self.now = _datetime.datetime.now().astimezone()
 
+    def iter_people(self) -> _typing.Generator[_person.Person]:
+        for msg in self.messages:
+            if (p := msg.person) is not None:
+                yield p
+
     def _get_out_dir(self, out_dir: _pathlib.Path | str | None = None) -> _pathlib.Path:
         if out_dir:
             return _pathlib.Path(out_dir)
@@ -333,7 +338,7 @@ class BatchConfig:
         summary: str | None = None,
         jinja_extra_globals: dict | None = None,
         action_arguments: dict | None = None,
-        updates: dict | None = None,
+        updates: _collections_abc.Mapping | None = None,
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
@@ -413,7 +418,7 @@ class BatchConfig:
         else:
             self.skip_email = skip_email
 
-        updates = updates.copy() if updates else {}
+        updates = dict(**updates) if updates else {}
         for key in ["add_tags", "remove_tags", "new_primary_group_role_types"]:
             if key not in updates:
                 continue
@@ -445,6 +450,7 @@ class BatchConfig:
         path: _pathlib.Path | str | None = None,
         effective_base_dir: _pathlib.Path | str | None = None,
         raw_yaml: bytes | str | None = None,
+        updates: _collections_abc.Mapping | None = None,
     ) -> _typing.Self:
         config = dict(config.items()) if config else {}
         path = _pathlib.Path(path) if path else None
@@ -472,6 +478,8 @@ class BatchConfig:
                 query = _normalize_query_where_or_none(query, where, logger=None)
             if query:
                 config["query"] = query
+            if updates is not None:
+                config["updates"] = updates
             if jinja_extra_globals is not None:
                 config["jinja_extra_globals"] = jinja_extra_globals
             if name:
@@ -817,7 +825,7 @@ class BatchConfig:
 
         with _contextlib.ExitStack() as exit_stack:
             if conn is None:
-                conn = exit_stack.enter_context(ctx.psycopg_connect())
+                conn = ctx.hitobito_psycopg_connection(read_only=True)
 
             df = unfiltered_df = self.load_people_dataframe(
                 ctx=ctx,
