@@ -17,15 +17,31 @@ content: |
   Ein aufregendes Abenteuer liegt vor uns, und wir danken dir für dein Engagement.
 
 
-  Stelle bitte sicher, dass unsere E-Mails nicht im Spam landen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
+  Wie geht es nun für dich weiter:
 
-  Damit du keine wichtigen Informationen verpasst und dich optimal mit anderen (nicht BMT) IST-Mitgliedern vernetzen kannst, laden wir dich herzlich in unsere Telegram-Gruppen ein:
+  * Stelle bitte sicher, dass unsere E-Mails nicht im Spam landen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
 
-    * IST-Infokanal https://t.me/+_c_Glv8DtGVhZTg6 (Hier erhältst du wichtige Informationen und Updates direkt von uns)
-    * IST-Austauschgruppe: https://t.me/+EYdlumDfq4NjYmUy (Hier kannst du dich mit anderen IST-Mitgliedern austauschen und vernetzen)
+  * Damit du keine wichtigen Informationen verpasst und dich mit anderen BMT-ISTs vernetzten kannst, trete bitte in folgende beiden Telegram-Gruppen bei:
 
+      Black Magic all2all zum Vernetzen und Austauschen: https://t.me/+CWbJtVlW1yYyMjMy
+      Black Magic Broadcast zur internen Verteilung von BMT Informationen: https://t.me/+33ZwVZpBMKRiYWYy
+
+  * Um auch außerhalb des Black Magic wichtige allgemeine Informationen für IST zu bekommen und dich auch mit den anderen ISTs zu vernetzen, laden wir dich auch in die folgenden Telegram-Gruppen ein:
+
+      IST-Infokanal https://t.me/+_c_Glv8DtGVhZTg6 (Hier erhältst du wichtige Informationen und Updates direkt von uns)
+      IST-Austauschgruppe: https://t.me/+EYdlumDfq4NjYmUy (Hier kannst du dich mit anderen IST-Mitgliedern austauschen und vernetzen)
+
+
+  Und hier noch mal alle wichtigen Daten zum Black Magic auf einen Blick:
+
+  - Unser erstes Vorbereitungstreffen findet vom 20.11.-22.11.2026 statt, eine Einladung mit Informationen folgt.
+  - Unser zweites Vorbereitungstreffen findet vom 16.04.-18.04.2027 statt, eine Einladung mit Informationen folgt.
+  - Das Kontingentslager findet vom 27.05.-30.05.2027 in Westernohe statt.
+  - Der Jamboree Zeitraum für uns als Black Magic-Team ist vom 23.07.–13.08.2027
+
+  Wir freuen uns schon jetzt, dich an unserem ersten VBT persönlich willkommen zu heißen.
 
   {{ render_upcoming_payment_text() }}
-  Gut Pfad
-  Dein Contingent Management Team
-signature: "{{ EMAIL_SIGNATURE_CMT }}"
+  Bis dahin Gut Pfad
+  Flo und Markus
+signature: "{{ EMAIL_SIGNATURE_BMT }}"

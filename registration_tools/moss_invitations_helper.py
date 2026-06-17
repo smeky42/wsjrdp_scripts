@@ -15,10 +15,7 @@ def create_argument_parser():
     p = argparse.ArgumentParser()
 
     p.add_argument("--role")
-    p.add_argument(
-        "--group",
-        help="""Name or id of the group the confirmed person should be moved to.""",
-    )
+    p.add_argument("--group", help="""Name or id of the group to be processed.""")
     p.add_argument(
         "--skip-uninvited",
         action="store_true",

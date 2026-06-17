@@ -276,6 +276,7 @@ class WsjRdpContext:
     _out_dir: _pathlib.Path = _typing.cast("_pathlib.Path", None)
     _dry_run: bool | None = None
     _keycloak_dry_run: bool | None = None
+    _mailcow_dry_run: bool | None = None
     _skip_email: bool | None = None
     _skip_db_updates: bool | None = None
     _parsed_args: _argparse.Namespace | None = None
@@ -296,6 +297,7 @@ class WsjRdpContext:
         out_dir: _pathlib.Path | str | None = None,
         dry_run: bool | None = None,
         keycloak_dry_run: bool | None = None,
+        mailcow_dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
         parse_arguments: bool = True,
@@ -390,6 +392,8 @@ class WsjRdpContext:
             self._dry_run = dry_run
         if keycloak_dry_run is not None:
             self._keycloak_dry_run = keycloak_dry_run
+        if mailcow_dry_run is not None:
+            self._mailcow_dry_run = mailcow_dry_run
         if skip_email is not None:
             self._skip_email = skip_email
         if skip_db_updates is not None:
@@ -580,7 +584,13 @@ class WsjRdpContext:
         self.add_common_argument_parser_arguments(p)
 
         args = p.parse_args(argv[1:])
-        for key in ("dry_run", "keycloak_dry_run", "skip_email", "skip_db_updates"):
+        for key in (
+            "dry_run",
+            "keycloak_dry_run",
+            "mailcow_dry_run",
+            "skip_email",
+            "skip_db_updates",
+        ):
             val = getattr(args, key, None)
             if val is not None:
                 setattr(self, f"_{key}", val)
@@ -634,6 +644,20 @@ class WsjRdpContext:
     @keycloak_dry_run.setter
     def keycloak_dry_run(self, value: bool | None) -> None:
         self._keycloak_dry_run = value
+
+    @property
+    def mailcow_dry_run_or_none(self) -> bool | None:
+        """`True` if in dry run mode, `False` or `None` otherwise."""
+        return self._mailcow_dry_run
+
+    @property
+    def mailcow_dry_run(self) -> bool:
+        """`True` if in dry run mode, `False` otherwise."""
+        return bool(self._mailcow_dry_run)
+
+    @mailcow_dry_run.setter
+    def mailcow_dry_run(self, value: bool | None) -> None:
+        self._mailcow_dry_run = value
 
     @property
     def skip_email_or_none(self) -> bool | None:
@@ -894,6 +918,7 @@ class WsjRdpContext:
             elif audithook is False:
                 audithook = None
             new = create(dry_run=dry_run, audithook=audithook, **(create_kwargs or {}))
+            self.logger.info(f"Create new {key} instance (dry_run={dry_run}): {new}")
 
             if isinstance(new, _contextlib.AbstractContextManager):
                 self._logger.debug(f"Add {new} to current exit stack")
@@ -912,12 +937,15 @@ class WsjRdpContext:
             self._resources[key] = new
             return new
         else:
+            # self.logger.debug(
+            #     f"Use existing {key} instance (dry_run={getattr(old, 'dry_run', '???')}): {old}"
+            # )
             return old
 
     def keycloak(
-        self, *, force_new: bool = False
+        self, *, force_new: bool = False, dry_run: bool | None = None
     ) -> _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter:
-        dry_run = self._keycloak_dry_run or self._dry_run
+        dry_run = self._keycloak_dry_run or self._dry_run or dry_run or False
         return self._get_or_create_resource(
             "keycloak",
             create=self._create_keycloak_adapter,
@@ -939,6 +967,7 @@ class WsjRdpContext:
         dry_run: bool | None = None,
         audithook: _mailcow_client.MailcowAudithook | bool | None = None,
     ) -> _mailcow_client.MailcowClient:
+        dry_run = self._mailcow_dry_run or self._dry_run or dry_run or False
         return self._get_or_create_resource(
             "mailcow",
             create=self._create_mailcow_client,
@@ -1090,6 +1119,7 @@ class WsjRdpContext:
         create_missing_keycloak_user: bool = False,
         self_name: str | None = None,
         batch_name_suffix: str = "",
+        is_role_change: bool = False,
     ) -> None:
         from ._internal.sync_hitobito_keycloak import sync
 
@@ -1103,6 +1133,7 @@ class WsjRdpContext:
             create_missing_keycloak_user=create_missing_keycloak_user,
             self_name=self_name,
             batch_name_suffix=batch_name_suffix,
+            is_role_change=is_role_change,
         )
 
     def __create_ssh_forwarder(
