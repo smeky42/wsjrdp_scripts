@@ -108,6 +108,7 @@ def main(argv=None):
             create_missing_keycloak_user=True,
             self_name=f"{out_base.name}",
             batch_name_suffix="_sync",
+            is_role_change=True,
         )
         ctx.logger.info("")
         ctx.logger.info(f"Moved {num_people} IST to BMT")

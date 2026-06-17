@@ -331,7 +331,7 @@ class WsjRdpKeycloakAdapter:
         self,
         person: _person.Person,
         *,
-        additional_info_updates: list[dict],
+        additional_info_updates: list[dict] | None = None,
         allow_cached: bool = False,
         check_role_consistency: bool = True,
         autofix_role_consistency: bool | None = None,
@@ -358,7 +358,7 @@ class WsjRdpKeycloakAdapter:
         self,
         person: _person.Person,
         *,
-        additional_info_updates: list[dict],
+        additional_info_updates: list[dict] | None = None,
         autofix_role_consistency: bool | None = None,
     ) -> None:
         updates = person.find_role_consistency_updates()
@@ -370,6 +370,8 @@ class WsjRdpKeycloakAdapter:
         if autofix_role_consistency or self._ctx.console_confirm(
             f"{msg}Adjust {person.role_id_name}?"
         ):
+            if additional_info_updates is None:
+                additional_info_updates = []
             for key, old_new in updates.items():
                 setattr(person, key, old_new[1])
                 additional_info_updates.append({"id": person.id, key: old_new})

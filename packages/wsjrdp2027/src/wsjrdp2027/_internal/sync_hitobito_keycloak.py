@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import collections.abc as _collections_abc
 import logging as _logging
+import typing as _typing
 
 import pandas as _pandas
 
-from .. import _context, _people_query, _person, _util
+from .. import _context, _person
+
+
+if _typing.TYPE_CHECKING:
+    from .. import _keycloak_wsjrdp_adapter
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -14,15 +19,17 @@ _LOGGER = _logging.getLogger(__name__)
 def _check_for_keycloak_user(
     ctx: _context.WsjRdpContext,
     person: _person.Person,
-    keycloak_groupname: str,
     *,
+    keycloak_adapter: _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter,
+    keycloak_groupname: str,
     errors: list[str],
     additional_info_updates: list[dict],
     create_missing_keycloak_user: bool = False,
     self_name: str | None = None,
     batch_name_suffix: str = "",
+    is_role_change: bool = False,
 ) -> bool:
-    if ctx.keycloak().get_user_for_person_or_none(
+    if keycloak_adapter.get_user_for_person_or_none(
         person,
         allow_cached=True,
         check_role_consistency=True,
@@ -33,6 +40,7 @@ def _check_for_keycloak_user(
     keycloak_username = person.keycloak_username or person.wsjrdp_email
     keycloak_email = person.wsjrdp_email
 
+    kc_dry_run_suffix = " [dry-run]" if keycloak_adapter.dry_run else ""
     if not create_missing_keycloak_user:
         return False
     elif (
@@ -49,7 +57,8 @@ def _check_for_keycloak_user(
             f"  attributes:\n"
             f"    mossEmail: {person.moss_email}\n"
             f"    hitobitoId: {person.id}\n"
-            f"Create missing Keycloak user {keycloak_username} for group {keycloak_groupname}?",
+            f"Create missing Keycloak user {keycloak_username} "
+            f"for group {keycloak_groupname}{kc_dry_run_suffix}?",
             cache_key="create_missing_keycloak_user",
             cache_hint="create missing Keycloak user",
         )
@@ -57,13 +66,15 @@ def _check_for_keycloak_user(
         _create_keycloak_user(
             ctx,
             person=person,
+            keycloak_adapter=keycloak_adapter,
             keycloak_groupname=keycloak_groupname,
             keycloak_username=keycloak_username,
             keycloak_email=keycloak_email,
             errors=errors,
             additional_info_updates=additional_info_updates,
             self_name=self_name,
-            batch_name_suffix=batch_name_suffix
+            batch_name_suffix=batch_name_suffix,
+            is_role_change=is_role_change,
         )
         return True
     else:
@@ -81,6 +92,7 @@ def _create_keycloak_user(
     ctx: _context.WsjRdpContext,
     person: _person.Person,
     *,
+    keycloak_adapter: _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter,
     keycloak_groupname: str,
     keycloak_username: str,
     keycloak_email: str,
@@ -88,6 +100,7 @@ def _create_keycloak_user(
     additional_info_updates: list[dict],
     self_name: str | None = None,
     batch_name_suffix: str = "",
+    is_role_change: bool = False,
 ) -> None:
     from .. import _batch, _people_query, _util
     from . import signatures
@@ -100,7 +113,7 @@ def _create_keycloak_user(
     _LOGGER.info(
         f"Create keycloak user {keycloak_username} with email {keycloak_email}"
     )
-    ctx.keycloak().create_user(
+    keycloak_adapter.create_user(
         email=keycloak_email,
         username=keycloak_username,
         first_name=person.first_name,
@@ -111,7 +124,7 @@ def _create_keycloak_user(
             "hitobitoId": [str(person.id)],
         },
     )
-    ctx.keycloak().add_user_to_group(
+    keycloak_adapter.add_user_to_group(
         username=keycloak_username, groupname=keycloak_groupname
     )
     additional_info_updates.append(
@@ -123,16 +136,19 @@ def _create_keycloak_user(
     person.set_additional_info("keycloak_initial_password", password)
 
     new_mailbox = False
+    mailcow_client = ctx.mailcow()
+    mc_dry_run_suffix = " [dry-run]" if mailcow_client.dry_run else ""
+
     if person.wsjrdp_email_should_be_mailbox:
-        mb = ctx.mailcow().get_mailbox_or_none_by_username(person.wsjrdp_email)
+        mb = mailcow_client.get_mailbox_or_none_by_username(person.wsjrdp_email)
         if mb:
             _LOGGER.info(f"Found Mailcow mailbox for {person.wsjrdp_email}")
         elif ctx.console_confirm(
-            f"Create Mailcow mailbox for {person.wsjrdp_email}?",
+            f"Create Mailcow mailbox for {person.wsjrdp_email}{mc_dry_run_suffix}?",
             cache_key="create_missing_mailcow_user",
             cache_hint="create missing mailcow user",
         ):
-            ctx.mailcow().add_mailbox(
+            mailcow_client.add_mailbox(
                 person.wsjrdp_email,
                 name=person.full_name,
                 password=password,
@@ -144,12 +160,14 @@ def _create_keycloak_user(
                 f"{person.role_id_name}: missing mailcow mailbox for {person.wsjrdp_email}"
             )
     else:
-        _LOGGER.info(f"Create/Update mailcow alias {keycloak_email} -> {person.email}")
-        ctx.mailcow().add_alias(keycloak_email, add_goto=person.email)
         _LOGGER.info(
-            f"Create/Update mailcow alias {person.moss_email} -> {person.email}"
+            f"Create/Update mailcow alias {keycloak_email} -> {person.email}{mc_dry_run_suffix}"
         )
-        ctx.mailcow().add_alias(person.moss_email, add_goto=person.email)
+        mailcow_client.add_alias(keycloak_email, add_goto=person.email)
+        _LOGGER.info(
+            f"Create/Update mailcow alias {person.moss_email} -> {person.email}{mc_dry_run_suffix}"
+        )
+        mailcow_client.add_alias(person.moss_email, add_goto=person.email)
 
     if new_mailbox:
         content = _NEW_ACCOUNT_AND_MAILBOX_MAIL_CONTENT
@@ -158,9 +176,14 @@ def _create_keycloak_user(
     else:
         match keycloak_groupname:
             case "BMT":
-                content = _NEW_BMT_ACCOUNT_MAIL_CONTENT
-                subject = "Bestätigung deiner Black Magic-Team Anmeldung - {{ person.short_full_name }} (id {{person.id }})"
-                signature = signatures.EMAIL_SIGNATURE_CMT
+                if is_role_change:
+                    content = _NEW_BMT_ACCOUNT_MAIL_CONTENT_ROLE_CHANGE
+                    subject = "Bestätigung deiner Black Magic-Team Anmeldung - {{ person.short_full_name }} (id {{person.id }})"
+                    signature = signatures.EMAIL_SIGNATURE_BMT
+                else:
+                    content = _NEW_BMT_ACCOUNT_MAIL_CONTENT
+                    subject = "Dein Jamboree 2027 BMT Keycloak Account - {{ person.short_full_name }} (id {{person.id }})"
+                    signature = signatures.EMAIL_SIGNATURE_BMT
             case _:
                 content = _NEW_ACCOUNT_MAIL_CONTENT
                 subject = "Dein Jamboree 2027 Account - {{ person.short_full_name }} (id {{person.id }})"
@@ -210,7 +233,7 @@ Dein Contingent Management Team
 _NEW_ACCOUNT_MAIL_CONTENT = """
 Hallo {{ p.greeting_name }},
 
-wir haben einen neuen Keycloak Account für dich eingerichtet, damit du auf weitere Dienste wie Confluence zugreifen kannst.
+wir haben einen neuen Keycloak Account für dich eingerichtet, damit du auf weitere Dienste wie Confluence und Moss zugreifen kannst.
 All unsere Zugänge (außer dem Anmeldesystem) werden von einer zentralen Keycloak Instanz verwaltet.
 D.h. für dich, dass du dich überall mit dem Button "WSJ Login" oder "Single Sign On" anmeldest.
 Von dort wirst du weiter auf login.worldscoutjamboree.de geleitet wo du deinen Username und Passwort angibst.
@@ -229,6 +252,28 @@ Dein Contingent Management Team
 
 
 _NEW_BMT_ACCOUNT_MAIL_CONTENT = """
+Hallo {{ p.greeting_name }},
+
+wir haben einen neuen BMT Keycloak Account für dich eingerichtet, damit du auf weitere Dienste wie Moss und Confluence zugreifen kannst.
+All unsere Zugänge (außer dem Anmeldesystem) werden von einer zentralen Keycloak Instanz verwaltet.
+D.h. für dich, dass du dich überall mit dem Button "WSJ Login" oder "Single Sign On" anmeldest.
+Von dort wirst du weiter auf login.worldscoutjamboree.de geleitet wo du deinen Username und Passwort angibst.
+
+    Nutzer: {{ p.wsjrdp_email }}
+    Passwort: {{ p.additional_info.keycloak_initial_password }}
+
+
+Für deinen Zugang zum Ausgaben-Management-System Moss (um z.B. Fahrtkosten abzurechnen) erhältst du noch eine gesonderte Einladung, die direkt von einer getmoss.com Adresse verschickt wird. Dein Moss-Login ist mit deinem BMT Keycloak Account verbunden.
+
+Infos zu den ersten Schritten mit Moss gibt es hier: https://unithub.worldscoutjamboree.de/finanzen/moss/ (als BMT müsst ihr mit <name>@bmt.worldscoutjamboree.de anstelle von <name>@units.worldscoutjamboree.de arbeiten).
+
+
+Gut Pfad und bis bald
+Flo und Markus
+""".strip()
+
+
+_NEW_BMT_ACCOUNT_MAIL_CONTENT_ROLE_CHANGE = """
 Hallo {{ p.greeting_name }},
 
 wir freuen uns sehr, deine Teilnahme als Black-Magic-Tent IST am World Scout Jamboree 2027 in Polen hiermit zu bestätigen!
@@ -285,12 +330,28 @@ def sync(
     create_missing_keycloak_user: bool = False,
     self_name: str | None = None,
     batch_name_suffix: str = "",
+    is_role_change: bool = False,
 ) -> bool:
+
+    keycloak_adapter = ctx.keycloak()
+
     errors = []
     email2row = {}
 
     additional_info_updates = []
     keycloak_updates = []
+
+    for p in _person.iter_people(people):
+        if not p.wsjrdp_email:
+            ctx.logger.info(f"{p.role_id_name}: No wsjrdp_email")
+        elif kc_user := keycloak_adapter.get_user_for_person_or_none(
+            p, allow_cached=True, check_role_consistency=False
+        ):
+            ctx.logger.info(
+                f"{p.role_id_name}: Existing keycloak user {kc_user['username']}"
+            )
+        else:
+            ctx.logger.info(f"{p.role_id_name}: No keycloak user")
 
     for p in _person.iter_people(people):
         if not p.wsjrdp_email:
@@ -301,17 +362,19 @@ def sync(
         if not _check_for_keycloak_user(
             ctx,
             person=p,
+            keycloak_adapter=keycloak_adapter,
             keycloak_groupname=keycloak_groupname,
             errors=errors,
             additional_info_updates=additional_info_updates,
             create_missing_keycloak_user=create_missing_keycloak_user,
             self_name=self_name,
             batch_name_suffix=batch_name_suffix,
+            is_role_change=is_role_change,
         ):
             _LOGGER.info(f"Skip {p.role_id_name}, no keycloak user found")
             continue
 
-        keycloak_user = ctx.keycloak().get_user_by_email(
+        keycloak_user = keycloak_adapter.get_user_by_email(
             p.wsjrdp_email, allow_cached=True
         )
         keycloak_username = keycloak_user["username"]
@@ -375,7 +438,9 @@ def sync(
             _LOGGER.debug(f"{p.role_id_name} Check {key=} for {email=}")
             if email is None:
                 continue
-            goto_list = _get_expanded_goto_list(ctx, email)
+            goto_list = _get_expanded_goto_list(
+                ctx, email, keycloak_adapter=keycloak_adapter
+            )
             _LOGGER.debug(f"{p.role_id_name} {goto_list=}")
             _LOGGER.debug(f"{p.role_id_name} {p.additional_info.get(key)=}")
             old_goto_list = p.additional_info.get(key)
@@ -390,15 +455,20 @@ def sync(
         return False
 
     ctx.update_people_additional_info(additional_info_updates, console_confirm=True)
-    ctx.keycloak().update_users(keycloak_updates, console_confirm=True)
+    keycloak_adapter.update_users(keycloak_updates, console_confirm=True)
     return True
 
 
-def _get_expanded_goto_list(ctx: _context.WsjRdpContext, email: str) -> list[str]:
+def _get_expanded_goto_list(
+    ctx: _context.WsjRdpContext,
+    email: str,
+    *,
+    keycloak_adapter: _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter,
+) -> list[str]:
     import itertools
 
     def get_goto_list(email, default=None) -> list[str]:
-        user_dict = ctx.keycloak().get_user_or_none_by_email(email, allow_cached=True)
+        user_dict = keycloak_adapter.get_user_or_none_by_email(email, allow_cached=True)
         if not user_dict:
             return default or []
         else:

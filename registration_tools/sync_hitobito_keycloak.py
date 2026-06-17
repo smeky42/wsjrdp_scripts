@@ -59,6 +59,8 @@ def _create_argument_parser():
     p = argparse.ArgumentParser()
     p.add_argument("--skip-email", action="store_true", default=None)
     p.add_argument("--skip-db-updates", action="store_true", default=None)
+    p.add_argument("--keycloak-dry-run", action="store_true", default=None)
+    p.add_argument("--mailcow-dry-run", action="store_true", default=None)
     p.add_argument(
         "--open-editor",
         action="store_true",
