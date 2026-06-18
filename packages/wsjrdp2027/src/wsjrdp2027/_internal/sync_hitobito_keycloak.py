@@ -235,15 +235,12 @@ Hallo {{ p.greeting_name }},
 
 wir haben einen neuen Keycloak Account für dich eingerichtet, damit du auf weitere Dienste wie Confluence und Moss zugreifen kannst.
 All unsere Zugänge (außer dem Anmeldesystem) werden von einer zentralen Keycloak Instanz verwaltet.
-D.h. für dich, dass du dich überall mit dem Button "WSJ Login" oder "Single Sign On" anmeldest.
-Von dort wirst du weiter auf login.worldscoutjamboree.de geleitet wo du deinen Username und Passwort angibst.
+D.h. für dich, dass du dich überall mit dem Button "WSJ-Login" oder "Single Sign On" anmeldest.
 
+Confluence: https://wiki.worldscoutjamboree.de - Hier nicht die Benutzerdaten eingeben, sondern erst auf den WSJ-Login-Button klicken. Auf dieser Seite dann einloggen:
 
-Nutzer: {{ p.wsjrdp_email }}
-Passwort: {{ p.additional_info.keycloak_initial_password }}
-
-
-Confluence: https://wiki.worldscoutjamboree.de/
+    Nutzer: {{ p.wsjrdp_email }}
+    Passwort: {{ p.additional_info.keycloak_initial_password }}
 
 
 Gut Pfad und bis bald
@@ -254,10 +251,11 @@ Dein Contingent Management Team
 _NEW_BMT_ACCOUNT_MAIL_CONTENT = """
 Hallo {{ p.greeting_name }},
 
-wir haben einen neuen BMT Keycloak Account für dich eingerichtet, damit du auf weitere Dienste wie Moss und Confluence zugreifen kannst.
+wir haben einen neuen BMT Keycloak Account für dich eingerichtet, damit du auf weitere Dienste wie Confluence und Moss zugreifen kannst.
 All unsere Zugänge (außer dem Anmeldesystem) werden von einer zentralen Keycloak Instanz verwaltet.
-D.h. für dich, dass du dich überall mit dem Button "WSJ Login" oder "Single Sign On" anmeldest.
-Von dort wirst du weiter auf login.worldscoutjamboree.de geleitet wo du deinen Username und Passwort angibst.
+D.h. für dich, dass du dich überall mit dem Button "WSJ-Login" oder "Single Sign On" anmeldest.
+
+Confluence: https://wiki.worldscoutjamboree.de - Hier nicht die Benutzerdaten eingeben, sondern erst auf den WSJ-Login-Button klicken. Auf dieser Seite dann einloggen:
 
     Nutzer: {{ p.wsjrdp_email }}
     Passwort: {{ p.additional_info.keycloak_initial_password }}
@@ -285,7 +283,10 @@ Wie geht es nun für dich weiter:
 
 * Deine Anmeldung wurde von IST zu Black-Magic-Tent IST umgezogen.
 
-* Wir haben einen neuen BMT Keycloak Account für dich eingerichtet, damit du auf weitere Dienste wie Confluence zugreifen kannst. All unsere Zugänge (außer dem Anmeldesystem) werden von einer zentralen Keycloak Instanz verwaltet. D.h. für dich, dass du dich überall mit dem Button "WSJ Login" oder "Single Sign On" anmeldest. Von dort wirst du weiter auf login.worldscoutjamboree.de geleitet wo du deinen Username und Passwort angibst.
+* Wir haben einen neuen BMT Keycloak Account für dich eingerichtet, damit du auf weitere Dienste wie Confluence zugreifen kannst. All unsere Zugänge (außer dem Anmeldesystem) werden von einer zentralen Keycloak Instanz verwaltet.
+D.h. für dich, dass du dich überall mit dem Button "WSJ-Login" oder "Single Sign On" anmeldest.
+
+Confluence: https://wiki.worldscoutjamboree.de - Hier nicht die Benutzerdaten eingeben, sondern erst auf den WSJ-Login-Button klicken. Auf dieser Seite dann einloggen:
 
     Nutzer: {{ p.wsjrdp_email }}
     Passwort: {{ p.additional_info.keycloak_initial_password }}
