@@ -413,12 +413,20 @@ class Person:
                 self._data.pop("_additional_info_was", None)
 
     @property
-    def late_confirmation_issue(self) -> str | None:
-        return self.additional_info.get("late_confirmation_issue")
+    def debit_return_issue(self) -> str | None:
+        return self.additional_info.get("debit_return_issue")
 
-    @late_confirmation_issue.setter
-    def late_confirmation_issue(self, value: str | None) -> None:
-        self.set_additional_info("late_confirmation_issue", value)
+    @debit_return_issue.setter
+    def debit_return_issue(self, value: str | None) -> None:
+        self.set_additional_info("debit_return_issue", value)
+
+    @property
+    def custom_installments_issue(self) -> str | None:
+        return self.row.get("custom_installments_issue") or None
+
+    # @custom_installments_issue.setter
+    # def custom_installments_issue(self, value: str | None) -> None:
+    #     self.set_additional_info("custom_installments_issue", value)
 
     @property
     def deregistration_issue(self) -> str | None:
@@ -429,12 +437,12 @@ class Person:
         self.set_additional_info("deregistration_issue", value)
 
     @property
-    def debit_return_issue(self) -> str | None:
-        return self.additional_info.get("debit_return_issue")
+    def late_confirmation_issue(self) -> str | None:
+        return self.additional_info.get("late_confirmation_issue")
 
-    @debit_return_issue.setter
-    def debit_return_issue(self, value: str | None) -> None:
-        self.set_additional_info("debit_return_issue", value)
+    @late_confirmation_issue.setter
+    def late_confirmation_issue(self, value: str | None) -> None:
+        self.set_additional_info("late_confirmation_issue", value)
 
     @property
     def wsjrdp_email_or_none(self) -> str | None:

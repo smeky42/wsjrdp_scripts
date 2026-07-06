@@ -27,9 +27,9 @@ def compute_contractual_compensation_cents(
 
     if today_i >= 20270331:  # 31.03.2027
         return cents
-    elif today_i >= 20263112:  # 31.12.2026
+    elif today_i >= 20261231:  # 31.12.2026
         return int(0.9 * cents)
-    elif today_i >= 20263105:  # 31.05.2026
+    elif today_i >= 20260531:  # 31.05.2026
         return int(0.75 * cents)
     else:
         return int(0.5 * cents)
@@ -47,12 +47,28 @@ def create_argument_parser():
         default=False,
         help="Open E-Mail body content in editor before preparing EML file",
     )
+    p.add_argument(
+        "--show-contractual-compensation",
+        dest="show_contractual_compensation",
+        action="store_true",
+        default=True,
+    )
+    p.add_argument(
+        "--hide-contractual-compensation",
+        dest="show_contractual_compensation",
+        action="store_false",
+    )
+
     p.add_argument("person_id")
     return p
 
 
 def write_cancellation_request_pdf(
-    ctx: wsjrdp2027.WsjRdpContext, *, pdf_path: _pathlib.Path, person: wsjrdp2027.Person
+    ctx: wsjrdp2027.WsjRdpContext,
+    *,
+    pdf_path: _pathlib.Path,
+    person: wsjrdp2027.Person,
+    show_contractual_compensation: bool = True,
 ) -> bytes:
     import json
     import pprint
@@ -76,8 +92,10 @@ def write_cancellation_request_pdf(
     #
     total_fee_cents = row["total_fee_cents"]
     contractual_compensation_cents = compute_contractual_compensation_cents(
-        total_fee_cents, today=ctx.today
-    )
+        total_fee_cents, today=ctx.today)
+    ctx.logger.info(f"total_fee_cents: {total_fee_cents}")
+    ctx.logger.info(f"today: {ctx.today}")
+    ctx.logger.info(f"contractual_compensation_cents: {contractual_compensation_cents}")
     # amount_paid_cents = None
 
     #
@@ -116,10 +134,11 @@ def write_cancellation_request_pdf(
         "missing_amount_cents": missing_amount_cents,
         "refund_iban": row["sepa_iban"].upper().replace(" ", ""),
         "refund_account_holder": row["sepa_name"],
-        "contractual_compensation_cents": contractual_compensation_cents,
         "actual_compensation_cents": actual_compensation_cents,
         "cancellation_date_de": cancellation_date_de,
     }
+    if show_contractual_compensation:
+        sys_inputs["contractual_compensation_cents"] = contractual_compensation_cents
     sys_inputs.update(
         {
             f"{k.removesuffix('cents')}display": cents2eur(v)
@@ -178,7 +197,12 @@ def main(argv=None):
 
         pdf_filename = f"{batch_config.name}.pdf"
         pdf_path = ctx.make_out_path(pdf_filename)
-        pdf_bytes = write_cancellation_request_pdf(ctx, pdf_path=pdf_path, person=p)
+        pdf_bytes = write_cancellation_request_pdf(
+            ctx,
+            pdf_path=pdf_path,
+            person=p,
+            show_contractual_compensation=ctx.parsed_args.show_contractual_compensation,
+        )
 
         mailing = batch_config.prepare(
             p,

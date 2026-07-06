@@ -1,6 +1,5 @@
-from_addr: unit-management@worldscoutjamboree.de
-email_from: Unit Management <unit-management@worldscoutjamboree.de>
-extra_email_cc: ["kl@worldscoutjamboree.de", "sebastian.becker@rdp-bund.de", "naima.hartit@rdp-bund.de"]
+from_addr: anmeldung@worldscoutjamboree.de
+extra_email_cc: ["hoc@worldscoutjamboree.de", "sebastian.becker@rdp-bund.de", "naima.hartit@rdp-bund.de"]
 extra_email_bcc: "finance-team@worldscoutjamboree.de"
 email_subject: "WSJ27 Sondervereinbarung {{ row.role_id_name }}{% if row.custom_installments_issue %} {{ row.custom_installments_issue }}{% endif %}"
 signature: "{{ EMAIL_SIGNATURE_DAVID_FRITZSCHE }}"

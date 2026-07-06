@@ -130,13 +130,15 @@ def attach_sondervereinbarung_raten(
 ) -> None:
     import textwrap
 
-    row = prepared.row
+    person = prepared.person
+    assert person is not None
+    row = person.row
     assert row is not None
 
     _LOGGER.info(
         "id: %s, full_name: %s, row:\n%s",
-        row["id"],
-        row.get("full_name", None),
+        person.id,
+        person.full_name,
         textwrap.indent(row.to_string(), "  | "),
     )
 
@@ -152,9 +154,9 @@ def attach_sondervereinbarung_raten(
     rdp_representative_name = _RDP_REPRESENTATIVE_TO_NAME.get(ctx.parsed_args.rdp_representative, "")  # fmt: skip
 
     id = row["id"]
-    full_name = row["full_name"]
+    full_name = person.full_name
     age = row["age"]
-    issue = row["custom_installments_issue"]
+    issue = person.custom_installments_issue
     total_fee_cents = row["total_fee_cents"]
     installments_cents = row["installments_cents_dict"]
     sum_installments_cents = sum((installments_cents or {}).values())
@@ -261,23 +263,23 @@ def main(argv=None):
     if not ctx.parsed_args.pdf:
         ctx.dry_run = True
 
+    person_id = ctx.parsed_args.person_id
+    person = ctx.load_person_for_id(person_id)
+
     batch_config = wsjrdp2027.BatchConfig.from_yaml(
         SELFDIR / "sondervereinbarungen_beitrag_raten.yml",
         where=wsjrdp2027.PeopleWhere(
-            id=ctx.parsed_args.person_id,
+            id=person_id,
             exclude_deregistered=False,
             fee_rules=["planned", "active"],
         ),
     )
-    df = ctx.load_person_dataframe_for_batch(batch_config)
-    row = df.iloc[0]
-    id_and_name = f"{row['id']} {row['short_full_name']}"
-    ctx.out_dir = ctx.out_dir / id_and_name
-    batch_config.name = f"WSJ27 Sondervereinbarung Ratenplan {row['role_id_name']}"
-    if row["custom_installments_issue"]:
-        batch_config.extra_email_bcc = wsjrdp2027.merge_mail_addresses(
-            batch_config.extra_email_bcc, "unit-management@worldscoutjamboree.de"
-        )
+    batch_config.email_from = person.helpdesk_email
+    ctx.out_dir = ctx.out_dir / person.id_and_name
+    batch_config.name = f"WSJ27 Sondervereinbarung Ratenplan {person.role_id_name}"
+    batch_config.extend_extra_email_bcc(person.primary_group.support_cmt_mail_addresses)
+    if person.custom_installments_issue:
+        batch_config.extend_extra_email_bcc(person.helpdesk_email)
     batch_config.update_raw_yaml()
 
     out_base = ctx.make_out_path(batch_config.name)
@@ -285,8 +287,8 @@ def main(argv=None):
 
     with ctx.psycopg_connect() as conn:
         mailing = batch_config.prepare(
-            df,
-            msg_cb=lambda p: attach_sondervereinbarung_raten(ctx, p),
+            person,
+            msg_cb=lambda prepared: attach_sondervereinbarung_raten(ctx, prepared),
             out_dir=ctx.out_dir,
         )
         ctx.update_db_and_send_mailing(mailing, conn=conn, zip_eml=False)
