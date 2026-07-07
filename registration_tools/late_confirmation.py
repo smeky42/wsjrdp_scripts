@@ -257,19 +257,22 @@ def _confirmation_note(
     email_str = ("ohne" if batch_config.skip_email else "mit") + " E-Mail-Versand"
 
     if changes_str:
-        confirmation_note = f"Am {date_str} {email_str} {changes_str}"
+        note = f"Am {date_str} {email_str} {changes_str}"
     elif not batch_config.skip_email:
-        confirmation_note = f"Bestätigungs-E-Mail am {date_str} verschickt"
+        note = f"Bestätigungs-E-Mail am {date_str} verschickt"
     else:
-        confirmation_note = ""
-    if confirmation_note and person.late_confirmation_issue:
-        full_confirmation_note = (
-            f"{confirmation_note}: {person.late_confirmation_issue_url}"
-        )
-    else:
-        full_confirmation_note = ""
+        note = ""
 
-    return full_confirmation_note
+    if note and person.late_confirmation_issue:
+        note = f"{note}: {person.late_confirmation_issue_url}"
+
+    _LOGGER.debug(f"")
+    _LOGGER.debug(f"{changes_str=}")
+    _LOGGER.debug(f"{email_str=}")
+    _LOGGER.debug(f"{note=}")
+    _LOGGER.debug(f"")
+
+    return note
 
 
 def _confirm_person(
@@ -399,7 +402,10 @@ def _confirm_person(
         new_status=new_status,
         person=person,
     ):
+        _LOGGER.info(f"Note: {note}")
         batch_config.updates["add_note"] = note
+    else:
+        _LOGGER.info("No note for confirmation")
     if person.is_yp_or_ul and (unit_code := new_group.unit_code):
         _LOGGER.info(
             f"Set new_unit_code={unit_code!r} (derived from --group={group_arg})"

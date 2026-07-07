@@ -1,5 +1,5 @@
 query:
-  collection_date: 2026-06-05  # Datum des nächsten Einzugs!
+  collection_date: 2026-08-05  # Datum des nächsten Einzugs!
   include_sepa_mail_in_mailing_to: true
   where:
     id: []
