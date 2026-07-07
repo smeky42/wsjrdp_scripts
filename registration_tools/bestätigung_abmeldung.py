@@ -84,6 +84,7 @@ def attach_cancellation_confirmation(
             "value_date": acc.value_date.strftime("%d.%m.%Y"),
         }
         for acc in acc_entries
+        if acc.amount_cents != 0
     ]
 
     sys_inputs = {
