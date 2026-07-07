@@ -15,7 +15,7 @@ if _typing.TYPE_CHECKING:
     import pandas as _pandas
     import psycopg as _psycopg
 
-    from . import _payment_role, _psycopg_client
+    from . import _payment_role, _pg, _psycopg_client
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -624,7 +624,7 @@ def _enrich_people_dataframe(
 
 
 def load_people_dataframe(
-    conn: _psycopg.Connection | _psycopg_client.PsycopgClient,
+    conn: _pg.ConnectionLike | None = None,
     *,
     extra_cols: str | list[str] | None = None,
     join: str = "",
@@ -648,7 +648,7 @@ def load_people_dataframe(
     import pandas as pd
     import psycopg.rows
 
-    from . import _people_query, _util
+    from . import _people_query, _pg, _util
 
     if query:
         if where:
@@ -707,6 +707,7 @@ def load_people_dataframe(
     else:
         accounting_entry_where_extra = ""
 
+    conn = _pg.to_connection(conn, read_only=True)
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
         sql_stmt = f"""
 WITH "people" AS (

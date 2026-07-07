@@ -9,14 +9,21 @@ email_subject: "Bestätigung deiner {{ row.payment_role.short_role_name }} Anmel
 content: |
   Hallo {{ row.greeting_name }},
 
-  wir freuen uns sehr, deine Teilnahme als Youth Participant am World Scout Jamboree 2027 in Polen hiermit offiziell zu bestätigen!
+  hiermit bestätigen wir offiziell deine Teilnahme als Youth Participant{% if new_group %} in Unit {{ new_group.name }}{% endif %} am World Scout Jamboree 2027 in Polen:
 
   {{ render_confirmation_info() }}
 
 
   Wir freuen uns riesig, dass du Teil dieses besonderen Abenteuers wirst und gemeinsam mit uns ein unvergessliches Jamboree erleben möchtest.
 
+
+  {{ render_upcoming_payment_text() }}
+
+
   Stelle bitte sicher, dass unsere E-Mails nicht im Spam landen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
+
+  {{ render_group_contact_info() }}
+
 
   Um immer auf dem neuesten Stand zu bleiben, kannst du gerne einem unserer Infokanäle für das gesamte deutsche Kontingent beitreten. Alle essenziellen Infos bekommst du auch per Mail.
 
@@ -25,7 +32,7 @@ content: |
 
   Willkommen im Kontingent – wir freuen uns schon sehr darauf, dich kennenzulernen und diese spannende Reise gemeinsam zu starten!
 
-  {{ render_upcoming_payment_text() }}
+
   Gut Pfad
   Dein Contingent Management Team
 signature: "{{ EMAIL_SIGNATURE_CMT }}"

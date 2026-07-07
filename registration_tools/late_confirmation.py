@@ -80,16 +80,16 @@ Schreibe uns bitte eine Antwort auf diese E-Mail, wenn du davon noch nichts wei�
 """
 
 _NEXT_INSTALLMENT = """
-Wir werden {% if row.early_payer or (row.installments_cents_dict | length) == 1 %}deinen Teilnahmebetrag{% else %}die {% if row.amount_paid_cents == 0 %}erste{% else %}nächste{% endif %} Rate deines Teilnahmebetrags{% endif %} voraussichtlich am {{ row.collection_date | date_de }} per SEPA Lastschrift einziehen. Du nimmst mit folgenden Daten am Einzug teil:
+{% if row.early_payer or (row.installments_cents_dict | length) == 1 %}Dein Teilnahmebeitrag{% else %}Die {% if row.amount_paid_cents == 0 %}erste{% else %}nächste{% endif %} Rate deines Teilnahmebeitrags{% endif %} wird voraussichtlich am {{ row.collection_date | date_de }} per SEPA Lastschrift eingezogen. Du nimmst mit folgenden Daten am Einzug teil:
 
-Teilnehmer*in: {{ row.full_name }}
-Betrag: {{ row.open_amount_cents | format_cents_as_eur_de }}
-Kontoinhaber*in: {{ row.sepa_name }}
-IBAN: {{ row.sepa_iban | format_iban }}
-{% if (row.sepa_bank_name is defined) and (row.sepa_bank_name) %}Bank: {{ row.sepa_bank_name }}
+    Teilnehmer*in: {{ row.full_name }}
+    Betrag: {{ row.open_amount_cents | format_cents_as_eur_de }}
+    Kontoinhaber*in: {{ row.sepa_name }}
+    IBAN: {{ row.sepa_iban | format_iban }}
+{% if (row.sepa_bank_name is defined) and (row.sepa_bank_name) %}    Bank: {{ row.sepa_bank_name }}
 {% endif %}
-Mandatsreferenz: {{ row.sepa_mandate_id }}
-Verwendungszweck: {{ row.sepa_dd_description }}
+    Mandatsreferenz: {{ row.sepa_mandate_id }}
+    Verwendungszweck: {{ row.sepa_dd_description }}
 """
 
 _ANNOUNCE_UPCOMING_INSTALLMENT = """
@@ -142,21 +142,76 @@ def render_upcoming_payment_text(env: jinja2.Environment) -> str:
         raise RuntimeError(
             "Unsupported financial configuration -- cannot confirm and send email"
         )
-    source = f"\n{source.strip()}\n\n\n"
-    return env.from_string(source).render()
+    return env.from_string(source).render().strip()
+
+
+def get_fee_recution_comment(person: wsjrdp2027.Person) -> str:
+    if person.total_fee_reduction <= 0:
+        return ""
+    regular_full_fee_de = wsjrdp2027.format_eur_as_eur_de(
+        person.regular_full_fee, space="", zero_cents=""
+    )
+    amount_de = wsjrdp2027.format_eur_as_eur_de(
+        person.total_fee_reduction, space="", zero_cents=""
+    )
+    base_comment = f"{person.short_role_name} Beitrag {regular_full_fee_de} reduziert um {amount_de}"
+    hint = person.total_fee_reduction_hint
+    if hint:
+        return f" ({hint}: {base_comment})"
+    else:
+        return f" ({base_comment})"
+
+
+@jinja2.pass_environment
+def render_group_contact_info(env: jinja2.Environment) -> str:
+    person: wsjrdp2027.Person | None = env.globals.get("person")
+    new_group: wsjrdp2027.Group | None = env.globals.get("new_group")
+    assert person
+    lines: list[str] = []
+    if person.is_yp and new_group:
+        for ul_p in sorted(new_group.load_unit_leader(), key=lambda p: p.greeting_name):
+            if ul_email := ul_p.wsjrdp_email_or_none:
+                lines.append(
+                    f"{ul_p.greeting_name} ({ul_p.short_full_name}): {ul_email}"
+                )
+        lines.append(
+            f"{new_group.name} UL-Team: ul-{new_group.name.lower()}@worldscoutjamboree.de"
+        )
+    if lines:
+        head_line = "So erreichst du deine Unit Leader:\n\n"
+        msg = head_line + _indent_block("\n".join(lines))
+        return msg
+    else:
+        return ""
 
 
 @jinja2.pass_environment
 def render_confirmation_info(env: jinja2.Environment) -> str:
+    import copy
+
+    env = copy.deepcopy(env)
+    person: wsjrdp2027.Person | None = env.globals.get("person")
+    assert person
+    env.globals["fee_reduction_comment"] = get_fee_recution_comment(person)
     _TEMPLATE = """
 Name: {{ row.full_name }}
 Anmeldungs-ID: {{ row.id }}
 Rolle: {{ row.payment_role.full_role_name }}
-Teilnahmebetrag: {{ row.total_fee_cents | format_cents_as_eur_de }}
+{% if person.is_yp_or_ul and new_group %}Unit: {{ new_group.name }}
+{% endif %}
+Teilnahmebeitrag: {{ row.total_fee_cents | format_cents_as_eur_de }}{{ fee_reduction_comment }}
 {% if show_payment_info and (row.amount_paid_cents > 0) %}Davon bereits bezahlt: {{ row.amount_paid_cents | format_cents_as_eur_de }}
 {% endif %}
 """
-    return env.from_string(_TEMPLATE).render().strip()
+    rendered = env.from_string(_TEMPLATE).render().strip()
+    return _indent_block(rendered)
+
+
+def _indent_block(block: str) -> str:
+    import re
+    import textwrap
+
+    return re.sub(r"\s*\n", "\n", textwrap.indent(block, "    "))
 
 
 def _load_person(
@@ -182,6 +237,7 @@ def _confirmation_note(
     new_group: wsjrdp2027.Group,
     old_status: str | None,
     new_status: str,
+    person: wsjrdp2027.Person,
 ) -> str:
     date_str = ctx.today.strftime("%d.%m.%Y")
     old_group_name = (old_group.short_name or old_group.name) if old_group else ""
@@ -201,11 +257,19 @@ def _confirmation_note(
     email_str = ("ohne" if batch_config.skip_email else "mit") + " E-Mail-Versand"
 
     if changes_str:
-        return f"Am {date_str} {email_str} {changes_str}"
+        confirmation_note = f"Am {date_str} {email_str} {changes_str}"
     elif not batch_config.skip_email:
-        return f"Bestätigungs-E-Mail am {date_str} verschickt"
+        confirmation_note = f"Bestätigungs-E-Mail am {date_str} verschickt"
     else:
-        return ""
+        confirmation_note = ""
+    if confirmation_note and person.late_confirmation_issue:
+        full_confirmation_note = (
+            f"{confirmation_note}: {person.late_confirmation_issue_url}"
+        )
+    else:
+        full_confirmation_note = ""
+
+    return full_confirmation_note
 
 
 def _confirm_person(
@@ -216,7 +280,6 @@ def _confirm_person(
     batch_name: str,
     new_status: str = "confirmed",
 ) -> None:
-    is_yp_or_ul = person.wsjrdp_role in ["YP", "UL"]
     allow_reconfirmation = bool(ctx.parsed_args.allow_reconfirmation)
     skip_status_update = bool(ctx.parsed_args.skip_status_update)
     person_id: int = int(person["id"])
@@ -230,8 +293,9 @@ def _confirm_person(
 
     old_tag_list = person.get("tag_list") or []
     group_arg: str | int | None = ctx.parsed_args.group
+    new_group: wsjrdp2027.Group | None = None
     if group_arg is None:
-        if is_yp_or_ul or old_primary_group_id is None:
+        if person.is_yp_or_ul or old_primary_group_id is None:
             _LOGGER.error(f"Missing --group for confirmation of {person.role_id_name}")
             raise SystemExit(1)
         else:
@@ -242,7 +306,7 @@ def _confirm_person(
         new_group = wsjrdp2027.Group.db_load(
             conn, group_arg, auto_group_id=old_primary_group_id
         )
-    if is_yp_or_ul and not new_group:
+    if person.is_yp_or_ul and not new_group:
         _LOGGER.error(f"Missing --group for confirmation of {person.role_id_name}")
         raise SystemExit(1)
     unit_code: str | None = new_group.unit_code if new_group else None
@@ -287,7 +351,9 @@ def _confirm_person(
         jinja_extra_globals={
             render_confirmation_info.__name__: render_confirmation_info,
             render_upcoming_payment_text.__name__: render_upcoming_payment_text,
+            render_group_contact_info.__name__: render_group_contact_info,
             "show_payment_info": ctx.parsed_args.show_payment_info,
+            "new_group": new_group,
         },
     )
 
@@ -331,9 +397,10 @@ def _confirm_person(
         new_group=new_group,
         old_status=person["status"],
         new_status=new_status,
+        person=person,
     ):
         batch_config.updates["add_note"] = note
-    if is_yp_or_ul and (unit_code := new_group.unit_code):
+    if person.is_yp_or_ul and (unit_code := new_group.unit_code):
         _LOGGER.info(
             f"Set new_unit_code={unit_code!r} (derived from --group={group_arg})"
         )

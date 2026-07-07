@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib as _contextlib
 import datetime as _datetime
+import decimal as _decimal
 import logging as _logging
 import math as _math
 import re as _re
@@ -210,6 +211,24 @@ class Person:
         args = [f"{k}={v!r}" for k, v in self._data.items()]
         return f"{cls_name}({', '.join(args)})"
 
+    regular_full_fee_cents: int
+    total_fee_cents: int
+
+    @property
+    def regular_full_fee(self) -> _decimal.Decimal:
+        return _decimal.Decimal(self.regular_full_fee_cents) / 100
+
+    @property
+    def total_fee(self) -> _decimal.Decimal:
+        return _decimal.Decimal(self.total_fee_cents) / 100
+
+    total_fee_reduction_hint: str | None
+    total_fee_reduction_issue: str | None
+
+    @property
+    def total_fee_reduction(self) -> _decimal.Decimal:
+        return self.get("total_fee_reduction", _decimal.Decimal(0))
+
     @property
     def primary_group(self) -> _groups.Group:
         if self._primary_group is None:
@@ -231,11 +250,9 @@ class Person:
 
     @property
     def short_role_name(self) -> str | None:
-        payment_role = self._data.get("payment_role")
-        if payment_role:
+        if payment_role := self._data.get("payment_role"):
             return payment_role.short_role_name
         else:
-            return self.wsj
             match self.primary_group_id:
                 case 1 | 47:
                     return "CMT"
@@ -313,6 +330,14 @@ class Person:
     @property
     def is_ul(self) -> bool:
         return self.short_role_name == "UL"
+
+    @property
+    def is_yp(self) -> bool:
+        return self.wsjrdp_role == "YP"
+
+    @property
+    def is_yp_or_ul(self) -> bool:
+        return self.wsjrdp_role in ("YP", "UL")
 
     @property
     def unit_or_role(self) -> str | None:
@@ -443,6 +468,13 @@ class Person:
     @late_confirmation_issue.setter
     def late_confirmation_issue(self, value: str | None) -> None:
         self.set_additional_info("late_confirmation_issue", value)
+
+    @property
+    def late_confirmation_issue_url(self) -> str | None:
+        if issue := self.late_confirmation_issue:
+            return f"https://helpdesk.worldscoutjamboree.de/browse/{issue}"
+        else:
+            return None
 
     @property
     def wsjrdp_email_or_none(self) -> str | None:

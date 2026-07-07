@@ -10,7 +10,7 @@ if _typing.TYPE_CHECKING:
 
     import psycopg.sql as _psycopg_sql
 
-    from . import _pg
+    from . import _person, _pg
 
 
 @_dataclasses.dataclass(kw_only=True)
@@ -51,6 +51,15 @@ class Group:
             return getattr(self, key)
         except AttributeError:
             raise KeyError(key) from None
+
+    def load_unit_leader(
+        self, *, conn: _pg.ConnectionLike | None = None
+    ) -> list[_person.Person]:
+        from . import _people, _people_query, _person
+
+        where = _people_query.PeopleWhere(primary_group_id=self.id, role="UL")
+        df = _people.load_people_dataframe(conn=conn, where=where)
+        return list(_person.iter_people_dataframe(df))
 
     @classmethod
     def to_group(

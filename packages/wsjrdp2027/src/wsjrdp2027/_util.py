@@ -33,6 +33,7 @@ __all__ = [
     "dedup",
     "dedup_iter",
     "format_cents_as_eur_de",
+    "format_eur_as_eur_de",
     "get_default_email_policy",
     "in_expr",
     "log_exception_decorator",
@@ -560,6 +561,39 @@ def format_cents_as_eur_de(
     ).replace(",00", zero_cents)
 
 
+def format_eur_as_eur_de(
+    eur: float | _decimal.Decimal,
+    *,
+    zero_cents: str = ",—",
+    space: str | None = None,
+    format: str | None = None,
+    currency: str = "EUR",
+) -> str:
+    r"""Format as DE.
+
+    >>> format_eur_as_eur_de(123)
+    '123,—\xa0€'
+    >>> format_eur_as_eur_de(123, space="")
+    '123,—€'
+    >>> format_eur_as_eur_de(123, space=" ")
+    '123,— €'
+
+    >>> import decimal
+    >>> format_eur_as_eur_de(decimal.Decimal("123.45"))
+    '123,45\xa0€'
+    >>> format_eur_as_eur_de(decimal.Decimal("0.01"))
+    '0,01\xa0€'
+    """
+    from babel.numbers import format_currency
+
+    formatted_amount = format_currency(
+        eur, format=format, currency=currency, locale="de_DE"
+    ).replace(",00", zero_cents)
+    if space is not None:
+        formatted_amount = _re.sub(r"\s+", space, formatted_amount)
+    return formatted_amount
+
+
 def render_template(
     template: str,
     context: dict | None,
@@ -619,6 +653,7 @@ def render_template(
             "isoformat": _isoformat,
             "to_ext": (lambda s: f".{s}" if s else ""),
             "format_cents_as_eur_de": format_cents_as_eur_de,
+            "format_eur_as_eur_de": format_eur_as_eur_de,
             "date_de": (lambda s: to_date(s).strftime("%d.%m.%Y")),
             "month_de": to_month_de,
             "month_year_de": to_month_year_de,
