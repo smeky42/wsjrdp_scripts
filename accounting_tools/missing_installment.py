@@ -25,6 +25,12 @@ def create_argument_parser():
     p.add_argument("--skip-db-updates", action="store_true", default=None)
     p.add_argument("--skip-email", action="store_true", default=None)
     p.add_argument("--skip-create-fin-issue", action="store_true", default=False)
+    p.add_argument(
+        "--open-editor",
+        action="store_true",
+        default=False,
+        help="Open E-Mail body content in editor before preparing EML file",
+    )
     p.add_argument("id", type=int)
     return p
 
@@ -277,7 +283,10 @@ def _send_missing_installment_notification(
     _update_tx(ctx, tx_row, person)
 
     prepared = batch_config.prepare(
-        person, dry_run=ctx.dry_run, skip_email=ctx.skip_email
+        person,
+        dry_run=ctx.dry_run,
+        skip_email=ctx.skip_email,
+        open_editor=ctx.parsed_args.open_editor,
     )
     ctx.send_mailing(prepared, zip_eml=False)
 

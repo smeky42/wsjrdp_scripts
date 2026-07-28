@@ -18,10 +18,10 @@ content: |
 
   Überprüfe bitte auch die hinterlege Kontoverbindung:
 
-  Kontoinhaber*in: {{ person.sepa_name }}
-  IBAN: {{ person.sepa_iban }}
-  {% if (person.sepa_bank_name is defined) and (person.sepa_bank_name) %}Bank: {{ person.sepa_bank_name }}
-  {% endif %}
+      Kontoinhaber*in: {{ person.sepa_name }}
+      IBAN: {{ person.sepa_iban }}
+      {% if (person.sepa_bank_name is defined) and (person.sepa_bank_name) %}    Bank: {{ person.sepa_bank_name }}
+      {% endif %}
 
   Liebe Grüße und Gut Pfad
   Daffi (David Fritzsche)

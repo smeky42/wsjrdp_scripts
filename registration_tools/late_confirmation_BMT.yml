@@ -14,6 +14,9 @@ content: |
   {{ render_confirmation_info() }}
 
 
+  {{ render_upcoming_payment_text() }}
+
+
   Ein aufregendes Abenteuer liegt vor uns, und wir danken dir für dein Engagement.
 
 
@@ -41,7 +44,6 @@ content: |
 
   Wir freuen uns schon jetzt, dich an unserem ersten VBT persönlich willkommen zu heißen.
 
-  {{ render_upcoming_payment_text() }}
   Bis dahin Gut Pfad
   Flo und Markus
 signature: "{{ EMAIL_SIGNATURE_BMT }}"
