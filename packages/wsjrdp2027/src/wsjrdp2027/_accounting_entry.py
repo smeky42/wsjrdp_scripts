@@ -91,7 +91,7 @@ class AccountingEntry:
 
     @classmethod
     def load_entries_for_where(
-        cls, *, where, conn: _pg.ConnectionLike | None = None
+        cls, *, where, conn: _pg.PgConnectionLike | None = None
     ) -> list[_typing.Self]:
 
         from psycopg.sql import SQL

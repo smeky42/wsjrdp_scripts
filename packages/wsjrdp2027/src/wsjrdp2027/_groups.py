@@ -53,7 +53,7 @@ class Group:
             raise KeyError(key) from None
 
     def load_unit_leader(
-        self, *, conn: _pg.ConnectionLike | None = None
+        self, *, conn: _pg.PgConnectionLike | None = None
     ) -> list[_person.Person]:
         from . import _people, _people_query, _person
 
@@ -63,7 +63,7 @@ class Group:
 
     @classmethod
     def to_group(
-        cls, group: int | str | "Group", *, conn: _pg.ConnectionLike | None = None
+        cls, group: int | str | "Group", *, conn: _pg.PgConnectionLike | None = None
     ) -> _typing.Self:
         if isinstance(group, Group):
             return group  # type: ignore
@@ -73,7 +73,7 @@ class Group:
     @classmethod
     def db_load_for_where(
         cls,
-        conn: _pg.ConnectionLike | None,
+        conn: _pg.PgConnectionLike | None,
         where: _psycopg_sql.Composable | _string_templatelib.Template,
     ) -> _typing.Self:
         from . import _pg
@@ -84,7 +84,7 @@ class Group:
     @classmethod
     def db_load_for_group_name(
         cls,
-        conn: _pg.ConnectionLike | None,
+        conn: _pg.PgConnectionLike | None,
         group_name: str,
     ) -> _typing.Self:
         return cls.db_load_for_where(
@@ -95,7 +95,7 @@ class Group:
     @classmethod
     def db_load_for_group_id(
         cls,
-        conn: _pg.ConnectionLike | None,
+        conn: _pg.PgConnectionLike | None,
         group_id: int,
     ) -> _typing.Self:
         return cls.db_load_for_where(conn=conn, where=t'"id" = {group_id}')
@@ -103,7 +103,7 @@ class Group:
     @classmethod
     def load_for_group_ids(
         cls,
-        conn: _pg.ConnectionLike | None,
+        conn: _pg.PgConnectionLike | None,
         group_ids: _collections_abc.Iterable[str | int],
     ) -> list[_typing.Self]:
         from psycopg.sql import SQL
@@ -119,7 +119,7 @@ class Group:
     @classmethod
     def db_load(
         cls,
-        conn: _pg.ConnectionLike | None,
+        conn: _pg.PgConnectionLike | None,
         group_arg: str | int,
         *,
         auto_group_id: int | None = None,

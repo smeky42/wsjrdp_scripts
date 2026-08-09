@@ -729,7 +729,7 @@ class Person:
         )
 
     def load_accounting_entries(
-        self, conn: _pg.ConnectionLike | None
+        self, conn: _pg.PgConnectionLike | None
     ) -> list[_accounting_entry.AccountingEntry]:
 
         from . import _accounting_entry

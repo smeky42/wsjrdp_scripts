@@ -624,7 +624,7 @@ def _enrich_people_dataframe(
 
 
 def load_people_dataframe(
-    conn: _pg.ConnectionLike | None = None,
+    conn: _pg.PgConnectionLike | None = None,
     *,
     extra_cols: str | list[str] | None = None,
     join: str = "",
