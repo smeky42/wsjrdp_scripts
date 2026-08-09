@@ -1,4 +1,4 @@
-from wsjrdp2027._person import Person
+from wsjrdp2027._models.person import Person
 
 
 class Test_Person:

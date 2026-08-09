@@ -6,7 +6,8 @@ import typing as _typing
 
 import pandas as _pandas
 
-from .. import _context, _person
+from .. import _context
+from .._models import person as _person
 
 
 if _typing.TYPE_CHECKING:
