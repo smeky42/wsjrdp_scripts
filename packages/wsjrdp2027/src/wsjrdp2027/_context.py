@@ -784,6 +784,12 @@ class WsjRdpContext:
         raise_on_cleanup_failure: bool = True,
         report_output: bool = False,
     ):
+        if exc_val is not None or exc_tb is not None:
+            self._logger.debug(
+                "Context exited with exception: %s",
+                exc_val,
+                exc_info=(exc_type, exc_val, exc_tb),
+            )
         exit_stack = self.__exit_stacks.pop()
         level = len(self.__exit_stacks)
         result = None
@@ -1128,7 +1134,7 @@ class WsjRdpContext:
         self_name: str | None = None,
         batch_name_suffix: str = "",
         is_role_change: bool = False,
-    ) -> None:
+    ) -> bool:
         from ._internal.sync_hitobito_keycloak import sync
 
         if not self_name and self._dunder_file:
@@ -1546,7 +1552,7 @@ class WsjRdpContext:
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         collection_date: _datetime.date | str | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
-        conn: _pg.ConnectionLike | None = None,
+        conn: _pg.PgConnectionLike | None = None,
     ) -> _person.Person:
         from . import _person
 
@@ -1570,7 +1576,7 @@ class WsjRdpContext:
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         collection_date: _datetime.date | str | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
-        conn: _pg.ConnectionLike | None = None,
+        conn: _pg.PgConnectionLike | None = None,
     ) -> _person.Person:
         from . import _batch, _people_query
 
@@ -1597,7 +1603,7 @@ class WsjRdpContext:
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         collection_date: _datetime.date | str | None = None,
         now: _datetime.datetime | _datetime.date | str | int | float | None = None,
-        conn: _pg.ConnectionLike | None = None,
+        conn: _pg.PgConnectionLike | None = None,
     ) -> _pandas.DataFrame:
         import textwrap
 
@@ -1667,7 +1673,7 @@ class WsjRdpContext:
 
     def _to_connection(
         self,
-        conn: _pg.ConnectionLike | None,
+        conn: _pg.PgConnectionLike | None,
         /,
         *,
         read_only: bool | None = None,
@@ -1687,7 +1693,7 @@ class WsjRdpContext:
         df: _pandas.DataFrame,
         /,
         *,
-        conn: _pg.ConnectionLike | None = None,
+        conn: _pg.PgConnectionLike | None = None,
         write_versions: bool | None = None,
         dry_run: bool | None = None,
         skip_db_updates: bool | None = None,
@@ -1719,7 +1725,7 @@ class WsjRdpContext:
         self,
         prepared_batch: _batch.PreparedBatch,
         *,
-        conn: _pg.ConnectionLike | None = None,
+        conn: _pg.PgConnectionLike | None = None,
         zip_eml: bool | None = None,
         dry_run: bool | None = None,
         silent_skip_email: bool = False,
