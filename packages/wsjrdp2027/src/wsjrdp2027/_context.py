@@ -742,6 +742,14 @@ class WsjRdpContext:
             _logging.getLogger().removeHandler(buffering_handler)
         return file_handler
 
+    def register_output_file(
+        self, description: str, path: str | _pathlib.Path
+    ) -> _pathlib.Path:
+        path = _pathlib.Path(path)
+        self._logger.debug(f"Add output file ({description}): {path}")
+        self._output_files.append((description, path))
+        return path
+
     @_contextlib.contextmanager
     def as_thread_local_ctx(self) -> _typing.Generator[_typing.Self]:
         with set_thread_local_ctx(self):
