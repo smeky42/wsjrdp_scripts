@@ -133,29 +133,28 @@ def insert_pre_notifications_into_db(
         _LOGGER.info("")
         return
 
-    with ctx.psycopg_connect() as conn:
-        with conn.cursor() as cur:
-            pain_id = wsjrdp2027.pg_insert_payment_initiation(
-                cursor=cur,
-                sepa_dd_config=sepa_dd_config,
-            )
-            _LOGGER.info("payment initiation id: %s", pain_id)
-            pymnt_inf_id = wsjrdp2027.pg_insert_direct_debit_payment_info(
+    with ctx.psycopg_connect() as conn, conn.cursor() as cur:
+        pain_id = wsjrdp2027.pg_insert_payment_initiation(
+            cursor=cur,
+            sepa_dd_config=sepa_dd_config,
+        )
+        _LOGGER.info("payment initiation id: %s", pain_id)
+        pymnt_inf_id = wsjrdp2027.pg_insert_direct_debit_payment_info(
+            cur,
+            payment_initiation_id=pain_id,
+            sepa_dd_config=sepa_dd_config,
+            creditor_id=wsjrdp2027.CREDITOR_ID,
+        )
+        _LOGGER.info("direct debit payment info id: %s", pymnt_inf_id)
+
+        for _, row in df.iterrows():
+            wsjrdp2027.insert_direct_debit_pre_notification_from_row(
                 cur,
+                row=row,
                 payment_initiation_id=pain_id,
-                sepa_dd_config=sepa_dd_config,
+                direct_debit_payment_info_id=pymnt_inf_id,
                 creditor_id=wsjrdp2027.CREDITOR_ID,
             )
-            _LOGGER.info("direct debit payment info id: %s", pymnt_inf_id)
-
-            for _, row in df.iterrows():
-                wsjrdp2027.insert_direct_debit_pre_notification_from_row(
-                    cur,
-                    row=row,
-                    payment_initiation_id=pain_id,
-                    direct_debit_payment_info_id=pymnt_inf_id,
-                    creditor_id=wsjrdp2027.CREDITOR_ID,
-                )
 
 
 def main(argv=None):

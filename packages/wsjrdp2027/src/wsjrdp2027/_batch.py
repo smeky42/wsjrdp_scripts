@@ -8,7 +8,7 @@ import logging as _logging
 import pathlib as _pathlib
 import typing as _typing
 
-from . import _people_query, _types, _util
+from . import _types, _util
 
 
 if _typing.TYPE_CHECKING:
@@ -23,8 +23,8 @@ if _typing.TYPE_CHECKING:
 
 __all__ = [
     "BatchConfig",
-    "PreparedEmailMessage",
     "PreparedBatch",
+    "PreparedEmailMessage",
 ]
 
 
@@ -102,8 +102,8 @@ class PreparedBatch:
     df: _pandas.DataFrame
     unfiltered_df: _pandas.DataFrame | None = None
     messages: tuple[PreparedEmailMessage, ...] = ()
-    action_arguments: dict = _dataclasses.field(default_factory=lambda: {})
-    updates: dict = _dataclasses.field(default_factory=lambda: {})
+    action_arguments: dict = _dataclasses.field(default_factory=dict)
+    updates: dict = _dataclasses.field(default_factory=dict)
     email_from: str = ""
     from_addr: str | None = None
     config_yaml: bytes | None
@@ -112,7 +112,7 @@ class PreparedBatch:
     dry_run: bool = False
     skip_email: bool = False
     skip_db_updates: bool = False
-    results: dict = _dataclasses.field(default_factory=lambda: {})
+    results: dict = _dataclasses.field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.now is None:
@@ -452,6 +452,8 @@ class BatchConfig:
         raw_yaml: bytes | str | None = None,
         updates: _collections_abc.Mapping | None = None,
     ) -> _typing.Self:
+        from . import _people_query
+
         config = dict(config.items()) if config else {}
         path = _pathlib.Path(path) if path else None
 
@@ -698,7 +700,7 @@ class BatchConfig:
         /,
         *,
         inplace: bool = True,
-        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        now: _datetime.datetime | _datetime.date | str | float | None = None,
     ) -> _pandas.DataFrame:
         from . import _people
 
@@ -721,7 +723,6 @@ class BatchConfig:
         now: _datetime.datetime
         | _datetime.date
         | str
-        | int
         | float
         | None
         | _types.MissingType = _types.MISSING,
@@ -730,7 +731,7 @@ class BatchConfig:
 
         import pandas as _pandas
 
-        from . import _people, _util
+        from . import _people, _people_query, _util
 
         limit = _util.coalesce_missing(limit, self.query.limit)
         now = _util.coalesce_missing(collection_date, self.query.collection_date)
@@ -812,7 +813,6 @@ class BatchConfig:
         now: _datetime.datetime
         | _datetime.date
         | str
-        | int
         | float
         | None
         | _types.MissingType = _types.MISSING,
@@ -863,7 +863,7 @@ class BatchConfig:
         out_dir: _pathlib.Path | None = None,
         msgid_idstring: str | None = None,
         msgid_domain: str | None = None,
-        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        now: _datetime.datetime | _datetime.date | str | float | None = None,
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
@@ -1068,7 +1068,7 @@ def _email_message_from_person(
     email_bcc: str | _collections_abc.Iterable[str] | None = None,
     email_reply_to: str | _collections_abc.Iterable[str] | None = None,
     policy: _email_policy.EmailPolicy | None = None,
-    email_date: _datetime.datetime | _datetime.date | str | float | int | None = None,
+    email_date: _datetime.datetime | _datetime.date | str | float | None = None,
     message_id: str | None = None,
     msgid_idstring: str | None = None,
     msgid_domain: str | None = None,
@@ -1231,6 +1231,8 @@ def _normalize_query_where_or_none(
     *,
     logger: _logging.Logger | _logging.LoggerAdapter | None = None,
 ) -> _people_query.PeopleQuery | None:
+    from . import _people_query
+
     if query:
         query = _people_query.PeopleQuery.normalize(query)
         if where:
@@ -1257,5 +1259,7 @@ def _normalize_query_where(
     *,
     logger: _logging.Logger | _logging.LoggerAdapter | None = None,
 ) -> _people_query.PeopleQuery:
+    from . import _people_query
+
     query = _normalize_query_where_or_none(query, where, logger=logger)
     return query if query is not None else _people_query.PeopleQuery()

@@ -308,7 +308,7 @@ def enrich_people_dataframe_for_payments(
     pedantic: bool = False,
     endtoend_ids: dict[int, str] | None = None,
     reindex: bool = True,
-    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    now: _datetime.datetime | _datetime.date | str | float | None = None,
 ) -> _pandas.DataFrame:
     from . import _util
 
@@ -432,7 +432,9 @@ def _skip_payment(
     row = df.loc[idx]
     _LOGGER.log(log_level, "Skip payment id=%s reason=%r", row.get("id", "??"), reason)
     df.at[idx, "payment_status"] = "skipped"
-    reason_parts = filter(None, [df.at[idx, "payment_status_reason"], reason])
+    reason_parts: _collections_abc.Iterable[str] = filter(
+        None, [str(df.at[idx, "payment_status_reason"]), reason]
+    )
     df.at[idx, "payment_status_reason"] = ", ".join(filter(None, reason_parts))
 
 
@@ -677,12 +679,10 @@ def write_payment_dataframe_to_xlsx(
 
 @_dataclasses.dataclass(kw_only=True)
 class _PreNotificationInfo:
-    ids: list[int] = _dataclasses.field(default_factory=lambda: [])
+    ids: list[int] = _dataclasses.field(default_factory=list)
     collection_date: _datetime.date = _datetime.date.min
-    endtoend_ids: dict = _dataclasses.field(default_factory=lambda: {})
-    id_to_pn_row: dict[int, _pandas.Series] = _dataclasses.field(
-        default_factory=lambda: {}
-    )
+    endtoend_ids: dict = _dataclasses.field(default_factory=dict)
+    id_to_pn_row: dict[int, _pandas.Series] = _dataclasses.field(default_factory=dict)
 
     @classmethod
     def from_pn_df(cls, raw_pn_df) -> _typing.Self:
@@ -738,7 +738,7 @@ def load_payment_dataframe_from_payment_initiation(
     where: str = "",
     report_amount_differences: bool = True,
     booking_at: _datetime.datetime | _datetime.date | str | int | None = None,
-    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    now: _datetime.datetime | _datetime.date | str | float | None = None,
     allowed_pre_notification_status: _collections_abc.Iterable[str] | str | None = None,
     accounting_entry_exclude_payment_initiation_id: _collections_abc.Iterable[int]
     | int
@@ -868,9 +868,11 @@ WHERE
         )
         df = df.copy()  # just for de-fragmentation
         for key in PRE_NOTIFICATION_COLUMNS:
-            df[f"pn_{key}"] = df["id"].map(
-                lambda person_id: pninf.id_to_pn_row[person_id][key]
-            )
+
+            def _get_pn_attr(person_id, key=key):
+                return pninf.id_to_pn_row[person_id][key]
+
+            df[f"pn_{key}"] = df["id"].map(_get_pn_attr)
         df = df.copy()  # just for de-fragmentation
         df["open_amount_cents"] = df["pn_amount_cents"]
         df["sepa_name"] = df["pn_dbtr_name"]
@@ -1007,7 +1009,7 @@ def load_payment_dataframe(
     where: str | _people_query.PeopleWhere | None = "",
     fee_rules: str | _collections_abc.Iterable[str] = "active",
     endtoend_ids: dict[int, str] | None = None,
-    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    now: _datetime.datetime | _datetime.date | str | float | None = None,
     accounting_entry_exclude_payment_initiation_id: _collections_abc.Iterable[int]
     | int
     | None = None,

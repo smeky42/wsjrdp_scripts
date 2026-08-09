@@ -369,7 +369,7 @@ class PaymentRole(_enum.Enum):
             fee_reduction_eur = int(fee_reduction_eur)
 
         return {
-            key: int(round(eur * 100))
+            key: round(eur * 100)
             for key, eur in self.get_installments_eur(
                 early_payer=early_payer,
                 print_at=print_at,

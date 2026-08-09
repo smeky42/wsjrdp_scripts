@@ -14,7 +14,6 @@ from . import _types
 if _typing.TYPE_CHECKING:
     import datetime as _datetime
     import email.policy as _email_policy
-    import logging as _logging
     import pathlib as _pathlib
 
     import pandas as _pandas
@@ -58,7 +57,6 @@ __all__ = [
 ]
 
 _T = _typing.TypeVar("_T")
-_R = _typing.TypeVar("_R")
 
 
 _CONSOLE_CONFIRM_DEFAULT_TO_CHOICE_DISPLAY = {
@@ -210,12 +208,14 @@ def log_exception_decorator[F: _collections_abc.Callable[..., _typing.Any]](
 ) -> F:
     import functools
 
+    func_name = getattr(func, "__name__", "<???>")
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception as exc:
-            _LOGGER.exception("%s failed: %s", func.__name__, str(exc))
+            _LOGGER.exception("%s failed: %s", func_name, str(exc))
             raise
 
     return _typing.cast(F, wrapper)
@@ -226,11 +226,13 @@ def log_call[F: _collections_abc.Callable[..., _typing.Any]](
 ) -> F:
     import functools
 
+    func_qualname = getattr(func, "__qualname__", "<???>")
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         call_args = [repr(a) for a in args]
         call_args.extend(f"{k}={v!r}" for k, v in kwargs.items())
-        call_s = f"{func.__qualname__}({', '.join(call_args)})"
+        call_s = f"{func_qualname}({', '.join(call_args)})"
 
         try:
             _LOGGER.debug(call_s)
@@ -304,7 +306,7 @@ def date_to_datetime(
 
 @_typing.overload
 def to_datetime_or_none(
-    dt: _datetime.datetime | _datetime.date | str | float | int, /
+    dt: _datetime.datetime | _datetime.date | str | float, /
 ) -> _datetime.datetime: ...
 
 
@@ -313,7 +315,7 @@ def to_datetime_or_none(dt: None, /) -> None: ...
 
 
 def to_datetime_or_none(
-    dt: _datetime.datetime | _datetime.date | str | float | int | None, /
+    dt: _datetime.datetime | _datetime.date | str | float | None, /
 ) -> _datetime.datetime | None:
     """Return a datetime.
 
@@ -329,7 +331,7 @@ def to_datetime_or_none(
 
 
 def to_datetime(
-    dt: _datetime.datetime | _datetime.date | str | float | int | None,
+    dt: _datetime.datetime | _datetime.date | str | float | None,
     /,
     *,
     now: _datetime.datetime | None = None,
@@ -432,14 +434,14 @@ def to_datetime(
     elif isinstance(dt, datetime.date):
         return date_to_datetime(dt)
     elif isinstance(dt, (float, int)):
-        return datetime.datetime.fromtimestamp(dt, tz=datetime.timezone.utc)
+        return datetime.datetime.fromtimestamp(dt, tz=datetime.UTC)
     elif isinstance(dt, str):
         if dt.upper() == "NOW":
             return datetime.datetime.now().astimezone()
         elif dt.upper() == "TODAY":
             return date_to_datetime(to_date_or_none("TODAY"))
         elif re.fullmatch("[0-9]+", dt):
-            return datetime.datetime.fromtimestamp(int(dt), tz=datetime.timezone.utc)
+            return datetime.datetime.fromtimestamp(int(dt), tz=datetime.UTC)
         elif re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", dt):
             return parse_date(dt, "%d.%m.%Y")
         elif re.fullmatch("[0-9]+-[0-9]+-[0-9]+", dt):
@@ -784,16 +786,14 @@ def coalesce(*args: _T | None) -> _T | None:
     for arg in args:
         if arg is not None:
             return arg
-    else:
-        return None
+    return None
 
 
 def coalesce_missing(*args: _T | _types.MissingType) -> _T | None:
     for arg in args:
         if not isinstance(arg, _types.MissingType):
             return arg
-    else:
-        return None
+    return None
 
 
 def slurp(
@@ -1460,7 +1460,7 @@ def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
         obj_str = str(obj)
         obj_str_repr = repr(obj_str)
         require_repr = (
-            (len(obj_str_repr) > len(obj_str) + 2)  #
+            (len(obj_str_repr) > len(obj_str) + 2)
             or "," in obj_str
             or obj_str.strip() != obj_str
         )
@@ -1499,9 +1499,7 @@ def write_dataframe_to_xlsx(
 ) -> None:
     import pandas as pd
 
-    from . import _util
-
-    df = _util.dataframe_copy_for_xlsx(df)
+    df = dataframe_copy_for_xlsx(df)
     if drop_columns is not None:
         df.drop(columns=list(drop_columns), inplace=True)
 

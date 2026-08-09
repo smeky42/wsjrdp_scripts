@@ -24,9 +24,9 @@ KEYCLOAK_GROUPNAMES_TO_FETCH = ["CMT", "UL", "IST", "BMT", "EXT"]
 
 @_dataclasses.dataclass(kw_only=True)
 class SyncOptions:
-    groups: list[str] = _dataclasses.field(default_factory=lambda: [])
+    groups: list[str] = _dataclasses.field(default_factory=list)
     limit: int | None = None
-    status: list[str] = _dataclasses.field(default_factory=lambda: [])
+    status: list[str] = _dataclasses.field(default_factory=list)
     create_missing_keycloak_user: bool = True
 
 
@@ -50,7 +50,7 @@ def _parse_args(args: _argparse.Namespace) -> SyncOptions:
         kwargs["status"] = ["confirmed"]
     if args.create_missing_keycloak_user is not None:
         kwargs["create_missing_keycloak_user"] = bool(args.create_missing_keycloak_user)
-    return SyncOptions(**kwargs)
+    return SyncOptions(**kwargs)  # ty: ignore
 
 
 def _create_argument_parser():

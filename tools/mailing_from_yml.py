@@ -63,7 +63,7 @@ def update_batch_config_from_ctx(
         query.collection_date = wsjrdp2027.to_date(collection_date)
     if (dry_run := ctx.dry_run) is not None:
         config.dry_run = dry_run
-    if tags := getattr(args, "tags"):
+    if tags := args.tags:
         config.updates.setdefault("add_tags", []).extend(tags)
     return config
 

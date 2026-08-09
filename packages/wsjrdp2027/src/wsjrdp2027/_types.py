@@ -5,9 +5,9 @@ import typing as _typing
 
 __all__ = [
     "MISSING",
-    "MissingType",
     "NOT_NULL",
     "NULL",
+    "MissingType",
     "SepaDirectDebitConfig",
 ]
 

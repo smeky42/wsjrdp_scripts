@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib as _contextlib
 import datetime as _datetime
 import decimal as _decimal
 import logging as _logging
@@ -17,7 +16,8 @@ if _typing.TYPE_CHECKING:
     import pandas as _pandas
     import psycopg as _psycopg
 
-    from . import _accounting_entry, _batch, _context, _groups, _pg
+    from . import _accounting_entry, _batch, _context, _pg
+    from ._models import group as _group
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -96,7 +96,7 @@ class Person:
     _data: dict[str, _typing.Any] = _typing.cast(dict, None)
     _cls_keys: frozenset[str]
     _data_keys: frozenset[str] = frozenset([])
-    _primary_group: _groups.Group | None = None
+    _primary_group: _group.Group | None = None
 
     def __init__(self, **kwargs) -> None:
         self._index = None
@@ -230,17 +230,17 @@ class Person:
         return self.get("total_fee_reduction", _decimal.Decimal(0))
 
     @property
-    def primary_group(self) -> _groups.Group:
+    def primary_group(self) -> _group.Group:
         if self._primary_group is None:
-            from . import _groups
+            from ._models.group import Group
 
-            self._primary_group = _groups.Group.db_load_for_group_id(
+            self._primary_group = Group.db_load_for_group_id(
                 conn=None, group_id=self.primary_group_id
             )
         return self._primary_group
 
     @primary_group.setter
-    def primary_group(self, value: _groups.Group) -> None:
+    def primary_group(self, value: _group.Group) -> None:
         self._primary_group = value
         self.primary_group_id = self._primary_group.id
 
@@ -529,7 +529,6 @@ class Person:
         else:
             return self.get_wsjrdp_email_default(wsjrdp_role)
 
-    @property
     def wsjrdp_email_should_be_mailbox(self, wsjrdp_role: str | None = None) -> bool:
         wsjrdp_role = wsjrdp_role or self.wsjrdp_role
         match wsjrdp_role:
@@ -589,7 +588,6 @@ class Person:
         else:
             return self.get_moss_email_default()
 
-    @property
     def moss_email_expected_goto(self, wsjrdp_role: str | None = None) -> str | None:
         wsjrdp_role = wsjrdp_role or self.wsjrdp_role
         match wsjrdp_role:
@@ -611,7 +609,7 @@ class Person:
 
     @moss_invited_at.setter
     def moss_invited_at(
-        self, value: _datetime.datetime | _datetime.date | str | float | int | None
+        self, value: _datetime.datetime | _datetime.date | str | float | None
     ) -> None:
         from ._util import to_datetime_or_none
 
@@ -710,7 +708,7 @@ class Person:
 
     def move_to_group(
         self,
-        new_group: int | str | _groups.Group,
+        new_group: int | str | _group.Group,
         *,
         ctx: _context.WsjRdpContext | None = None,
         batch_name: str | None = None,
@@ -760,8 +758,7 @@ def iter_people(
         for idx, row in data.iterrows():
             yield Person.from_pandas_row(row, dataframe=data, index=idx)
     else:
-        for p in data:
-            yield p
+        yield from data
 
 
 def _filtered_join(*args, sep=" "):
@@ -780,9 +777,9 @@ def _filtered_join(*args, sep=" "):
 def load_primary_groups_for_people(
     conn: _psycopg.Connection, *, people: list[Person]
 ) -> None:
-    from . import _groups
+    from ._models import group as _group
 
-    groups_list = _groups.Group.load_for_group_ids(
+    groups_list = _group.Group.load_for_group_ids(
         conn, (p.primary_group_id for p in people)
     )
     groups = {g.id: g for g in groups_list}

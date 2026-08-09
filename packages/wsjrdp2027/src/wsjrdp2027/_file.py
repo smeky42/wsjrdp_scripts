@@ -24,7 +24,7 @@ def slurp(
     import pathlib as _pathlib
 
     if isinstance(path_or_file, (_pathlib.Path, str, bytes, _os.PathLike)):
-        with open(path_or_file, encoding=encoding, newline=newline) as f:  # ty: ignore
+        with open(path_or_file, encoding=encoding, newline=newline) as f:
             return f.read()
     else:
         return path_or_file.read()
@@ -35,7 +35,7 @@ def slurp_bytes(path_or_file: PathLike | _io.Reader[bytes]) -> bytes:
     import pathlib as _pathlib
 
     if isinstance(path_or_file, (_pathlib.Path, str, bytes, _os.PathLike)):
-        with open(path_or_file, "rb") as f:  # ty: ignore
+        with open(path_or_file, "rb") as f:
             return f.read()
     else:
         return path_or_file.read()

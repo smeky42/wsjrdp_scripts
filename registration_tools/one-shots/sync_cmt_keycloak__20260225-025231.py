@@ -2208,7 +2208,7 @@ def main():
                 _LOGGER.info(
                     f"{p.role_id_name}: Missing mossEmail, will set to {p.moss_email}"
                 )
-                ctx.keycloak.update_user(
+                ctx.keycloak().update_user(
                     keycloak_user["username"],
                     {"attributes": {"mossEmail": [p.moss_email]}},
                 )
@@ -2217,7 +2217,7 @@ def main():
                     _LOGGER.info(
                         f"{p.role_id_name}: Fix mossEmail {keycloak_moss_email!r} -> {p.moss_email!r}"
                     )
-                    ctx.keycloak.update_user(
+                    ctx.keycloak().update_user(
                         keycloak_user["username"],
                         {"attributes": {"mossEmail": [p.moss_email]}},
                     )

@@ -72,7 +72,7 @@ class WsjRdpContextConfig:
     smtp_password: str = ""
 
     mail_accounts: dict[str, _mail_config.WsjRdpMailConfig] = _dataclasses.field(
-        default_factory=lambda: {}
+        default_factory=dict
     )
 
     geo_api_key: str = ""
@@ -1551,7 +1551,7 @@ class WsjRdpContext:
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         collection_date: _datetime.date | str | None = None,
-        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        now: _datetime.datetime | _datetime.date | str | float | None = None,
         conn: _pg.PgConnectionLike | None = None,
     ) -> _person.Person:
         from . import _person
@@ -1575,7 +1575,7 @@ class WsjRdpContext:
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         collection_date: _datetime.date | str | None = None,
-        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        now: _datetime.datetime | _datetime.date | str | float | None = None,
         conn: _pg.PgConnectionLike | None = None,
     ) -> _person.Person:
         from . import _batch, _people_query
@@ -1602,7 +1602,7 @@ class WsjRdpContext:
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
         collection_date: _datetime.date | str | None = None,
-        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        now: _datetime.datetime | _datetime.date | str | float | None = None,
         conn: _pg.PgConnectionLike | None = None,
     ) -> _pandas.DataFrame:
         import textwrap
@@ -1643,7 +1643,7 @@ class WsjRdpContext:
         out_dir: _pathlib.Path | str | None = None,
         extra_static_df_cols: dict[str, _typing.Any] | None = None,
         extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
-        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        now: _datetime.datetime | _datetime.date | str | float | None = None,
         df_cb: _collections_abc.Callable[[_pandas.DataFrame], _pandas.DataFrame]
         | None = None,
         log_resulting_data_frame: bool | None = None,
@@ -1697,7 +1697,7 @@ class WsjRdpContext:
         write_versions: bool | None = None,
         dry_run: bool | None = None,
         skip_db_updates: bool | None = None,
-        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        now: _datetime.datetime | _datetime.date | str | float | None = None,
         report_all_updates: bool | None = None,
     ) -> None:
         from . import _people

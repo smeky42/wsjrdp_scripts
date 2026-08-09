@@ -3,9 +3,7 @@ from __future__ import annotations
 import collections.abc as _collections_abc
 import logging as _logging
 
-import pandas as _pandas
-
-from .. import _context, _people_query, _person, _util
+from .. import _context
 
 
 _LOGGER = _logging.getLogger(__name__)

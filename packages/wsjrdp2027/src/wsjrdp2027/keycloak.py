@@ -23,6 +23,8 @@ _LOGGER = __import__("logging").getLogger(__name__)
 def log_and_reraise[F: _collections_abc.Callable[..., _typing.Any]](func: F) -> F:
     import functools
 
+    func_qualname = getattr(func, "__qualname__", "<???>")
+
     @functools.wraps(func)
     def wrapped(*args, **kwargs):
         try:
@@ -30,7 +32,7 @@ def log_and_reraise[F: _collections_abc.Callable[..., _typing.Any]](func: F) -> 
         except Exception as exc:
             call_args = [repr(a) for a in args]
             call_args.extend(f"{k}={v}" for k, v in kwargs.items())
-            _LOGGER.error(f"{func.__qualname__}({', '.join(call_args)}) failed: {exc}")
+            _LOGGER.error(f"{func_qualname}({', '.join(call_args)}) failed: {exc}")
             raise
 
     return wrapped  # type: ignore

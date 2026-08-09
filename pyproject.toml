@@ -22,6 +22,7 @@ dev = [
     "pandas-stubs>=2.3.0.250703",
     "paramiko>=3.5.1",
     "psycopg[binary]>=3.2.9",
+    "pyrefly>=1.2.0",
     "pyyaml>=6.0.2",
     "sepaxml>=2.6.2",
     "sshtunnel>=0.4.0",
@@ -97,6 +98,7 @@ extend-exclude = [
     "2023",
     "integration-tests/mailcow",
 ]
+output-format = "concise"
 
 [tool.ruff.lint]
 ignore = [
@@ -104,6 +106,26 @@ ignore = [
     "E731",  # Do not assign a `lambda` expression, use a `def`
     "F541",  # f-string without any placeholders
     "F841",  # Local variable `{}` is assigned to but never used
+    #
+    "BLE001",  # Do not catch blind exception: `Exception`
+    "C401",  # Unnecessary generator (rewrite as a set comprehension)
+    "C405",  # Unnecessary list literal (rewrite as a set literal)
+    "DTZ005",  # `datetime.datetime.now()` called without a `tz` argument
+    "PLC0414",  # Import alias does not rename original package
+    "PLR2044",  # Line with empty comment
+    "RUF009",  # Do not perform function call `_typing.cast` in dataclass defaults
+    "SIM102",  # Use a single `if` statement instead of nested `if` statements
+    "SIM103",  # Return the condition directly
+    "TRY401",  # Redundant exception object included in `logging.exception` call
+    "DTZ007",  # Naive datetime constructed using `datetime.datetime.strptime()` without %z
+    "RUF012",  # Mutable default value for class attribute
+    "C408",  # Unnecessary `dict()` call (rewrite as a literal)
+    "C414",  # Unnecessary `list()` call within `sorted()`
+    "UP047",  # Generic function `{}` should use type parameters
+    "DTZ011",  # `datetime.date.today()` used
+    "SIM117",  # Use a single `with` statement with multiple contexts instead of nested `with` statements
+    "RUF046",  # Value being cast to `int` is already an integer
+    "RUF",
 ]
 
 [tool.ruff.lint.isort]

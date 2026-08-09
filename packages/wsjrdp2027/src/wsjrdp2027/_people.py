@@ -551,15 +551,15 @@ def _enrich_people_dataframe(
         lambda d: d.strftime("%d.%m.%Y") if d is not None else None
     )
     df["mailing_from"] = "anmeldung@worldscoutjamboree.de"
-    df["mailing_to"] = df.apply(lambda r: _row_to_mailing_to(r, query), axis=1)
-    df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)
+    df["mailing_to"] = df.apply(lambda r: _row_to_mailing_to(r, query), axis=1)  # ty: ignore
+    df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)  # ty: ignore
     df["mailing_bcc"] = df["id"].map(
         lambda _: _util.merge_mail_addresses(extra_mailing_bcc)
     )
     df["mailing_reply_to"] = None
     df["sepa_mailing_from"] = "anmeldung@worldscoutjamboree.de"
     df["sepa_mailing_to"] = df["sepa_mail"].map(lambda s: [s] if s else None)
-    df["sepa_mailing_cc"] = df.apply(row_to_sepa_cc, axis=1)
+    df["sepa_mailing_cc"] = df.apply(row_to_sepa_cc, axis=1)  # ty: ignore
     df["sepa_mailing_bcc"] = df["id"].map(
         lambda _: _util.merge_mail_addresses(extra_mailing_bcc)
     )
@@ -570,7 +570,7 @@ def _enrich_people_dataframe(
     df["sepa_mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
 
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
-    df["payment_role"] = df.apply(_compute_payment_role, axis=1)
+    df["payment_role"] = df.apply(_compute_payment_role, axis=1)  # ty: ignore
     df["role_id_name"] = df.apply(_compute_role_id_name, axis=1)
     df["regular_full_fee_cents"] = df.apply(_compute_regular_full_fee_cents, axis=1)
 
@@ -588,12 +588,12 @@ def _enrich_people_dataframe(
     col_from_fee_rules("custom_installments_comment")
     col_from_fee_rules("custom_installments_issue")
     col_from_fee_rules("custom_installments_sum_cents")
-    df["installments_cents_dict"] = df.apply(lambda row: _compute_installments_cents_dict_from_row(row, id2fee_rules), axis=1)  # fmt: skip
+    df["installments_cents_dict"] = df.apply(lambda row: _compute_installments_cents_dict_from_row(row, id2fee_rules), axis=1)  # ty: ignore  # fmt: skip
     df["installments_cents_sum"] = df["installments_cents_dict"].map(
         lambda d: sum(d.values()) if d is not None else None
     )
 
-    df["total_fee_cents"] = df.apply(_compute_total_fee_cents, axis=1)  # fmt: skip
+    df["total_fee_cents"] = df.apply(_compute_total_fee_cents, axis=1)  # ty: ignore  # fmt: skip
     df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
     df["collection_date"] = collection_date
     df["amount_paid_cents"] = df["accounting_entries_amounts_cents"].map(sum)
@@ -633,7 +633,7 @@ def load_people_dataframe(
     group_by: str = "",
     fee_rules: str | _collections_abc.Iterable[str] | None = None,
     log_resulting_data_frame: bool | None = None,
-    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    now: _datetime.datetime | _datetime.date | str | float | None = None,
     print_at: _datetime.date | str | None = None,
     extra_mailing_bcc: str | _collections_abc.Iterable[str] | None = None,
     extra_static_df_cols: dict[str, _typing.Any] | None = None,
@@ -813,7 +813,7 @@ ORDER BY people.id{limit_clause}
         df_columns = set(df.columns)
         for key, val in (extra_static_df_cols or {}).items():
             assert key not in df_columns, f"Cannot overwrite existing column {key}"
-            df[key] = df.apply(lambda r: val, axis=1)
+            df[key] = df.apply(lambda r, val=val: val, axis=1)
     if not (set(df) <= set(PEOPLE_DATAFRAME_COLUMNS)):
         warn_msg = "load_people_dataframe: Some columns of the resulting dataframe are not listed in PEOPLE_DATAFRAME_COLUMNS"
         for col_name in list(df):
@@ -921,7 +921,7 @@ def update_dataframe_for_updates(
     df: _pandas.DataFrame,
     *,
     updates: dict | None = None,
-    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    now: _datetime.datetime | _datetime.date | str | float | None = None,
 ):
     import collections
 
@@ -947,7 +947,7 @@ def update_dataframe_for_updates(
             new_cols.append(key)
         else:
             df[key] = df.apply(
-                lambda row: chg.compute_df_val(
+                lambda row, chg=chg, key=key, new_val=new_val: chg.compute_df_val(
                     row, column=key, value=new_val, updates=updates
                 ),
                 axis=1,
@@ -977,7 +977,7 @@ def update_dataframe_for_updates(
                     _LOGGER.debug("{%s} + %s", id, new_val)
                     continue
                 else:
-                    old_val = chg.get_old_val(person_dict)
+                    old_val = chg.get_old_val(person_dict)  # ty: ignore
                     new_val = chg.get_new_val(row)
                     _LOGGER.debug("{%s} compare %s", id, chg.old_col)
                     _LOGGER.debug("{%s} - %s", id, old_val)
@@ -998,7 +998,7 @@ def update_postgres_db_for_dataframe(
     write_versions: bool | None = None,
     dry_run: bool | None = None,
     skip_db_updates: bool | None = None,
-    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    now: _datetime.datetime | _datetime.date | str | float | None = None,
     logger: _logging.Logger | _logging.LoggerAdapter = _LOGGER,
     report_all_updates: bool | None = None,
     ctx=None,
@@ -1087,7 +1087,7 @@ def _update_person_from_row(
     row: _pandas.Series,
     write_versions: bool,
     logger: _logging.Logger | _logging.LoggerAdapter,
-    now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    now: _datetime.datetime | _datetime.date | str | float | None = None,
     transaction: _psycopg.Transaction,
     report_all_updates: bool | None = None,
 ) -> None:
@@ -1311,6 +1311,6 @@ def _eur_to_cents(value: _decimal.Decimal | float | str | None) -> int:
         else:
             return int(
                 (value * 100).quantize(
-                    _decimal.Decimal("1"), rounding=_decimal.ROUND_HALF_UP
+                    _decimal.Decimal(1), rounding=_decimal.ROUND_HALF_UP
                 )
             )

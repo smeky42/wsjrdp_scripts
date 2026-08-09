@@ -393,7 +393,7 @@ class Test_PeopleWhere__to_dict:
 
 
 @pytest.mark.time_machine(
-    _datetime.datetime(2025, 8, 15, 12, 0, tzinfo=_datetime.timezone.utc), tick=False
+    _datetime.datetime(2025, 8, 15, 12, 0, tzinfo=_datetime.UTC), tick=False
 )
 class Test_PeopleQuery:
     @pytest.mark.parametrize(
