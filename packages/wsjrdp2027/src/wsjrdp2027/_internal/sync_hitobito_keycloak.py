@@ -139,7 +139,7 @@ def _create_keycloak_user(
     mailcow_client = ctx.mailcow()
     mc_dry_run_suffix = " [dry-run]" if mailcow_client.dry_run else ""
 
-    if person.wsjrdp_email_should_be_mailbox:
+    if person.wsjrdp_email_should_be_mailbox():
         mb = mailcow_client.get_mailbox_or_none_by_username(person.wsjrdp_email)
         if mb:
             _LOGGER.info(f"Found Mailcow mailbox for {person.wsjrdp_email}")
@@ -428,7 +428,7 @@ def sync(
             ("keycloak_username", keycloak_username),
             ("wsjrdp_email", p.wsjrdp_email),
             ("moss_email", p.moss_email),
-            ("wsjrdp_email_is_mailbox", p.wsjrdp_email_should_be_mailbox),
+            ("wsjrdp_email_is_mailbox", p.wsjrdp_email_should_be_mailbox()),
         ]:
             if key not in p.additional_info and val is not None:
                 additional_info_updates.append({"id": p.id, key: [None, val]})

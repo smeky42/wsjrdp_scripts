@@ -4,7 +4,8 @@ import collections.abc as _collections_abc
 import logging as _logging
 import typing as _typing
 
-from .. import _context, _groups, _people_query, _person
+from .. import _context, _people_query, _person
+from .._models import group as _group
 
 
 if _typing.TYPE_CHECKING:
@@ -18,7 +19,7 @@ def move_person_to_group(
     ctx: _context.WsjRdpContext | None,
     *,
     person: _person.Person,
-    new_group: str | int | _groups.Group,
+    new_group: str | int | _group.Group,
     batch_name: str | None = None,
     updates: _collections_abc.Mapping | None = None,
     batch_config: _batch.BatchConfig | None = None,
@@ -34,7 +35,7 @@ def move_person_to_group(
         is_yp_or_ul = person.short_role_name in ["YP", "UL"]
         old_group = person.primary_group
 
-        new_group = _groups.Group.to_group(new_group, conn=ctx)
+        new_group = _group.Group.to_group(new_group, conn=ctx)
         unit_code: str | None = new_group.unit_code if new_group else None
 
         if batch_config is not None:
@@ -74,8 +75,8 @@ def move_person_to_group(
 def _confirmation_note(
     ctx: _context.WsjRdpContext,
     *,
-    old_group: _groups.Group | None,
-    new_group: _groups.Group,
+    old_group: _group.Group | None,
+    new_group: _group.Group,
 ) -> str:
     date_str = ctx.today.strftime("%d.%m.%Y")
     old_group_name = (old_group.short_name or old_group.name) if old_group else ""

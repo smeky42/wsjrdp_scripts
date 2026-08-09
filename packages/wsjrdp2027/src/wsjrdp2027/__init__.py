@@ -108,9 +108,6 @@ if _typing.TYPE_CHECKING:
         CamtTransactionDetails as CamtTransactionDetails,
         CamtTxUniqueDbKey as CamtTxUniqueDbKey,
     )
-    from ._groups import (
-        Group as Group,
-    )
     from ._internal.signatures import (
         EMAIL_SIGNATURE_BMT as EMAIL_SIGNATURE_BMT,
         EMAIL_SIGNATURE_CMT as EMAIL_SIGNATURE_CMT,
@@ -122,6 +119,12 @@ if _typing.TYPE_CHECKING:
         MailcowClient as MailcowClient,
         MailcowConfig as MailcowConfig,
         MailcowError as MailcowError,
+    )
+    from ._models.direct_debit_pre_notification import (
+        DirectDebitPreNotification as DirectDebitPreNotification,
+    )
+    from ._models.group import (
+        Group as Group,
     )
     from ._pain import PainMessage as PainMessage
     from ._person import (
@@ -147,9 +150,9 @@ __all__ = [
     "DEFAULT_MSGID_IDSTRING",
     "EMAIL_SIGNATURE_BMT",
     "EMAIL_SIGNATURE_CMT",
+    "EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION",
     "EMAIL_SIGNATURE_HOC",
     "EMAIL_SIGNATURE_ORG",
-    "EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION",
     "WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG",
     "WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG",
     #
@@ -157,6 +160,7 @@ __all__ = [
     "CamtMessage",
     "CamtTransactionDetails",
     "CamtTxUniqueDbKey",
+    "DirectDebitPreNotification",
     "Group",
     "KeycloakClient",
     "MailClient",
@@ -329,7 +333,11 @@ __ALIASES__ = {
     "CamtMessage": (f"._camt", "CamtMessage"),
     "CamtTransactionDetails": (f"._camt", "CamtTransactionDetails"),
     "CamtTxUniqueDbKey": (f"._camt", "CamtTxUniqueDbKey"),
-    "Group": ("._groups", "Group"),
+    "DirectDebitPreNotification": (
+        "._models.direct_debit_pre_notification",
+        "DirectDebitPreNotification",
+    ),
+    "Group": ("._models.group", "Group"),
     "KeycloakClient": ("._keycloak_client", "KeycloakClient"),
     "MailcowClient": ("._mailcow_client", "MailcowClient"),
     "MailcowConfig": ("._mailcow_client", "MailcowConfig"),

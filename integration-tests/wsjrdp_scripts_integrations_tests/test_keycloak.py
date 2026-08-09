@@ -5,7 +5,6 @@ import unittest.mock
 import pytest
 import wsjrdp2027
 from wsjrdp2027 import KeycloakClient, WsjRdpKeycloakAdapter
-from wsjrdp2027.keycloak import delete_user
 
 
 @pytest.fixture

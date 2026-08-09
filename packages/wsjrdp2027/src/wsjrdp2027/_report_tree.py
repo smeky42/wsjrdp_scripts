@@ -56,7 +56,7 @@ class ReportNode:
     parts: tuple[ReportContent, ...]
     children: tuple[ReportNode, ...]
 
-    __slots__ = ("parts", "children")
+    __slots__ = ("children", "parts")
 
     def __init__(
         self,

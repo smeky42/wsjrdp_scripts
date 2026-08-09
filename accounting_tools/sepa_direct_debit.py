@@ -223,7 +223,7 @@ def _report_df(
 def _write_mail_txt(path, pain_message: wsjrdp2027.PainMessage) -> None:
     assert len(pain_message.payment_infos) >= 1
     collection_date = pain_message.payment_infos[0].requested_collection_date
-    pain_message.payment_infos[0].debit_sequence_type
+    _sequence_type = pain_message.payment_infos[0].debit_sequence_type
     match len(pain_message.payment_infos):
         case 1:
             num_pmts_de = "einen Sammeleinzug"
@@ -308,7 +308,7 @@ def _write_datev_csv(
                 if pn_payment_status != "pre_notified" or row.get("pn_try_skip"):
                     skipped += 1
                     continue
-            amount_eur = int(round(row["open_amount_cents"])) / 100
+            amount_eur = round(row["open_amount_cents"]) / 100
             amount_de = str(f"{amount_eur:.2f}").replace(".", ",")
             collection_date = row["collection_date"]
             belegfeld = (
@@ -467,7 +467,7 @@ def main(argv=None):
                 _LOGGER.error(
                     "%s:\n%s", err_msg, textwrap.indent(row.to_string(), "  | ")
                 )
-                raise RuntimeError(err_msg)
+                raise TypeError(err_msg)
 
         _LOGGER.info(
             "SUM(open_amount_cents): %s", wsjrdp2027.format_cents_as_eur_de(sum_amount)

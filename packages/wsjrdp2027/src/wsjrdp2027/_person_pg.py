@@ -145,6 +145,7 @@ class _ScalarChange:
 @_dataclasses.dataclass(kw_only=True, frozen=True, eq=True)
 class _StrListChange:
     old_col: str | None = None
+    new_col = None
     add_col: str
     remove_col: str | None = None
 

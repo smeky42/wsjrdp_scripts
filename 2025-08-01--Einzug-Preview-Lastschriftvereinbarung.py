@@ -44,7 +44,7 @@ ORDER BY last_name ASC, first_name ASC
     df = df[df["status"].isin(["reviewed", "upload"])]
     print(f"Reviewed & Uploaded: {len(df)}")
 
-    df = df[df["early_payer"] == True]  # noqa: E712
+    df = df[df["early_payer"] == True]
     print(f"Reviewed & Uploaded Early Payers: {len(df)}")
 
     # reset indexing

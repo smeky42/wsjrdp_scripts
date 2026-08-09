@@ -87,14 +87,14 @@ def attach_cancellation_confirmation(
         if acc.amount_cents != 0
     ]
 
-    sys_inputs = {
+    sys_inputs: dict[str, str] = {
         "hitobitoid": str(person.id),
         "today_de": ctx.today.strftime("%d.%m.%Y"),
-        "cancellation_date_de": cancellation_date_de,
+        "cancellation_date_de": cancellation_date_de or "",
         "role_id_name": person.role_id_name,
         "full_name": person.full_name,
         "short_full_name": person.short_full_name,
-        "birthday_de": row["birthday_de"],
+        "birthday_de": str(row["birthday_de"] or ""),
         "deregistration_issue": (person.deregistration_issue or ""),
         "accounting_entries": json.dumps(acc_entries_for_sys_inputs),
         "accounting_entry_sum_de": wsjrdp2027.format_cents_as_eur_de(
@@ -131,7 +131,6 @@ def _deregistration_note(
         old_group_name = (old_group.short_name or old_group.name) if old_group else ""
         new_group_name = new_group.short_name or new_group.name
         move_str = f"von {old_group_name} nach {new_group_name} verschoben"
-        pass
     else:
         move_str = ""
     changes_str = " und ".join(filter(None, [confirmed_str, move_str]))

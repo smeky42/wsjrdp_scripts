@@ -10,7 +10,7 @@ if _typing.TYPE_CHECKING:
 
     import psycopg.sql as _psycopg_sql
 
-    from . import _person, _pg
+    from .. import _person, _pg
 
 
 @_dataclasses.dataclass(kw_only=True)
@@ -55,7 +55,7 @@ class Group:
     def load_unit_leader(
         self, *, conn: _pg.PgConnectionLike | None = None
     ) -> list[_person.Person]:
-        from . import _people, _people_query, _person
+        from .. import _people, _people_query, _person
 
         where = _people_query.PeopleWhere(primary_group_id=self.id, role="UL")
         df = _people.load_people_dataframe(conn=conn, where=where)
@@ -63,7 +63,7 @@ class Group:
 
     @classmethod
     def to_group(
-        cls, group: int | str | "Group", *, conn: _pg.PgConnectionLike | None = None
+        cls, group: int | str | Group, *, conn: _pg.PgConnectionLike | None = None
     ) -> _typing.Self:
         if isinstance(group, Group):
             return group  # type: ignore
@@ -76,7 +76,7 @@ class Group:
         conn: _pg.PgConnectionLike | None,
         where: _psycopg_sql.Composable | _string_templatelib.Template,
     ) -> _typing.Self:
-        from . import _pg
+        from .. import _pg
 
         conn = _pg.to_connection(conn)
         return cls(**_pg.pg_select_group_dict_for_where(conn, where=where))
@@ -106,13 +106,13 @@ class Group:
         conn: _pg.PgConnectionLike | None,
         group_ids: _collections_abc.Iterable[str | int],
     ) -> list[_typing.Self]:
-        from psycopg.sql import SQL
+        from psycopg.sql import Literal
 
-        from . import _pg, _util
+        from .. import _pg
 
         conn = _pg.to_connection(conn)
 
-        where = SQL(_util.in_expr("id", list(group_ids)))
+        where = _pg.in_expr(Literal("id"), list(group_ids))
         results = _pg.pg_select_groups_dicts_for_where(conn, where=where)
         return [cls(**d) for d in results]
 

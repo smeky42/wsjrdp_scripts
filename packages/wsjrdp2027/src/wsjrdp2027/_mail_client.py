@@ -9,7 +9,6 @@ import typing as _typing
 
 
 if _typing.TYPE_CHECKING:
-    import datetime as _datetime
     import email.message as _email_message
     import email.policy as _email_policy
     import imaplib as _imaplib
@@ -324,9 +323,8 @@ class MailClient:
             if flag in flags:
                 self._logger.debug("  -> found %s", name_delim)
                 return name_delim
-        else:
-            self._logger.debug("  -> None (no mailbox with flag %r found)", flag)
-            return None
+        self._logger.debug("  -> None (no mailbox with flag %r found)", flag)
+        return None
 
 
 # ==============================================================================
@@ -360,7 +358,7 @@ def _imap_append(
     mailbox: str | NameDelim,
     message: bytes,
     flags: str | _collections_abc.Iterable[str] | None = None,
-    date_time: _datetime.datetime | _datetime.date | int | float | str | None = None,
+    date_time: _datetime.datetime | _datetime.date | float | str | None = None,
     logger: _logging.Logger | _logging.LoggerAdapter | None = None,
 ) -> tuple[str, list[bytes]]:
     import imaplib

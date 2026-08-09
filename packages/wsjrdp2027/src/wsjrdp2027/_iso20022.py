@@ -83,8 +83,7 @@ def _iso20022_sepa_schema_from_xml_document(
         uri = ns_node.string_value
         if sepa_schema := _sepa_schema_from_uri(uri):
             return sepa_schema
-    else:
-        return None
+    return None
 
 
 def _iso20022_xml_document_to_dict(

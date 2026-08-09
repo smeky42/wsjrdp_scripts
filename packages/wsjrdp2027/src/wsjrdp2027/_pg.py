@@ -22,7 +22,7 @@ if _typing.TYPE_CHECKING:
     from . import _camt, _context, _payment_role, _psycopg_client, moss as _moss
 
 
-_Row = _typing.TypeVar("_Row", covariant=True, default="_psycopg_rows.TupleRow")
+_Row_co = _typing.TypeVar("_Row_co", covariant=True, default="_psycopg_rows.TupleRow")
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -41,6 +41,14 @@ def pg_literal(obj):
         return Jsonb(obj)
     else:
         return Literal(obj)
+
+
+def in_expr(
+    expr: _psycopg_sql.Composable, elts, *, empty_expr: str = "FALSE"
+) -> _psycopg_sql.SQL:
+    from . import _util
+
+    return _util.in_expr(expr, elts, empty_expr=empty_expr)  # type: ignore
 
 
 def create_select_query(
@@ -220,7 +228,7 @@ def _execute_query_fetch_id(
 
 
 def _execute_query_fetchall(
-    cursor_or_connection: _psycopg.Cursor[_Row] | _psycopg.Connection,
+    cursor_or_connection: _psycopg.Cursor[_Row_co] | _psycopg.Connection,
     /,
     query,
     *,
@@ -330,7 +338,7 @@ def _upsert_tagging(
     context: str = "tags",
     hitobito_tooltip: str | None = None,
     tenant: str | None = None,
-    created_at: _datetime.datetime | _datetime.date | int | float | str | None = None,
+    created_at: _datetime.datetime | _datetime.date | float | str | None = None,
 ) -> int:
     from . import _util
 
@@ -365,6 +373,7 @@ def pg_select_dict_rows(
         composed_query = SQL(query)  # type: ignore
     else:
         composed_query = query
+    conn = to_connection(conn)
     rows = _execute_query_fetchall_dicts(conn, composed_query, show_result=show_result)
     return list(rows)
 
@@ -485,9 +494,7 @@ def pg_fetch_person_dicts_for_ids(
     import psycopg.rows
     from psycopg.sql import SQL, Identifier
 
-    from . import _util
-
-    where = SQL(_util.in_expr('"id"', ids))  # type: ignore
+    where = in_expr(Identifier("id"), ids)
 
     tag_list_sql = SQL("""ARRAY(
     SELECT tags.name
@@ -539,7 +546,7 @@ def pg_fetch_role_dicts_for_person_ids(
 
     from . import _util
 
-    where = SQL(_util.in_expr('"person_id"', ids))  # type: ignore
+    where = in_expr(Identifier("person_id"), ids)
     if today is not None:
         today = _util.to_date(today)
         where_end_on = SQL('"end_on" IS NULL OR "end_on" >= {today}').format(
@@ -572,7 +579,7 @@ _UpdatesType = (
 
 def _normalize_updates(updates: _UpdatesType, /) -> list[tuple[str, _typing.Any]]:
     if isinstance(updates, _collections_abc.Mapping):
-        return [(k, v) for k, v in updates.items()]  # type: ignore
+        return [(k, v) for k, v in updates.items()]
     else:
         return [tuple(x) for x in updates]
 
@@ -662,8 +669,8 @@ def pg_insert_version(
     main_type: str = "Person",
     main_id: int,
     object_dict: dict | None = None,
-    changes: dict[str, _collections_abc.Iterable],
-    created_at: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    changes: dict,
+    created_at: _datetime.datetime | _datetime.date | str | float | None = None,
     mutation_id: str | None = None,
     whodunnit_type: str = "Person",
     whodunnit_id: int | None = None,
@@ -755,7 +762,7 @@ def pg_update_role_set_end_on_for_ids(
     ids: _collections_abc.Iterable[int] | None = None,
     end_on: _datetime.date | str | None = None,
 ) -> list[int]:
-    from psycopg.sql import SQL
+    from psycopg.sql import SQL, Literal
 
     from . import _util
 
@@ -764,7 +771,7 @@ def pg_update_role_set_end_on_for_ids(
     if not ids:
         _LOGGER.debug("No rows in roles to update (ids=%s)", ids)
         return []
-    where = SQL(_util.in_expr('"id"', ids))  # type: ignore
+    where = in_expr(Literal("id"), ids)
     update_query = SQL(
         'UPDATE "roles" SET "end_on" = {end_on} WHERE {where} RETURNING "roles"."id"'
     ).format(end_on=end_on, where=where)
@@ -787,9 +794,9 @@ def pg_insert_role(
     group_id: int,
     type: str,
     label: str | None = None,
-    created_at: _datetime.datetime | _datetime.date | str | int | float | None = None,
-    updated_at: _datetime.datetime | _datetime.date | str | int | float | None = None,
-    archived_at: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    created_at: _datetime.datetime | _datetime.date | str | float | None = None,
+    updated_at: _datetime.datetime | _datetime.date | str | float | None = None,
+    archived_at: _datetime.datetime | _datetime.date | str | float | None = None,
     terminated: bool = False,
     start_on: _datetime.date | str | None = None,
     end_on: _datetime.date | str | None = None,
@@ -829,8 +836,8 @@ def pg_insert_note(
     subject_type: str = "Person",
     author_id: int = 1,
     text: str,
-    created_at: _datetime.datetime | _datetime.date | str | int | float | None = None,
-    updated_at: _datetime.datetime | _datetime.date | str | int | float | None = None,
+    created_at: _datetime.datetime | _datetime.date | str | float | None = None,
+    updated_at: _datetime.datetime | _datetime.date | str | float | None = None,
     now: _datetime.datetime | None = None,
 ) -> int:
     from . import _util
@@ -893,7 +900,7 @@ def pg_insert_direct_debit_pre_notification(
     creditor_id: str | None = None,
     sepa_dd_config: _types.SepaDirectDebitConfig | None = None,
 ) -> int:
-    from . import _payment_role, _pg, _util
+    from . import _payment_role, _util
 
     if sepa_dd_config:
         if not cdtr_name:
@@ -960,7 +967,7 @@ def pg_insert_direct_debit_pre_notification(
     ]
     if additional_info:
         cols_vals.append(("additional_info", additional_info))
-    query = _pg.col_val_pairs_to_insert_sql_query(
+    query = col_val_pairs_to_insert_sql_query(
         "wsjrdp_direct_debit_pre_notifications", cols_vals, "id"
     )
     return _execute_query_fetch_id(cursor, query)
@@ -981,7 +988,7 @@ def pg_insert_payment_initiation(
     initiating_party_bic: str | None = None,
     sepa_dd_config: _types.SepaDirectDebitConfig | None = None,
 ) -> int:
-    from . import _pg, _util
+    from . import _util
 
     if sepa_dd_config:
         if not initiating_party_name:
@@ -1003,7 +1010,7 @@ def pg_insert_payment_initiation(
         ("initiating_party_iban", initiating_party_iban),
         ("initiating_party_bic", initiating_party_bic),
     ]
-    query = _pg.col_val_pairs_to_insert_sql_query(
+    query = col_val_pairs_to_insert_sql_query(
         "wsjrdp_payment_initiations", cols_vals, "id"
     )
     return _execute_query_fetch_id(cursor, query)
@@ -1029,7 +1036,7 @@ def pg_insert_direct_debit_payment_info(
     creditor_id: str | None = None,
     sepa_dd_config: _types.SepaDirectDebitConfig | None = None,
 ) -> int:
-    from . import _pg, _util
+    from . import _util
 
     if sepa_dd_config:
         if not cdtr_name:
@@ -1063,7 +1070,7 @@ def pg_insert_direct_debit_payment_info(
         ("cdtr_address", cdtr_address),
         ("creditor_id", creditor_id),
     ]
-    query = _pg.col_val_pairs_to_insert_sql_query(
+    query = col_val_pairs_to_insert_sql_query(
         "wsjrdp_direct_debit_payment_infos", cols_vals, "id"
     )
     return _execute_query_fetch_id(cursor, query)
@@ -1554,6 +1561,7 @@ def pg_update_people_additional_info_email(
     *,
     now=None,
 ) -> None:
+    from psycopg.sql import SQL
     from psycopg.types.json import Jsonb
 
     from . import _util
@@ -1571,12 +1579,13 @@ def pg_update_people_additional_info_email(
     ]
 
     if values:
-        query = f"""UPDATE people
+        raw_query = f"""UPDATE people
 SET
    additional_info['{key}'] = %(value)s,
    additional_info['{key}_created_at'] = COALESCE(additional_info['{key}_created_at'], %(now)s),
    additional_info['{key}_updated_at'] = %(now)s
 WHERE id = %(id)s"""
+        query = SQL(raw_query)  # type: ignore
         with conn.cursor() as cur:
             _LOGGER.debug(f"{query}" + "".join(f"\n  | {d!r}" for d in values))
             cur.executemany(query, values)
@@ -1654,7 +1663,7 @@ def insert_moss_balance_movement(
     bm_list = [_pre_process(bm.asdict()) for bm in balance_movement]
     if not bm_list:
         return []
-    cols = [col for col in bm_list[0].keys()]
+    cols = [col for col in bm_list[0]]
 
     table_name = Identifier("moss_balance_movements")
     col_names = SQL(", ").join(Identifier(col) for col in cols)

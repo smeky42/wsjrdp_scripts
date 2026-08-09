@@ -90,20 +90,18 @@ def main():
                 _LOGGER.info(
                     f"{role_id_name}: Missing mossEmail, will set to {expected_moss_email}"
                 )
-                wsjrdp2027.keycloak.update_user(
-                    ctx,
+                ctx.keycloak().update_user(
                     keycloak_user["username"],
-                    {"attributes": {"mossEmail": [expected_moss_email]}},
+                    payload={"attributes": {"mossEmail": [expected_moss_email]}},
                 )
             elif keycloak_moss_email != expected_moss_email:
                 if keycloak_moss_email.lower() == expected_moss_email:
                     _LOGGER.info(
                         f"{role_id_name}: Fix mossEmail {keycloak_moss_email!r} -> {expected_moss_email!r}"
                     )
-                    wsjrdp2027.keycloak.update_user(
-                        ctx,
+                    ctx.keycloak().update_user(
                         keycloak_user["username"],
-                        {"attributes": {"mossEmail": [expected_moss_email]}},
+                        payload={"attributes": {"mossEmail": [expected_moss_email]}},
                     )
                 else:
                     errors.append(
@@ -162,8 +160,7 @@ WHERE id = %(id)s"""
                     _LOGGER.info(
                         f"{email}: No Hitobito account yet, set mossEmail to {email}"
                     )
-                    wsjrdp2027.keycloak.update_user(
-                        ctx,
+                    ctx.keycloak().update_user(
                         user["username"],
                         {"attributes": {"mossEmail": [user["email"]]}},
                     )

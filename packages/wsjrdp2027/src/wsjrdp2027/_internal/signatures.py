@@ -14,7 +14,6 @@ https://worldscoutjamboree.de"""
 )
 
 
-
 EMAIL_SIGNATURE_CMT = (
     "\n-- "
     + """
@@ -29,7 +28,6 @@ Chausseestr. 128/129
 
 https://worldscoutjamboree.de"""
 )
-
 
 
 EMAIL_SIGNATURE_HOC = (

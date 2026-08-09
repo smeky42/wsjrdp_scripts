@@ -39,7 +39,7 @@ def main():
         if ctx.is_production:
             sys.exit(1)
         else:
-            print("")
+            print()
 
     collection_date_de = COLLECTION_DATE.strftime("%d.%m.%Y")
 

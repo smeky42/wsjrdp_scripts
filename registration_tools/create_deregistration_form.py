@@ -92,7 +92,8 @@ def write_cancellation_request_pdf(
     #
     total_fee_cents = row["total_fee_cents"]
     contractual_compensation_cents = compute_contractual_compensation_cents(
-        total_fee_cents, today=ctx.today)
+        total_fee_cents, today=ctx.today
+    )
     ctx.logger.info(f"total_fee_cents: {total_fee_cents}")
     ctx.logger.info(f"today: {ctx.today}")
     ctx.logger.info(f"contractual_compensation_cents: {contractual_compensation_cents}")

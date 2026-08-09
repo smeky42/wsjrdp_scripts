@@ -99,7 +99,7 @@ class AccountingEntry:
         from . import _pg
 
         if isinstance(where, str):
-            where = SQL(where)  # type: ignore
+            where = SQL(where)
 
         results = _pg.pg_select_dict_rows(
             conn=conn, query=t"SELECT * FROM accounting_entries WHERE {where:q}"

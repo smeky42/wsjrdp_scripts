@@ -237,7 +237,7 @@ class _MailcowCache:
             raise ValueError(f"Alias must have address, got {alias=}")
         id = alias.get("id")
         if not isinstance(id, int):
-            raise ValueError(f"Alias must have integer id, got {alias=}")
+            raise TypeError(f"Alias must have integer id, got {alias=}")
         self._max_alias_id = max(self._max_alias_id, id)
 
         if old_alias := self._address2alias.pop(address, None):
@@ -323,9 +323,7 @@ class _MailcowDict(dict):
         return self
 
     def _client_or_none(self) -> MailcowClient | None:
-        if (ref := self._client_ref) is None:
-            return None
-        elif (client := ref()) is None:
+        if (ref := self._client_ref) is None or (client := ref()) is None:
             return None
         else:
             return client

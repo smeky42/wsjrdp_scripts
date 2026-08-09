@@ -164,8 +164,8 @@ def get_fee_recution_comment(person: wsjrdp2027.Person) -> str:
 
 @jinja2.pass_environment
 def render_group_contact_info(env: jinja2.Environment) -> str:
-    person: wsjrdp2027.Person | None = env.globals.get("person")
-    new_group: wsjrdp2027.Group | None = env.globals.get("new_group")
+    person: wsjrdp2027.Person | None = env.globals.get("person")  # ty: ignore
+    new_group: wsjrdp2027.Group | None = env.globals.get("new_group")  # ty: ignore
     assert person
     lines: list[str] = []
     if person.is_yp and new_group:
@@ -190,9 +190,9 @@ def render_confirmation_info(env: jinja2.Environment) -> str:
     import copy
 
     env = copy.deepcopy(env)
-    person: wsjrdp2027.Person | None = env.globals.get("person")
+    person: wsjrdp2027.Person | None = env.globals.get("person")  # ty: ignore
     assert person
-    env.globals["fee_reduction_comment"] = get_fee_recution_comment(person)
+    env.globals["fee_reduction_comment"] = get_fee_recution_comment(person)  # ty: ignore
     _TEMPLATE = """
 Name: {{ row.full_name }}
 Anmeldungs-ID: {{ row.id }}

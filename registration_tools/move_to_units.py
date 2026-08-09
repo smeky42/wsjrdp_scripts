@@ -202,7 +202,7 @@ def mail_and_move_to_units(conn, pdf: _pandas.DataFrame, ctx: wsjrdp2027.WsjRdpC
 def find_duplicate_usernames(df: _pandas.DataFrame) -> bool:
     counts = df["username"].value_counts()
     df["duplicate_count"] = df["username"].map(counts)
-    return df["duplicate_count"] > 1
+    return df["duplicate_count"] > 1  # ty: ignore
 
 
 def create_ul_accounts(ctx: wsjrdp2027.WsjRdpContext, df: _pandas.DataFrame):

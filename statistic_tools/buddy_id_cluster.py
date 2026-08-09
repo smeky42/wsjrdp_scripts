@@ -73,9 +73,7 @@ def create_buddy_id_graph(
             return False
         else:
             row = id2row.get(id)
-            if _is_deregistered(row):
-                return False
-            elif not include_registered and _is_registered(row):
+            if _is_deregistered(row) or not include_registered and _is_registered(row):
                 return False
             else:
                 return True
@@ -127,12 +125,11 @@ def _write_cluster_codes(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> Non
     _LOGGER.info("  %s rows to be updated", len(values))
 
     if len(values) > 0:
-        with ctx.psycopg_connect() as conn:
-            with conn.cursor() as cur:
-                cur.executemany(query, values)
-                conn.commit()
-                _LOGGER.info("  updated %s rows", cur.rowcount)
-                _LOGGER.info("  status: %s", cur.statusmessage)
+        with ctx.psycopg_connect() as conn, conn.cursor() as cur:
+            cur.executemany(query, values)
+            conn.commit()
+            _LOGGER.info("  updated %s rows", cur.rowcount)
+            _LOGGER.info("  status: %s", cur.statusmessage)
         _LOGGER.info("Finished cluster_code update")
     else:
         _LOGGER.info("Skipped cluster_code update (nothing to do)")
@@ -194,7 +191,7 @@ def main(argv=None):
     id2row = {row["id"]: row for _, row in df.iterrows()}
     id2idx = {row["id"]: typing.cast(int, idx) for idx, row in df.iterrows()}
     G = create_buddy_id_graph(df, include_registered=args.include_registered)
-    all_conn_comps: list[set[int]] = sorted(  # ty: ignore
+    all_conn_comps: list[set[int]] = sorted(
         nx.connected_components(G),
         key=len,
         reverse=True,
@@ -294,15 +291,15 @@ def main(argv=None):
             ids = pc["ids"]
             prefix = f"pax {len(ids)}"
             if len(pc["ul"]) == 0:
-                id = ids[0]
+                id = ids[0]  # ty: ignore
                 print(f"{prefix} Keine UL im Cluster - {link_to_hitobito(id)}")
             elif len(pc["ul_unit_codes"]) == 0:
-                id = pc["ul"][0]
+                id = pc["ul"][0]  # ty: ignore
                 print(f"{prefix} Keine UL mit Unit-code - {link_to_hitobito(id)}")
             else:
-                id = pc["ul"][0]
+                id = pc["ul"][0]  # ty: ignore
                 ul_unit_codes = pc["ul_unit_codes"]
-                ul_unit_codes_str = " ".join(ul_unit_codes)
+                ul_unit_codes_str = " ".join(ul_unit_codes)  # ty: ignore
                 print(
                     f"{prefix} Mehrere Unit-codes ({ul_unit_codes_str}) bei ULs im Cluster - {link_to_hitobito(id)}"
                 )

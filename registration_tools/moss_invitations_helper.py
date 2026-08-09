@@ -123,13 +123,16 @@ def main(argv=None):
                 print(f"    moss_invited_at={p.moss_invited_at.isoformat()}")
 
         if uninvited:
-            print(f"")
+            print()
             print(f"    E-Mails to invite({len(uninvited)}):")
             for i_outer, outer_batch in enumerate(itertools.batched(uninvited, 50)):
                 if i_outer > 0:
                     print()
                 for uninvited_part in itertools.batched(outer_batch, 2):
-                    print(f"   ", " ".join(p.moss_email for p in uninvited_part))
+                    print(
+                        f"   ",
+                        " ".join(p.moss_email for p in uninvited_part if p.moss_email),
+                    )
             if skip_uninvited:
                 print("    **SKIP** (--skip-uninvited given)")
             else:

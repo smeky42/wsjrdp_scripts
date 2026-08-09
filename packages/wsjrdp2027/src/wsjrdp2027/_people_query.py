@@ -85,7 +85,7 @@ class ArrayMatchExpr:
         if isinstance(obj, ArrayMatchExpr):
             return maybe_negate(obj)
         elif isinstance(obj, dict):
-            d: dict[str, _typing.Any] = obj.copy()  # type: ignore
+            d: dict[str, _typing.Any] = obj.copy()
             d.setdefault("op", default_op)
             d.setdefault("func", default_func)
             return maybe_negate(
@@ -152,9 +152,9 @@ class ArrayMatchExpr:
         if not self.expr:
             return None
         expr = self.expr[0] if len(self.expr) == 1 else self.expr[:]
-        if (
-            self.op in (self.default_op, None)  #
-            and self.func in (self.default_func, None)
+        if self.op in (self.default_op, None) and self.func in (
+            self.default_func,
+            None,
         ):
             return expr
         else:
@@ -335,7 +335,7 @@ class PeopleWhere:
         exclude_waiting_lists: bool | None = None,
         status: _StrOrNullIterable | None = None,
     ) -> _typing.Self:
-        from . import _groups
+        from ._models import group as _group
 
         if exclude_deregistered is None:
             exclude_deregistered = True
@@ -350,7 +350,7 @@ class PeopleWhere:
                 primary_group_id = [45]
             case "IST":
                 role = "IST"
-                primary_group_id = _groups.Group.IST_GROUPS
+                primary_group_id = _group.Group.IST_GROUPS
             case "CMT":
                 role = "CMT"
                 primary_group_id = [1]
@@ -358,7 +358,7 @@ class PeopleWhere:
                 role = groupname
             case "EXT":
                 role = None
-                primary_group_id = _groups.Group.EXT_GROUPS
+                primary_group_id = _group.Group.EXT_GROUPS
             case _:
                 raise RuntimeError(f"Unsupported {groupname=}")
 
@@ -471,7 +471,7 @@ class PeopleWhere:
     __str__ = __repr__
 
     def as_where_condition(self, *, people_table: str = "people") -> str:
-        from ._groups import Group
+        from ._models import group as _group
         from ._util import combine_where, in_expr, not_in_expr
 
         where = ""
@@ -483,7 +483,7 @@ class PeopleWhere:
             )
         if self.exclude_waiting_lists:
             where = combine_where(
-                where, not_in_expr("primary_group_id", Group.WAITING_LIST_GROUPS)
+                where, not_in_expr("primary_group_id", _group.Group.WAITING_LIST_GROUPS)
             )
         if self.role is not None:
             payment_roles = []
@@ -652,7 +652,7 @@ class PeopleQuery:
         email_only_where: PeopleWhere | dict | None = None,
         limit: int | None = None,
         offset: int | None = None,
-        now: _datetime.datetime | _datetime.date | str | int | float | None = None,
+        now: _datetime.datetime | _datetime.date | str | float | None = None,
         collection_date: _datetime.date | str | None = None,
         include_sepa_mail_in_mailing_to: bool | None = None,
     ) -> None:
@@ -707,7 +707,7 @@ class PeopleQuery:
             key = f.name
             val = getattr(self, key)
             if key not in kwargs:
-                kwargs[key] = val
+                kwargs[key] = val  # ty: ignore
         return self.__class__(**kwargs)
 
     def get_where_condition(self) -> str:

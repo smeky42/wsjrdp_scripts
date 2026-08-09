@@ -76,7 +76,7 @@ def _update_batch_config_from_ctx(
         skip_db_updates=ctx.parsed_args.skip_db_updates,
     )
     args = ctx.parsed_args
-    if (query_str := getattr(args, "query")) is not None:
+    if (query_str := args.query) is not None:
         query = _load_query_from_string(query_str)
         _LOGGER.info("set query = %s (from cli_args)", str(query))
         config.query = query
@@ -92,7 +92,7 @@ def _update_batch_config_from_ctx(
     if (dry_run := ctx.dry_run) is not None:
         _LOGGER.debug("set dry_run = %s (from cli args)", dry_run)
         config.dry_run = dry_run
-    if tags := getattr(args, "tags"):
+    if tags := args.tags:
         _LOGGER.debug("add to add_tags = %s (from cli args)", tags)
         config.updates.setdefault("add_tags", []).extend(tags)
     return config
@@ -117,7 +117,7 @@ def _insert_pre_notifications_into_db(
     skip_db_updates: bool | None = None,
 ) -> dict:
     skip_reasons = []
-    skipped_ids = set()
+    skipped_ids: set[int] = set()
     if dry_run:
         skip_reasons.append("dry_run is True")
     if skip_db_updates:
@@ -145,7 +145,7 @@ def _insert_pre_notifications_into_db(
         sum_open_amount_cents = 0
         for _, row in df.iterrows():
             if wsjrdp2027.nan_to_none(row.get("skip_db_updates")):
-                skipped_ids.add(id)
+                skipped_ids.add(row["id"])
                 _LOGGER.info(
                     "  Skip %s (due to row['skip_db_updates'])", row["id_and_name"]
                 )

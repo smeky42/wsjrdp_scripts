@@ -1,13 +1,14 @@
 #!/usr/bin/env -S uv run
 from __future__ import annotations
 
+import smtplib
 import sys
+from email.mime.text import MIMEText
+
 import pandas as pd
-from sshtunnel import SSHTunnelForwarder
 import psycopg
 import yaml
-import smtplib
-from email.mime.text import MIMEText
+from sshtunnel import SSHTunnelForwarder
 
 
 def main():

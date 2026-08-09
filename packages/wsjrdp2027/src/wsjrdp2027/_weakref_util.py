@@ -4,10 +4,7 @@ import typing as _typing
 import weakref as _weakref
 
 
-_T = _typing.TypeVar("_T")
-
-
-class WeakrefAttr(_typing.Generic[_T]):
+class WeakrefAttr[T]:
     """A descriptor for weakref-backed attributes.
 
     The descriptor stores the underlying
@@ -64,7 +61,7 @@ class WeakrefAttr(_typing.Generic[_T]):
     def __get__(self, instance: None, owner) -> _typing.Self: ...
 
     @_typing.overload
-    def __get__(self, instance: object, owner) -> _T: ...
+    def __get__(self, instance: object, owner) -> T: ...
 
     def __get__(self, instance, owner):
         if instance is None:
@@ -77,14 +74,14 @@ class WeakrefAttr(_typing.Generic[_T]):
             raise RuntimeError(f"Attribute {self._name!r} is no longer alive.")
         return obj
 
-    def __set__(self, instance, value: _T) -> None:
+    def __set__(self, instance, value: T) -> None:
         instance.__dict__[self._name] = _weakref.ref(value)
 
     def __delete__(self, instance) -> None:
         instance.__dict__.pop(self._name, None)
 
 
-class OptionalWeakrefAttr(_typing.Generic[_T]):
+class OptionalWeakrefAttr[T]:
     """A descriptor for weakref-backed optional attributes.
 
     The descriptor stores the underlying
@@ -125,7 +122,7 @@ class OptionalWeakrefAttr(_typing.Generic[_T]):
     def __get__(self, instance: None, owner) -> _typing.Self: ...
 
     @_typing.overload
-    def __get__(self, instance: object, owner) -> _T | None: ...
+    def __get__(self, instance: object, owner) -> T | None: ...
 
     def __get__(self, instance, owner):
         if instance is None:
@@ -136,7 +133,7 @@ class OptionalWeakrefAttr(_typing.Generic[_T]):
         else:
             return None
 
-    def __set__(self, instance, value: _T | None) -> None:
+    def __set__(self, instance, value: T | None) -> None:
         if value is None:
             instance.__dict__.pop(self._name, None)
         else:

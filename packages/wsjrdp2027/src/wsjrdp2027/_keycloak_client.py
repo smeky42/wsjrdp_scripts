@@ -210,7 +210,7 @@ class _KeycloakCache:
             for key in ("access", "userProfileMetadata"):
                 old_val = old_user.get(key)
                 if old_val is not None and key not in user_dict:
-                    user_dict[key] = old_val  # ty: ignore
+                    user_dict[key] = old_val
 
             _LOGGER.debug(f"{self.__class__.__qualname__}.add_user(<{username}>)")
             if dict_diff := list(dictdiffer.diff(old_user, user_dict)):
@@ -372,7 +372,7 @@ class KeycloakClient:
             groupnames = [str(x) for x in groupname]
 
         all_users = []
-        for groupname in groupnames:
+        for groupname in groupnames:  # noqa: PLR1704
             group_id = self.get_group_id(groupname)
             users = self._admin.get_group_members(group_id)
             for user in users:
@@ -417,11 +417,7 @@ class KeycloakClient:
             )
         else:
             audit(description) if audit else None
-            _LOGGER.debug(
-                f"{description}\n"  #
-                f"  {user_id=}\n"
-                f"  {group_id=}"
-            )
+            _LOGGER.debug(f"{description}\n  {user_id=}\n  {group_id=}")
             self._admin.group_user_add(user_id, group_id)
 
     def create_user(
@@ -477,11 +473,7 @@ class KeycloakClient:
             return user_dict
         else:
             audit(description) if audit else None
-            _LOGGER.debug(
-                f"{description}\n"  #
-                f"  {payload=}\n"
-                f"  {exist_ok=}"
-            )
+            _LOGGER.debug(f"{description}\n  {payload=}\n  {exist_ok=}")
             user_id = self._admin.create_user(payload, exist_ok=exist_ok)
             return self.get_user_by_id(user_id)
 

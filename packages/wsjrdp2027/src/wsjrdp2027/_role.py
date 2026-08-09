@@ -56,4 +56,4 @@ class WsjRole(_enum.Enum):
         elif isinstance(obj, str):
             return cls[obj]
         else:
-            raise RuntimeError(f"Cannot convert to WsjRole: {obj!r}")
+            raise TypeError(f"Cannot convert to WsjRole: {obj!r}")

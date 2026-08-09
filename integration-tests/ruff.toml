@@ -1,0 +1,6 @@
+extend = "../pyproject.toml"
+
+[lint]
+extend-ignore = [
+    "LOG015",  # `{}` call on root logger
+]

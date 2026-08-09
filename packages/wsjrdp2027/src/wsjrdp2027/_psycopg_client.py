@@ -14,7 +14,7 @@ if _typing.TYPE_CHECKING:
     import sshtunnel as _sshtunnel
 
 
-_Row = _typing.TypeVar("_Row", covariant=True, default="_psycopg_rows.TupleRow")
+_Row_co = _typing.TypeVar("_Row_co", covariant=True, default="_psycopg_rows.TupleRow")
 _CursorRow = _typing.TypeVar("_CursorRow")
 
 
@@ -128,7 +128,7 @@ class PsycopgClient:
         self.__connection = None
 
     @_typing.overload
-    def cursor(self, *, binary: bool = False) -> _psycopg.Cursor[_Row]: ...
+    def cursor(self, *, binary: bool = False) -> _psycopg.Cursor[_Row_co]: ...
     @_typing.overload
     def cursor(
         self, *, binary: bool = False, row_factory: _psycopg_rows.RowFactory[_CursorRow]

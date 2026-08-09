@@ -92,7 +92,7 @@ class SepaDirectDebit:
 
         for key in ["name", "description"]:
             if key in raw_payment:
-                raw_payment[key] = _german_transliterate(raw_payment[key])  # ty: ignore
+                raw_payment[key] = _german_transliterate(raw_payment[key])
 
         self._dd.add_payment(raw_payment)
         self._num_payments += 1
@@ -257,7 +257,7 @@ def _delete_by_ids_sql(table: str, ids: list[int]) -> _psycopg_sql.Composed | No
     Only the ids are returned (for the deleted-row count); the undo-the-undo
     INSERTs are built from the full rows collected up front, not from here.
     """
-    import psycopg.sql as sql
+    from psycopg import sql
 
     if not ids:
         return None
@@ -271,7 +271,7 @@ def _update_pre_notifications_sql(
 ) -> _psycopg_sql.Composed | None:
     """Restore payment_status and clear the payment-info link, guarded so rows
     whose status changed meanwhile are left alone."""
-    import psycopg.sql as sql
+    from psycopg import sql
 
     if not ids:
         return None
@@ -285,7 +285,7 @@ def _update_pre_notifications_sql(
 
 def _reset_payment_initiation_sql(pain_id: int) -> _psycopg_sql.Composed:
     """Unconditionally reset status to ``planned`` and clear stamped columns."""
-    import psycopg.sql as sql
+    from psycopg import sql
 
     set_clauses: list[sql.Composable] = [sql.SQL("status = 'planned'")]
     set_clauses += [
@@ -331,7 +331,7 @@ def _reverse_pre_notification_sql(conn, plan: RevertSepaDirectDebit) -> list[str
 
 def _reverse_payment_initiation_sql(conn, plan: RevertSepaDirectDebit) -> list[str]:
     """Render the ``UPDATE`` restoring the payment initiation's old values."""
-    import psycopg.sql as sql
+    from psycopg import sql
 
     old = plan.old_payment_initiation
     set_clauses = [

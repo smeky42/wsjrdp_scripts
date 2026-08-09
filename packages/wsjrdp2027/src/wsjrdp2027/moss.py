@@ -30,9 +30,9 @@ def ensure_moss_email_mailbox_or_alias(
     addr2goto = {a.address: frozenset(a.goto) for a in all_mail_aliases}
 
     for p in people:
-        if not p.moss_email or not p.moss_email_expected_goto:
+        if not p.moss_email or not p.moss_email_expected_goto():
             continue
-        expected_goto = p.moss_email_expected_goto
+        expected_goto = p.moss_email_expected_goto()
         goto_addrs = addr2goto.get(p.moss_email, set())
         goto_addrs_l = set(s.lower() for s in goto_addrs)
         if expected_goto and (expected_goto.lower() not in goto_addrs_l):
@@ -47,7 +47,7 @@ def ensure_moss_email_mailbox_or_alias(
 
 def moss_email_with_expected_goto(p: _person.Person, /) -> str:
     assert p.moss_email
-    expected_goto = p.moss_email_expected_goto
+    expected_goto = p.moss_email_expected_goto()
     if expected_goto and (expected_goto != p.moss_email):
         return f"{p.moss_email} -> {expected_goto}"
     else:
@@ -68,7 +68,7 @@ class MossBalanceMovement:
     subject_type: str | None = None
     comment: str = ""
     status: str | None = None
-    additional_info: dict = _dataclasses.field(default_factory=lambda: {})
+    additional_info: dict = _dataclasses.field(default_factory=dict)
 
     unique_item_number: str
     moss_transaction_id: str
@@ -241,7 +241,7 @@ class MossBalanceMovement:
                     for col, val in row.items()
                     if (fld_name := cls.__csv_col2fld_name(col)) is not None
                 }
-                bm = cls(**kwargs)
+                bm = cls(**kwargs)  # type: ignore
                 if bm.moss_transaction_id == "2039d32d-64c8-4758-b31f-21886f4404d4":
                     bm.amount = _decimal.Decimal("-10.24")
                     bm.original_currency = "PLN"
