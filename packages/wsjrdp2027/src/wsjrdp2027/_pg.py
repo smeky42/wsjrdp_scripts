@@ -28,7 +28,7 @@ _Row = _typing.TypeVar("_Row", covariant=True, default="_psycopg_rows.TupleRow")
 _LOGGER = _logging.getLogger(__name__)
 
 
-ConnectionLike = _typing.Union[
+PgConnectionLike = _typing.Union[
     "_psycopg.Connection", "_psycopg_client.PsycopgClient", "_context.WsjRdpContext"
 ]
 
@@ -245,7 +245,7 @@ def _execute_query_fetchall(
 
 
 def _execute_query_fetchall_dicts(
-    connection: ConnectionLike, /, query, *, show_result: bool | None = None
+    connection: PgConnectionLike, /, query, *, show_result: bool | None = None
 ):
     import psycopg.rows
 
@@ -354,7 +354,7 @@ def _upsert_tagging(
 
 
 def pg_select_dict_rows(
-    conn: ConnectionLike | None,
+    conn: PgConnectionLike | None,
     query: str | _psycopg_sql.Composed | _string_templatelib.Template,
     *,
     show_result: bool | None = None,
@@ -370,7 +370,7 @@ def pg_select_dict_rows(
 
 
 def pg_select_dataframe(
-    conn: ConnectionLike | None,
+    conn: PgConnectionLike | None,
     query: str | _psycopg_sql.Composed | _string_templatelib.Template,
 ) -> _pandas.DataFrame:
     import pandas as _pandas
@@ -379,7 +379,7 @@ def pg_select_dataframe(
 
 
 def pg_select_groups_dicts_for_where(
-    conn: ConnectionLike | None,
+    conn: PgConnectionLike | None,
     /,
     where: _psycopg_sql.Composable | _string_templatelib.Template,
 ) -> list[dict]:
@@ -390,7 +390,7 @@ def pg_select_groups_dicts_for_where(
 
 
 def pg_select_group_dict_for_where(
-    conn: ConnectionLike | None,
+    conn: PgConnectionLike | None,
     /,
     where: _psycopg_sql.Composable | _string_templatelib.Template,
 ) -> dict:
@@ -1683,7 +1683,7 @@ def insert_moss_balance_movement(
 
 
 def to_connection(
-    conn: ConnectionLike | None, read_only: bool | None = None
+    conn: PgConnectionLike | None, read_only: bool | None = None
 ) -> _psycopg.Connection:
     from . import _context, _psycopg_client
 

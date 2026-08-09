@@ -32,6 +32,7 @@ from ._people import (
 )
 from ._people_query import PeopleQuery as PeopleQuery, PeopleWhere as PeopleWhere
 from ._pg import (
+    PgConnectionLike as PgConnectionLike,
     pg_add_person_tag as pg_add_person_tag,
     pg_insert_camt_transaction_from_tx as pg_insert_camt_transaction_from_tx,
     pg_insert_direct_debit_payment_info as pg_insert_direct_debit_payment_info,
@@ -49,6 +50,8 @@ from ._sepa_direct_debit import (
     CREDITOR_ID as CREDITOR_ID,
     WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG as WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG,
     WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG as WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG,
+    RevertSepaDirectDebit as RevertSepaDirectDebit,
+    RevertSepaDirectDebitResult as RevertSepaDirectDebitResult,
     SepaDirectDebit as SepaDirectDebit,
     SepaDirectDebitPayment as SepaDirectDebitPayment,
     write_accounting_dataframe_to_sepa_dd as write_accounting_dataframe_to_sepa_dd,
@@ -126,6 +129,13 @@ if _typing.TYPE_CHECKING:
         iter_people_dataframe as iter_people_dataframe,
         load_primary_groups_for_people as load_primary_groups_for_people,
     )
+    from ._report_tree import (
+        ReportContent as ReportContent,
+        ReportNode as ReportNode,
+        ReportTree as ReportTree,
+        build_report_tree_widget as build_report_tree_widget,
+        show_report_tree as show_report_tree,
+    )
     from ._util import dedup as dedup
 
 
@@ -156,14 +166,21 @@ __all__ = [
     "PeopleQuery",
     "PeopleWhere",
     "Person",
+    "PgConnectionLike",
     "PreparedBatch",
     "PreparedEmailMessage",
+    "ReportContent",
+    "ReportNode",
+    "ReportTree",
+    "RevertSepaDirectDebit",
+    "RevertSepaDirectDebitResult",
     "SepaDirectDebit",
     "SepaDirectDebitConfig",
     "SepaDirectDebitPayment",
     "WsjRdpContext",
     "WsjRdpContextConfig",
     "WsjRdpKeycloakAdapter",
+    "build_report_tree_widget",
     "configure_file_logging",
     "console_confirm",
     "create_dir",
@@ -201,6 +218,7 @@ __all__ = [
     "render_template",
     "report_direct_debit_amount_differences",
     "sepa_mandate_id_from_hitobito_id",
+    "show_report_tree",
     "to_date",
     "to_date_or_none",
     "to_datetime",
@@ -318,8 +336,18 @@ __ALIASES__ = {
     "MailcowError": ("._mailcow_client", "MailcowError"),
     "PainMessage": (f"._pain", "PainMessage"),
     "Person": ("._person", "Person"),
+    "PgConnectionLike": ("._pg", "PgConnectionLike"),
+    "ReportContent": ("._report_tree", "ReportContent"),
+    "ReportNode": ("._report_tree", "ReportNode"),
+    "ReportTree": ("._report_tree", "ReportTree"),
+    "RevertSepaDirectDebit": ("._sepa_direct_debit", "RevertSepaDirectDebit"),
+    "RevertSepaDirectDebitResult": (
+        "._sepa_direct_debit",
+        "RevertSepaDirectDebitResult",
+    ),
     "WsjRdpKeycloakAdapter": ("._keycloak_wsjrdp_adapter", "WsjRdpKeycloakAdapter"),
     "bank_accounts": (".bank_accounts", ""),
+    "build_report_tree_widget": ("._report_tree", "build_report_tree_widget"),
     "datev": ("._datev", ""),
     "dedup": ("._util", "dedup"),
     "iter_people_dataframe": ("._person", "iter_people_dataframe"),
@@ -328,6 +356,7 @@ __ALIASES__ = {
     "mailbox": (".mailbox", ""),
     "moss": (".moss", ""),
     "pg": ("._pg", ""),
+    "show_report_tree": ("._report_tree", "show_report_tree"),
 }
 
 
@@ -342,5 +371,5 @@ def __getattr__(name):
         obj = getattr(mod, qualname)
     else:
         obj = mod
-    globals()[qualname] = obj
+    globals()[name] = obj
     return obj
