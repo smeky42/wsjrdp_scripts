@@ -33,11 +33,11 @@ if _typing.TYPE_CHECKING:
         _mail_config,
         _mailcow_client,
         _people_query,
-        _person,
         _pg,
         _psycopg_client,
         _ssh_tunnel,
     )
+    from ._models import person as _person
 
 
 __all__ = [
@@ -1554,7 +1554,7 @@ class WsjRdpContext:
         now: _datetime.datetime | _datetime.date | str | float | None = None,
         conn: _pg.PgConnectionLike | None = None,
     ) -> _person.Person:
-        from . import _person
+        from ._models import person as _person
 
         df = self.load_person_dataframe_for_batch(
             batch_config,

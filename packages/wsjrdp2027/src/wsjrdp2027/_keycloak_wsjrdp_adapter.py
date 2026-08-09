@@ -10,7 +10,8 @@ if _typing.TYPE_CHECKING:
 
     import keycloak as _keycloak_python
 
-    from . import _context, _person
+    from . import _context
+    from ._models import person as _person
 
 
 _LOGGER = __import__("logging").getLogger(__name__)

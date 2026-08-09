@@ -4,8 +4,8 @@ import collections.abc as _collections_abc
 import logging as _logging
 import typing as _typing
 
-from .. import _context, _people_query, _person
-from .._models import group as _group
+from .. import _context, _people_query
+from .._models import group as _group, person as _person
 
 
 if _typing.TYPE_CHECKING:

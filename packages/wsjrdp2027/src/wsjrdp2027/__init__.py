@@ -126,12 +126,12 @@ if _typing.TYPE_CHECKING:
     from ._models.group import (
         Group as Group,
     )
-    from ._pain import PainMessage as PainMessage
-    from ._person import (
+    from ._models.person import (
         Person as Person,
         iter_people_dataframe as iter_people_dataframe,
         load_primary_groups_for_people as load_primary_groups_for_people,
     )
+    from ._pain import PainMessage as PainMessage
     from ._report_tree import (
         ReportContent as ReportContent,
         ReportNode as ReportNode,
@@ -343,7 +343,7 @@ __ALIASES__ = {
     "MailcowConfig": ("._mailcow_client", "MailcowConfig"),
     "MailcowError": ("._mailcow_client", "MailcowError"),
     "PainMessage": (f"._pain", "PainMessage"),
-    "Person": ("._person", "Person"),
+    "Person": ("._models.person", "Person"),
     "PgConnectionLike": ("._pg", "PgConnectionLike"),
     "ReportContent": ("._report_tree", "ReportContent"),
     "ReportNode": ("._report_tree", "ReportNode"),
@@ -358,9 +358,12 @@ __ALIASES__ = {
     "build_report_tree_widget": ("._report_tree", "build_report_tree_widget"),
     "datev": ("._datev", ""),
     "dedup": ("._util", "dedup"),
-    "iter_people_dataframe": ("._person", "iter_people_dataframe"),
+    "iter_people_dataframe": ("._models.person", "iter_people_dataframe"),
     "keycloak": (".keycloak", ""),
-    "load_primary_groups_for_people": ("._person", "load_primary_groups_for_people"),
+    "load_primary_groups_for_people": (
+        "._models.person",
+        "load_primary_groups_for_people",
+    ),
     "mailbox": (".mailbox", ""),
     "moss": (".moss", ""),
     "pg": ("._pg", ""),

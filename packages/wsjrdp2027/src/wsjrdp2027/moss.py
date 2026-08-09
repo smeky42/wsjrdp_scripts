@@ -15,7 +15,8 @@ if _typing.TYPE_CHECKING:
     import collections.abc as _collections_abc
     import csv as _csv
 
-    from . import _context, _person
+    from . import _context
+    from ._models import person as _person
 
 _LOGGER = _logging.getLogger(__name__)
 

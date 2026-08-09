@@ -18,7 +18,8 @@ if _typing.TYPE_CHECKING:
     import pandas as _pandas
     import psycopg as _psycopg
 
-    from . import _context, _mail_client, _people_query, _person
+    from . import _context, _mail_client, _people_query
+    from ._models import person as _person
 
 
 __all__ = [
@@ -875,7 +876,8 @@ class BatchConfig:
 
         import pandas as _pandas
 
-        from . import _person, _util
+        from . import _util
+        from ._models import person as _person
 
         data_is_dataframe = False
         if isinstance(data, _person.Person):
