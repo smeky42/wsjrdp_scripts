@@ -46,9 +46,12 @@ def pg_literal(obj):
 def in_expr(
     expr: _psycopg_sql.Composable, elts, *, empty_expr: str = "FALSE"
 ) -> _psycopg_sql.SQL:
+    from psycopg.sql import SQL
+
     from . import _util
 
-    return _util.in_expr(expr, elts, empty_expr=empty_expr)  # type: ignore
+    sql = _util.in_expr(expr.as_string(), elts, empty_expr=empty_expr)
+    return SQL(sql)  # type: ignore
 
 
 def create_select_query(

@@ -715,7 +715,7 @@ WITH "people" AS (
     *,
     ARRAY(SELECT "tags".name FROM taggings
           LEFT JOIN "tags" ON taggings.tag_id = "tags".id AND taggings.taggable_type = 'Person'
-          WHERE taggings.taggable_id = people.id ORDER BY "tags"."name"
+          WHERE taggings.taggable_id = people.id AND "tags".name IS NOT NULL ORDER BY "tags"."name"
     ) AS tag_list,
     ARRAY(SELECT "a".email FROM additional_emails "a"
           WHERE "a".contactable_type='Person' AND "a".contactable_id = people.id AND "a".mailings = TRUE

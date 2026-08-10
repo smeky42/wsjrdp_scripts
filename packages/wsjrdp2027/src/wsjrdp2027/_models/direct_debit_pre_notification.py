@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as _datetime
 import decimal as _decimal
+import logging as _logging
 import math as _math
 import typing as _typing
 
@@ -24,6 +25,9 @@ if _typing.TYPE_CHECKING:
     import psycopg.sql as _psycopg_sql
 
     from .. import _pg
+
+
+_LOGGER = _logging.getLogger(__name__)
 
 
 # Columns of a ``wsjrdp_direct_debit_pre_notifications`` row. Documentation only;
@@ -278,6 +282,19 @@ class DirectDebitPreNotification:
     def amount(self) -> _decimal.Decimal:
         """:attr:`amount_cents` as a Decimal amount of the currency's main unit."""
         return _decimal.Decimal(self.amount_cents) / 100
+
+    @property
+    def dbtr_bank_name(self) -> str | None:
+        import schwifty
+
+        iban = self.dbtr_iban
+        try:
+            return schwifty.IBAN(iban).bank_name
+        except Exception as exc:
+            _LOGGER.debug(
+                "Could not determine bank name for IBAN %r: %s", iban, str(exc)
+            )
+        return None
 
     @property
     def pre_notified_amount(self) -> _decimal.Decimal | None:
