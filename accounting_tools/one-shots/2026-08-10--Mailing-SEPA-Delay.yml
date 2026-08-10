@@ -1,0 +1,42 @@
+updates:
+  add_tags: 'SEPA-2026-08-Delay-Mail'
+query:
+  where:
+    pre_notification_status: pre_notified
+    exclude_tag: 'SEPA-2026-08-Delay-Mail'
+  collection_date: 2026-08-18
+from_addr: "anmeldung@worldscoutjamboree.de"
+email_from: "info@worldscoutjamboree.de"
+email_reply_to: "finanzen@worldscoutjamboree.de"
+email_subject: "WSJ 2027 Verzögerung SEPA Lastschrifteinzug {{ person.collection_date | month_year_de }} - {{ person.payment_role.short_role_name }} {{ person.id_and_name }}"
+signature: "{{ EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION }}"
+content: |
+  {% set pn = person.get_open_pre_notifications()[0] -%}
+  {% if person.sepa_name == person.full_name or person.sepa_name == person.short_full_name %}
+  Hallo {{ person.greeting_name }},
+  {% else %}
+  Hallo {{ person.sepa_name }}, Hallo {{ person.greeting_name }},
+  {% endif %}
+
+  der August Einzug ist verzögert und noch nicht erfolgt.
+  Wegen der Ferienzeit und vieler Pfadi-Aktivitäten können wir leider nicht genau sagen, wann wir den Einzug durchführen werden.
+  Wir glauben, den August Einzug zwischen dem 18.08. und 28.08. durchführen zu können.
+
+  Du nimmst mit folgenden Daten an dem verzögerten Lastschrifteinzug teil:
+
+      Teilnehmer*in: {{ person.full_name }}
+      Betrag: {{ pn.amount_cents | format_cents_as_eur_de }}
+      Kontoinhaber*in: {{ pn.dbtr_name }}
+      IBAN: {{ pn.dbtr_iban | format_iban }}
+      {% if (pn.dbtr_bank_name is defined) and (pn.dbtr_bank_name) %}    Bank: {{ pn.dbtr_bank_name }}
+      {% endif %}
+      Mandatsreferenz: {{ pn.mandate_id }}
+      Verwendungszweck: {{ pn.description }}
+
+
+  Melde dich bitte bei uns, wenn der verspätete Einzug ein Problem für dich ist. Es ist uns wichtig unnötige Rücklastschriften zu vermeiden.
+  Wir können im Einzelfall den Einzug (teilweise) auf September verschieben. Dazu bräuchen wir deine Rückmeldung bis Dienstag, 11.08. gegen 17:00 Uhr.
+
+
+  Dein WSJ-Finance-Team
+  Daffi

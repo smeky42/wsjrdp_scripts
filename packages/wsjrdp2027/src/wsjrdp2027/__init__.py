@@ -288,8 +288,6 @@ Chausseestr. 128/129
 EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION = (
     "\n-- "
     + """
-Falls du Fragen hast, schau auf unserer Homepage https://worldscoutjamboree.de vorbei oder wende dich an info@worldscoutjamboree.de.
-
 Alle Jamboree E-Mails empfangen: https://www.worldscoutjamboree.de/2026/03/16/whitelisting/
 
 German Contingent | Kontyngent Niemiecki
