@@ -100,6 +100,36 @@ class Test_PeopleWhere__as_where_condition:
         where_str = PeopleWhere(exclude_sepa_status="ok").as_where_condition()
         assert where_str == "COALESCE(people.sepa_status, 'ok') <> 'ok'"
 
+    def test_pre_notification_status(self):
+        where_str = PeopleWhere(
+            pre_notification_status="pre_notified"
+        ).as_where_condition()
+        assert where_str == (
+            "EXISTS (SELECT pn.id FROM wsjrdp_direct_debit_pre_notifications pn "
+            "WHERE pn.subject_type = 'Person' AND pn.subject_id = people.id "
+            "AND pn.payment_status = 'pre_notified')"
+        )
+
+    def test_pre_notification_status_list(self):
+        where_str = PeopleWhere(
+            pre_notification_status=["pre_notified", "xml_generated"]
+        ).as_where_condition()
+        assert where_str == (
+            "EXISTS (SELECT pn.id FROM wsjrdp_direct_debit_pre_notifications pn "
+            "WHERE pn.subject_type = 'Person' AND pn.subject_id = people.id "
+            "AND pn.payment_status IN ('pre_notified', 'xml_generated'))"
+        )
+
+    def test_exclude_pre_notification_status(self):
+        where_str = PeopleWhere(
+            exclude_pre_notification_status="pre_notified"
+        ).as_where_condition()
+        assert where_str == (
+            "NOT EXISTS (SELECT pn.id FROM wsjrdp_direct_debit_pre_notifications pn "
+            "WHERE pn.subject_type = 'Person' AND pn.subject_id = people.id "
+            "AND pn.payment_status = 'pre_notified')"
+        )
+
     def test_id(self):
         where_str = PeopleWhere(id=123).as_where_condition()
         assert where_str == "people.id = 123"
@@ -291,6 +321,21 @@ class Test_PeopleWhere__to_dict:
     def test_exclude_sepa_status(self):
         where_dict = PeopleWhere(exclude_sepa_status="ok").to_dict()
         assert where_dict == {"exclude_sepa_status": "ok"}
+
+    def test_pre_notification_status(self):
+        where_dict = PeopleWhere(pre_notification_status="pre_notified").to_dict()
+        assert where_dict == {"pre_notification_status": "pre_notified"}
+
+    def test_exclude_pre_notification_status(self):
+        where_dict = PeopleWhere(
+            exclude_pre_notification_status="pre_notified"
+        ).to_dict()
+        assert where_dict == {"exclude_pre_notification_status": "pre_notified"}
+
+    def test_pre_notification_status_roundtrip(self):
+        where = PeopleWhere.from_dict({"pre_notification_status": ["pre_notified"]})
+        assert where.pre_notification_status == ["pre_notified"]
+        assert where.to_dict() == {"pre_notification_status": "pre_notified"}
 
     def test_id(self):
         where_dict = PeopleWhere(id=123).to_dict()

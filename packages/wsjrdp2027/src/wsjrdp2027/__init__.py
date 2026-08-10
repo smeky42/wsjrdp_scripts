@@ -129,6 +129,7 @@ if _typing.TYPE_CHECKING:
     from ._models.person import (
         Person as Person,
         iter_people_dataframe as iter_people_dataframe,
+        load_pre_notifications_for_people as load_pre_notifications_for_people,
         load_primary_groups_for_people as load_primary_groups_for_people,
     )
     from ._pain import PainMessage as PainMessage
@@ -204,6 +205,7 @@ __all__ = [
     "load_payment_dataframe_from_payment_initiation",
     "load_people_dataframe",
     "load_person_row",
+    "load_pre_notifications_for_people",
     "load_primary_groups_for_people",
     "merge_mail_addresses",
     "nan_to_none",
@@ -360,6 +362,10 @@ __ALIASES__ = {
     "dedup": ("._util", "dedup"),
     "iter_people_dataframe": ("._models.person", "iter_people_dataframe"),
     "keycloak": (".keycloak", ""),
+    "load_pre_notifications_for_people": (
+        "._models.person",
+        "load_pre_notifications_for_people",
+    ),
     "load_primary_groups_for_people": (
         "._models.person",
         "load_primary_groups_for_people",
