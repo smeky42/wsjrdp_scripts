@@ -9,6 +9,7 @@ rows to people is left to the caller.
 
 from __future__ import annotations
 
+import datetime as _datetime
 import decimal as _decimal
 import math as _math
 import typing as _typing
@@ -20,6 +21,9 @@ if _typing.TYPE_CHECKING:
     import collections.abc as _collections_abc
 
     import pandas as _pandas
+    import psycopg.sql as _psycopg_sql
+
+    from .. import _pg
 
 
 # Columns of a ``wsjrdp_direct_debit_pre_notifications`` row. Documentation only;
@@ -86,7 +90,6 @@ class DirectDebitPreNotification:
     payment_status: str
     amount_cents: int
     amount_currency: str
-    collection_date: _typing.Any
     endtoend_id: str | None
     debit_sequence_type: str
 
@@ -134,6 +137,64 @@ class DirectDebitPreNotification:
             self._df_ref = dataframe
             self._index = index
         return self
+
+    @classmethod
+    def load_for_where(
+        cls,
+        conn: _pg.PgConnectionLike | None,
+        where: _psycopg_sql.Composable,
+    ) -> list[_typing.Self]:
+        """Load pre-notifications matching the SQL *where* condition.
+
+        *where* must be a ``psycopg.sql.Composable`` (e.g. built with
+        ``psycopg.sql.SQL`` / ``Literal``), so values are adapted safely.
+        """
+        from psycopg.sql import SQL, Identifier
+
+        from .. import _pg
+
+        columns = SQL(", ").join(Identifier(c) for c in PRE_NOTIFICATION_COLUMNS)
+        query = SQL(
+            "SELECT {columns} FROM wsjrdp_direct_debit_pre_notifications "
+            "WHERE {where} ORDER BY subject_id, id"
+        ).format(columns=columns, where=where)
+        rows = _pg.pg_select_dict_rows(conn, query)
+        return [cls(**row) for row in rows]
+
+    @classmethod
+    def load_for_subject_ids(
+        cls,
+        conn: _pg.PgConnectionLike | None,
+        subject_ids: _collections_abc.Iterable[int],
+        *,
+        status: _collections_abc.Iterable[str] | str | None = ("pre_notified",),
+    ) -> list[_typing.Self]:
+        """Load the pre-notifications of the given people (``subject_ids``).
+
+        Only ``subject_type = 'Person'`` rows are considered. When *status* is
+        given (a status value or an iterable of them; ``None`` disables the
+        filter), only rows with a matching ``payment_status`` are returned.
+        Returns an empty list if *subject_ids* is empty.
+        """
+        from psycopg.sql import SQL, Literal
+
+        ids = sorted({int(x) for x in subject_ids})
+        if not ids:
+            return []
+        conditions = [
+            SQL("subject_type = {}").format(Literal("Person")),
+            SQL("subject_id = ANY({})").format(Literal(ids)),
+        ]
+        if status is not None:
+            status_list = (
+                [status] if isinstance(status, str) else [str(s) for s in status]
+            )
+            if status_list:
+                conditions.append(
+                    SQL("payment_status = ANY({})").format(Literal(status_list))
+                )
+        where = SQL(" AND ").join(conditions)
+        return cls.load_for_where(conn, where)
 
     def get_pandas_df(self) -> _pandas.DataFrame:
         if (dataframe := self._df) is not None:
@@ -200,6 +261,18 @@ class DirectDebitPreNotification:
         cls_name = self.__class__.__qualname__
         args = [f"{k}={v!r}" for k, v in self._data.items()]
         return f"{cls_name}({', '.join(args)})"
+
+    @property
+    def collection_date(self) -> _datetime.date | None:
+        from .. import _util
+
+        return _util.to_date_or_none(self._data.get("collection_date"))
+
+    @collection_date.setter
+    def collection_date(self, value: _datetime.date | str | None, /) -> None:
+        from .. import _util
+
+        self._data["collection_date"] = _util.to_date_or_none(value)
 
     @property
     def amount(self) -> _decimal.Decimal:

@@ -182,6 +182,12 @@ class PeopleWhere:
     exclude_sepa_status: (
         _collections_abc.Sequence[str | _types.NullOrNotType] | None
     ) = None
+    pre_notification_status: (
+        _collections_abc.Sequence[str | _types.NullOrNotType] | None
+    ) = None
+    exclude_pre_notification_status: (
+        _collections_abc.Sequence[str | _types.NullOrNotType] | None
+    ) = None
     id: _collections_abc.Sequence[int] | None = None
     exclude_id: _collections_abc.Sequence[int] | None = None
     primary_group: _collections_abc.Sequence[str | int] | None = None
@@ -218,6 +224,8 @@ class PeopleWhere:
         exclude_status: _StrOrNullIterable | None = None,
         sepa_status: _StrOrNullIterable | None = None,
         exclude_sepa_status: _StrOrNullIterable | None = None,
+        pre_notification_status: _StrOrNullIterable | None = None,
+        exclude_pre_notification_status: _StrOrNullIterable | None = None,
         id: _StrIntOrIterable | None = None,
         exclude_id: str | int | _collections_abc.Iterable[str | int] | None = None,
         primary_group_id: _StrIntOrIterable | None = None,
@@ -267,6 +275,10 @@ class PeopleWhere:
         self.exclude_status = _to_str_or_null_list(exclude_status)
         self.sepa_status = _to_str_or_null_list(sepa_status)
         self.exclude_sepa_status = _to_str_or_null_list(exclude_sepa_status)
+        self.pre_notification_status = _to_str_or_null_list(pre_notification_status)
+        self.exclude_pre_notification_status = _to_str_or_null_list(
+            exclude_pre_notification_status
+        )
         self.id = _util.to_int_list_or_none(id)
         self.exclude_id = _util.to_int_list_or_none(exclude_id)
         self.primary_group = _to_primary_group_list_or_none(
@@ -420,6 +432,7 @@ class PeopleWhere:
             "email",
             "status",
             "sepa_status",
+            "pre_notification_status",
             "id",
             "primary_group",
             "unit_code",
@@ -517,6 +530,19 @@ class PeopleWhere:
             ),
             self.__primary_group_where(
                 self.exclude_primary_group,
+                people_table=people_table,
+                exclude=True,
+            ),
+        )
+        where = combine_where(
+            where,
+            self.__pre_notification_where(
+                self.pre_notification_status,
+                people_table=people_table,
+                exclude=False,
+            ),
+            self.__pre_notification_where(
+                self.exclude_pre_notification_status,
                 people_table=people_table,
                 exclude=True,
             ),
@@ -620,6 +646,29 @@ class PeopleWhere:
             )
             in_not_in = "NOT IN" if exclude else "IN"
             return f"{expr} {in_not_in} (SELECT id FROM groups WHERE {group_where})"
+
+    def __pre_notification_where(
+        self,
+        val: _collections_abc.Sequence[str | _types.NullOrNotType] | None,
+        *,
+        people_table: str = "people",
+        exclude: bool = False,
+    ) -> str | None:
+        """(NOT) EXISTS a ``wsjrdp_direct_debit_pre_notifications`` row for the
+        person whose ``payment_status`` matches *val*."""
+        from ._util import in_expr
+
+        if not val:
+            return None
+        status_cond = in_expr("pn.payment_status", val)
+        not_str = "NOT " if exclude else ""
+        return (
+            f"{not_str}EXISTS ("
+            f"SELECT pn.id FROM wsjrdp_direct_debit_pre_notifications pn "
+            f"WHERE pn.subject_type = 'Person' "
+            f"AND pn.subject_id = {people_table}.id "
+            f"AND {status_cond})"
+        )
 
 
 _PeopleWhereLike = PeopleWhere | dict | str
