@@ -108,13 +108,13 @@ class Group:
         conn: _pg.PgConnectionLike | None,
         group_ids: _collections_abc.Iterable[str | int],
     ) -> list[_typing.Self]:
-        from psycopg.sql import Literal
+        from psycopg.sql import Identifier
 
         from .. import _pg
 
         conn = _pg.to_connection(conn)
 
-        where = _pg.in_expr(Literal("id"), list(group_ids))
+        where = _pg.in_expr(Identifier("id"), list(group_ids))
         results = _pg.pg_select_groups_dicts_for_where(conn, where=where)
         return [cls(**d) for d in results]
 

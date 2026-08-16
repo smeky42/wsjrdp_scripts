@@ -765,7 +765,7 @@ def pg_update_role_set_end_on_for_ids(
     ids: _collections_abc.Iterable[int] | None = None,
     end_on: _datetime.date | str | None = None,
 ) -> list[int]:
-    from psycopg.sql import SQL, Literal
+    from psycopg.sql import SQL, Identifier
 
     from . import _util
 
@@ -774,7 +774,7 @@ def pg_update_role_set_end_on_for_ids(
     if not ids:
         _LOGGER.debug("No rows in roles to update (ids=%s)", ids)
         return []
-    where = in_expr(Literal("id"), ids)
+    where = in_expr(Identifier("id"), ids)
     update_query = SQL(
         'UPDATE "roles" SET "end_on" = {end_on} WHERE {where} RETURNING "roles"."id"'
     ).format(end_on=end_on, where=where)

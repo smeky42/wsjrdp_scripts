@@ -6,6 +6,11 @@ import pathlib as _pathlib
 import shlex as _shlex
 import subprocess as _subprocess
 
+from .fixtures import (
+    forbid_to_connection as forbid_to_connection,
+    mock_execute_query_fetchall_dicts as mock_execute_query_fetchall_dicts,
+)
+
 
 _LOGGER = _logging.getLogger(__name__)
 _SELFDIR = _pathlib.Path(__file__).parent.resolve()
