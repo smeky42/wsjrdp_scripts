@@ -31,6 +31,41 @@ class Test_Person:
         assert p.additional_info == {"moss_email": "foo@baz"}
         assert p.additional_info_updates_dict() == {"moss_email": [None, "foo@baz"]}
 
+    def test_moss_user_attributes(self):
+        p = Person()
+        assert p.moss_status is None
+        assert p.moss_phone is None
+        assert p.moss_team is None
+        assert p.moss_roles == []
+
+        p.moss_status = "ACTIVE"
+        p.moss_phone = "+491234"
+        p.moss_team = "UL D4"
+        p.moss_roles = ["TEAMLEAD", "USER"]
+        assert p.moss_status == "ACTIVE"
+        assert p.moss_phone == "+491234"
+        assert p.moss_team == "UL D4"
+        assert p.moss_roles == ["TEAMLEAD", "USER"]
+        assert p.additional_info == {
+            "moss_status": "ACTIVE",
+            "moss_phone": "+491234",
+            "moss_team": "UL D4",
+            "moss_roles": ["TEAMLEAD", "USER"],
+        }
+
+        # moss_roles returns a copy (mutation does not leak back)
+        p.moss_roles.append("SUPER_USER")
+        assert p.moss_roles == ["TEAMLEAD", "USER"]
+
+        # empty / falsy values clear the field (mirror the CSV)
+        p.moss_phone = ""
+        p.moss_team = None
+        p.moss_roles = []
+        assert p.moss_phone is None
+        assert p.moss_team is None
+        assert p.moss_roles == []
+        assert p.additional_info == {"moss_status": "ACTIVE"}
+
 
 def _make_pns() -> list[DirectDebitPreNotification]:
     return [

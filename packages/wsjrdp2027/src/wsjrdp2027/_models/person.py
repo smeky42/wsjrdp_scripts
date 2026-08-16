@@ -667,6 +667,40 @@ class Person:
             additional_info = self._data.setdefault("additional_info", {})
             additional_info["moss_invited_at"] = value.isoformat()
 
+    # -- Moss user attributes (synced from the Moss user export) -----------
+
+    @property
+    def moss_status(self) -> str | None:
+        return self.additional_info.get("moss_status")
+
+    @moss_status.setter
+    def moss_status(self, value: str | None) -> None:
+        self.set_additional_info("moss_status", value or None)
+
+    @property
+    def moss_phone(self) -> str | None:
+        return self.additional_info.get("moss_phone")
+
+    @moss_phone.setter
+    def moss_phone(self, value: str | None) -> None:
+        self.set_additional_info("moss_phone", value or None)
+
+    @property
+    def moss_team(self) -> str | None:
+        return self.additional_info.get("moss_team")
+
+    @moss_team.setter
+    def moss_team(self, value: str | None) -> None:
+        self.set_additional_info("moss_team", value or None)
+
+    @property
+    def moss_roles(self) -> list[str]:
+        return list(self.additional_info.get("moss_roles") or [])
+
+    @moss_roles.setter
+    def moss_roles(self, value: _collections_abc.Iterable[str] | None) -> None:
+        self.set_additional_info("moss_roles", list(value) if value else None)
+
     @property
     def keycloak_username(self) -> str | None:
         return self.additional_info.get("keycloak_username")
