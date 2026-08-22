@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses as _dataclasses
+import typing as _typing
 
 
 @_dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
@@ -34,3 +35,6 @@ class WsjRdpMailConfig:
             and self.imap_username
             and self.imap_password
         )
+
+    def asdict(self) -> dict[str, _typing.Any]:
+        return _dataclasses.asdict(self)
