@@ -22,3 +22,5 @@ config-prod.yml
 config.yml
 qr_code/*/*.png
 /data
+
+/CLAUDE.local.md

@@ -1,0 +1,8 @@
+{
+  "env": {
+    "RAILS_DB_HOST": "127.0.0.1",
+    "RAILS_DB_PORT": "5432",
+    "RAILS_DB_USERNAME": "hitobito",
+    "RAILS_TEST_DB_NAME": "hitobito_test"
+  }
+}
