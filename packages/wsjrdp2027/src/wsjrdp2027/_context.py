@@ -97,22 +97,31 @@ class WsjRdpContextConfig:
     datev_mandantennummer: str | None = None
 
     @classmethod
-    def from_file(cls, path: str | _pathlib.Path | None = None) -> _typing.Self:
+    def from_file(
+        cls,
+        path: str | _pathlib.Path | None = None,
+        *,
+        env: _collections_abc.Mapping[str, str] | None = None,
+        local_overrides: bool = True,
+    ) -> _typing.Self:
         import yaml as _yaml
 
         from . import _mail_config
 
-        if path is None:
-            _LOGGER.debug("[config] Check if env WSJRDP_SCRIPTS_CONFIG is set")
-            if (path_from_env := _os.environ.get("WSJRDP_SCRIPTS_CONFIG")) is not None:
-                _LOGGER.info("[config] Use env WSJRDP_SCRIPTS_CONFIG=%s", path_from_env)
-                path = path_from_env
-            else:
-                path = "config-dev.yml"
+        paths = cls._find_config_file_paths(
+            path, env=env, local_overrides=local_overrides
+        )
+        path = paths[0]
         _LOGGER.info("[config] Read config file %s", path)
-        path = _pathlib.Path(path)
         with open(path, "r", encoding="utf-8") as f:
             config = _yaml.load(f, Loader=_yaml.FullLoader)
+        # Merge any override files (paths[1:]) on top of the base config.
+        for override_path in paths[1:]:
+            _LOGGER.info("[config] Read config override file %s", override_path)
+            with open(override_path, "r", encoding="utf-8") as f:
+                override = _yaml.load(f, Loader=_yaml.FullLoader)
+            if override:
+                _merge_dicts(config, override)
 
         kwargs: dict[str, str | _typing.Any] = {}
 
@@ -197,6 +206,56 @@ class WsjRdpContextConfig:
             **kwargs,  # type: ignore
         )
         return self
+
+    @classmethod
+    def _find_config_file_paths(
+        cls,
+        path: str | _pathlib.Path | None = None,
+        *,
+        env: _collections_abc.Mapping[str, str] | None = None,
+        local_overrides: bool = True,
+    ) -> list[_pathlib.Path]:
+        """Resolve the config file path(s) to load, *without* reading them.
+
+        Returns a non-empty ``list`` of :class:`pathlib.Path`.  ``paths[0]`` is
+        the *main* config file that :meth:`from_file` would read: an explicit
+        *path*, else ``env['WSJRDP_SCRIPTS_CONFIG']`` (*env* defaults to
+        :data:`os.environ`), else ``config-dev.yml``.  It is returned
+        unconditionally -- its existence on disk is *not* checked here.
+
+        When *local_overrides* is true (the default) and a sibling override
+        file ``<stem>.local<suffix>`` (e.g. ``config-dev.local.yml`` next to
+        ``config-dev.yml``) exists *as a regular file*, it is appended as a
+        further path to load.  A main path that is itself already a
+        ``*.local.<suffix>`` file never gets a (nested) override.  Passing
+        ``local_overrides=False`` disables the lookup entirely, so the result
+        is always just ``[main]``.
+        """
+        if env is None:
+            env = _os.environ
+        if path is None:
+            _LOGGER.debug("[config] Check if env WSJRDP_SCRIPTS_CONFIG is set")
+            if (path_from_env := env.get("WSJRDP_SCRIPTS_CONFIG")) is not None:
+                _LOGGER.info("[config] Use env WSJRDP_SCRIPTS_CONFIG=%s", path_from_env)
+                path = path_from_env
+            else:
+                path = "config-dev.yml"
+        main_path = _pathlib.Path(path)
+        paths = [main_path]
+        # ``main_path.name`` guards against degenerate paths (e.g. an empty
+        # ``WSJRDP_SCRIPTS_CONFIG`` -> ``Path(".")``), for which ``with_stem``
+        # would raise; such a path yields just ``[main]`` (as before).
+        if local_overrides and main_path.name and not main_path.stem.endswith(".local"):
+            local_path = main_path.with_stem(main_path.stem + ".local")
+            if local_path.is_file():
+                paths.append(local_path)
+        return paths
+
+    def asdict(self) -> dict[str, _typing.Any]:
+        d = _dataclasses.asdict(self)
+        if mail_accounts := self.mail_accounts:
+            d["mail_accounts"] = {k: ma.asdict() for k, ma in mail_accounts.items()}
+        return d
 
     def as_ssh_tunnel_config(
         self, *, remote_bind_address: tuple[str, int] | _typing.Literal["db"] | None
@@ -1852,6 +1911,23 @@ def _to_bool(name: str, value: bool | str) -> bool:
         return False
     else:
         raise ValueError(f"Invalid config {name}! Expected bool, got {value!r}")
+
+
+def _merge_dicts(
+    base: dict[str, _typing.Any], override: dict[str, _typing.Any]
+) -> dict[str, _typing.Any]:
+    """Recursively merge *override* into *base* in place; *override* wins.
+
+    Nested dicts are merged; any other value (lists included) replaces. Returns
+    *base*.
+    """
+    for key, value in override.items():
+        existing = base.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            _merge_dicts(existing, value)
+        else:
+            base[key] = value
+    return base
 
 
 _thread_local_ctx: _contextvars.ContextVar[

@@ -20,8 +20,13 @@
 __pycache__
 config-prod.yml
 config.yml
+config-*.local.yml
+config.local.yml
 qr_code/*/*.png
 /data
 
 /CLAUDE.local.md
 /.claude/settings.local.json
+
+# Local, non-public copies of docs with real booking data (names, sums, IBANs)
+*_local.md
