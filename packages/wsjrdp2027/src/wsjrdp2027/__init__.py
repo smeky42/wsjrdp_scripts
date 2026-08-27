@@ -33,6 +33,9 @@ from ._people import (
 from ._people_query import PeopleQuery as PeopleQuery, PeopleWhere as PeopleWhere
 from ._pg import (
     PgConnectionLike as PgConnectionLike,
+    SpecialValue as SpecialValue,
+    UpsertResult as UpsertResult,
+    as_identifier_str as as_identifier_str,
     pg_add_person_tag as pg_add_person_tag,
     pg_insert_camt_transaction_from_tx as pg_insert_camt_transaction_from_tx,
     pg_insert_direct_debit_payment_info as pg_insert_direct_debit_payment_info,
@@ -44,6 +47,8 @@ from ._pg import (
     pg_select_dict_rows as pg_select_dict_rows,
     pg_select_group_dict_for_where as pg_select_group_dict_for_where,
     pg_select_groups_dicts_for_where as pg_select_groups_dicts_for_where,
+    pg_table_insertmany as pg_table_insertmany,
+    pg_table_updatemany as pg_table_updatemany,
     pg_update_payment_initiation as pg_update_payment_initiation,
 )
 from ._sepa_direct_debit import (
@@ -217,7 +222,12 @@ __all__ = [
     "pg_insert_payment_initiation",
     "pg_select_camt_tx_unique_db_key2row",
     "pg_select_dataframe",
+    "SpecialValue",
+    "UpsertResult",
+    "as_identifier_str",
     "pg_select_dict_rows",
+    "pg_table_insertmany",
+    "pg_table_updatemany",
     "pg_select_group_dict_for_where",
     "pg_select_groups_dicts_for_where",
     "pg_update_payment_initiation",

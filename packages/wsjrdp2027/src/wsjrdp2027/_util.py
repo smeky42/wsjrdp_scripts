@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections.abc as _collections_abc
+import datetime as _datetime
 import decimal as _decimal
 import logging as _logging
 import math as _math
@@ -12,7 +13,6 @@ from . import _types
 
 
 if _typing.TYPE_CHECKING:
-    import datetime as _datetime
     import email.policy as _email_policy
     import pathlib as _pathlib
 
@@ -330,6 +330,20 @@ def to_datetime_or_none(
     return None if dt is None else to_datetime(dt)
 
 
+def _make_aware(dt: _datetime.datetime) -> _datetime.datetime:
+    if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+        return dt.astimezone()
+    else:
+        return dt
+
+
+def _to_aware_now(now: _datetime.datetime | None) -> _datetime.datetime:
+    if now is None:
+        return _datetime.datetime.now().astimezone()
+    else:
+        return _make_aware(now)
+
+
 def to_datetime(
     dt: _datetime.datetime | _datetime.date | str | float | None,
     /,
@@ -356,6 +370,8 @@ def to_datetime(
     datetime.datetime(2025, 2, 1, 12, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=3600), 'CET'))
     >>> to_datetime("01.06.2025")
     datetime.datetime(2025, 6, 1, 13, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
+    >>> to_datetime(None)
+    datetime.datetime(2025, 8, 15, 10, 30, 27, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
 
     ..
        >>> _tm.move_to(_dt.datetime(2025, 8, 15, 10, 30, 27, tzinfo=_zi.ZoneInfo("Europe/Berlin")))
@@ -363,6 +379,10 @@ def to_datetime(
     >>> to_datetime("NOW")
     datetime.datetime(2025, 8, 15, 10, 30, 27, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
     >>> to_datetime("TODAY")
+    datetime.datetime(2025, 8, 15, 13, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
+    >>> to_datetime("NOW", now=datetime.datetime(2025, 8, 15, 11, 31, 28, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST')))
+    datetime.datetime(2025, 8, 15, 11, 31, 28, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
+    >>> to_datetime("TODAY", now=datetime.datetime(2025, 8, 15, 11, 31, 28, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST')))
     datetime.datetime(2025, 8, 15, 13, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))
 
     ..
@@ -428,7 +448,7 @@ def to_datetime(
         return date_to_datetime(naive)
 
     if dt is None:
-        return datetime.datetime.now().astimezone() if now is None else now
+        return _to_aware_now(now)
     elif isinstance(dt, datetime.datetime):
         return normalize_tz(dt)
     elif isinstance(dt, datetime.date):
@@ -437,9 +457,9 @@ def to_datetime(
         return datetime.datetime.fromtimestamp(dt, tz=datetime.UTC)
     elif isinstance(dt, str):
         if dt.upper() == "NOW":
-            return datetime.datetime.now().astimezone()
+            return _to_aware_now(now)
         elif dt.upper() == "TODAY":
-            return date_to_datetime(to_date_or_none("TODAY"))
+            return date_to_datetime(_to_aware_now(now).date())
         elif re.fullmatch("[0-9]+", dt):
             return datetime.datetime.fromtimestamp(int(dt), tz=datetime.UTC)
         elif re.fullmatch("[0-9]+[.][0-9]+[.][0-9]+", dt):

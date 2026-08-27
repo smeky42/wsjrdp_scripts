@@ -7,7 +7,7 @@ db_host: "localhost"
 db_port: 8432
 db_username: "hitobito"
 db_password: "hitobito"
-db_name: "hitobito_development"
+db_name: "hitobito_wsjrdp_scripts_integration_testing"
 
 hitobito_url: "http://localhost:3000"
 

@@ -8,6 +8,25 @@ import pytest
 from wsjrdp2027 import _pg
 
 
+class Test_as_identifier_str:
+    @pytest.mark.parametrize("name", ["id", "number", "weird name", 'a"b', ""])
+    def test_str_passthrough(self, name):
+        assert _pg.as_identifier_str(name) == name
+
+    @pytest.mark.parametrize("name", ["id", "number", "weird name", 'a"b', "select"])
+    def test_identifier_roundtrip(self, name):
+        assert _pg.as_identifier_str(_psycopg_sql.Identifier(name)) == name
+
+    def test_multi_part_identifier_raises(self):
+        with pytest.raises(TypeError, match="single-part"):
+            _pg.as_identifier_str(_psycopg_sql.Identifier("schema", "table"))
+
+    @pytest.mark.parametrize("bad", [42, None, _psycopg_sql.SQL("id")])
+    def test_other_types_raise(self, bad):
+        with pytest.raises(TypeError):
+            _pg.as_identifier_str(bad)
+
+
 class Test_in_expr_as_string:
     @pytest.mark.parametrize("ids", [[4], [4, 7], [7, 4, 4], []])
     def test_returns_sql_composable(self, ids):
