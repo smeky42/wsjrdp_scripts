@@ -11,6 +11,7 @@ import pathlib as _pathlib
 import sys as _sys
 import typing as _typing
 import weakref as _weakref
+import zoneinfo as _zoneinfo
 
 from . import _types
 
@@ -95,6 +96,11 @@ class WsjRdpContextConfig:
 
     datev_beraternummer: str | None = None
     datev_mandantennummer: str | None = None
+
+    # The Hitobito app's Rails Time.zone ('Bern' in config/application.rb).
+    # Used wherever we must match the app's rendering of times, e.g. the
+    # ISO 8601 serialization of datetimes inside JSONB values.
+    hitobito_time_zone: str = "Europe/Zurich"
 
     @classmethod
     def from_file(
@@ -203,6 +209,7 @@ class WsjRdpContextConfig:
             helpdesk_fin_request_type_id=config.get("helpdesk_fin_request_type_id", 33),
             datev_beraternummer=config.get("datev_beraternummer"),
             datev_mandantennummer=config.get("datev_mandantennummer"),
+            hitobito_time_zone=config.get("hitobito_time_zone", "Europe/Zurich"),
             **kwargs,  # type: ignore
         )
         return self
@@ -675,6 +682,12 @@ class WsjRdpContext:
     def is_production(self) -> bool:
         """`True` in production config, `False` otherwise."""
         return self._config.is_production
+
+    @property
+    def hitobito_time_zone(self) -> _zoneinfo.ZoneInfo:
+        """The Hitobito app's time zone (config ``hitobito_time_zone``,
+        default Europe/Zurich = Rails ``Time.zone = 'Bern'``) as a ZoneInfo."""
+        return _zoneinfo.ZoneInfo(self._config.hitobito_time_zone)
 
     @property
     def dry_run_or_none(self) -> bool | None:

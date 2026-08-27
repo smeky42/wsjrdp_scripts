@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import collections.abc as _collections_abc
+import dataclasses as _dataclasses
+import datetime as _datetime
+import enum as _enum
 import logging as _logging
 import textwrap as _textwrap
 import typing as _typing
+import zoneinfo as _zoneinfo
 
 from psycopg.sql import Composable
 
@@ -11,7 +15,6 @@ from . import _person_pg, _types
 
 
 if _typing.TYPE_CHECKING:
-    import datetime as _datetime
     import string.templatelib as _string_templatelib
 
     import pandas as _pandas
@@ -592,7 +595,7 @@ def _pg_update_table(
     /,
     *,
     table_name: str | _psycopg_sql.Identifier,
-    id: int,
+    id: int | str,
     updates: _UpdatesType,
     id_col: str | _psycopg_sql.Identifier = "id",
 ) -> list:
@@ -625,6 +628,437 @@ def _pg_update_table(
             id=Literal(id),
         ),
     )
+    return result
+
+
+class SpecialValue(_enum.Enum):
+    """Special marker values usable inside the value sets of
+    :func:`pg_table_insertmany` / :func:`pg_table_updatemany` (and, re-used,
+    in ``wsjrdp2027._internal.single_table_upsert_plan``).
+
+    ``DELETE``: as a scalar column value the column is set to SQL ``NULL``;
+    as a value inside a ``dict`` (JSONB) the key is not set on insert resp.
+    DELETED from the stored JSONB dict on update.
+    ``NOW`` / ``TODAY``: resolved against the function's ``now`` parameter to
+    the timestamp ("jetzt") resp. its date ("heute"); inside ``dict`` (JSONB)
+    values they are written as ISO 8601 strings (see
+    :func:`_serialize_jsonb_value`)."""
+
+    DELETE = _enum.auto()
+    NOW = _enum.auto()
+    TODAY = _enum.auto()
+
+
+def as_identifier_str(column: str | _psycopg_sql.Identifier) -> str:
+    """Return the plain column name for a ``str`` or a single-part
+    ``psycopg.sql.Identifier`` (unquoting the rendered form). A multi-part
+    identifier (``Identifier("schema", "table")``) or any other type raises
+    ``TypeError``."""
+    import psycopg.sql
+
+    if isinstance(column, str):
+        return column
+    if isinstance(column, psycopg.sql.Identifier):
+        rendered = column.as_string()
+        if rendered.startswith('"') and rendered.endswith('"'):
+            inner = rendered[1:-1]
+            # A multi-part identifier renders as "a"."b": after removing the
+            # escaped double quotes a lone quote remains.
+            if '"' not in inner.replace('""', ""):
+                return inner.replace('""', '"')
+        raise TypeError(f"not a plain single-part identifier: {rendered!r}")
+    raise TypeError(f"expected str or psycopg.sql.Identifier, got {type(column)!r}")
+
+
+@_dataclasses.dataclass(kw_only=True)
+class UpsertResult:
+    """Result of :func:`pg_table_insertmany` / :func:`pg_table_updatemany`.
+
+    ``inserted_ids`` / ``updated_ids``: the ``id_col`` value of every actually
+    inserted/updated ROW (via ``RETURNING``) -- for updates a non-unique
+    ``key_col`` hitting several rows contributes several ids; the order WITHIN
+    one statement is database-determined. ``id_col`` is the plain column name
+    the ids refer to."""
+
+    id_col: str
+    inserted_ids: list = _dataclasses.field(default_factory=list)
+    updated_ids: list = _dataclasses.field(default_factory=list)
+
+
+def _resolve_now(now, *, tz: _zoneinfo.ZoneInfo) -> _datetime.datetime:
+    """Resolve the ``now`` parameter of the pg_table_* helpers (default: the
+    current wall clock). A naive datetime is read as wall time in ``tz`` --
+    the same interpretation naive datetime VALUES get (see
+    :func:`_resolve_time_zone`); every other accepted form goes through
+    ``wsjrdp2027._util.to_datetime``."""
+    from . import _util
+
+    if isinstance(now, _datetime.datetime) and now.tzinfo is None:
+        now = now.replace(tzinfo=tz)
+    return _util.to_datetime(now, now=_datetime.datetime.now().astimezone())
+
+
+def _resolve_time_zone(
+    time_zone: str | _zoneinfo.ZoneInfo | None,
+) -> _zoneinfo.ZoneInfo:
+    """Resolve the time zone used to serialize date/time values into JSONB.
+
+    ``None`` falls back to Europe/Zurich -- the Hitobito app's Rails
+    ``Time.zone = 'Bern'`` (a code constant in config/application.rb, so it is
+    identical in production). Callers with a WsjRdpContext should pass
+    ``ctx.hitobito_time_zone`` (config key ``hitobito_time_zone``) so a future
+    app change needs only a config edit.
+
+    FORMAT DECISION (2026-08): datetimes inside JSONB are written as ISO 8601
+    in this (pinned) zone with exactly three fractional digits, e.g.
+    ``2027-08-01T08:00:00.000+02:00``; dates as ``2027-08-01``. Rationale:
+
+    * The Rails app is the only other active JSONB writer and verifiably
+      serializes exactly this shape (``TimeWithZone#as_json`` ->
+      ``xmlschema(3)`` in ``Time.zone``, ``ActiveSupport::JSON::Encoding
+      .time_precision = 3``). Matching it byte for byte keeps our diff-based
+      imports idempotent against app-written values.
+    * Pinning the zone (instead of the host's local zone) keeps the strings
+      identical no matter where a script runs (laptop, server, UTC CI).
+    * The existing data is dominated by local-offset strings; nothing is
+      UTC-normalized. A UTC-canonical format (``+00:00``/``Z``) would sort
+      lexicographically and make string equality equal instant equality, but
+      would be byte-incompatible with everything the app writes -- that
+      trade-off was decided against.
+    * Fixed milliseconds (over Python's variable microseconds) give a stable
+      string length and match both Rails and the JavaScript date format.
+    * Naive datetimes are interpreted in this zone -- the same reading Rails
+      applies to naive strings (``Time.zone.parse``); PostgreSQL would read
+      them as UTC, so writing naive strings stays forbidden.
+    """
+    if time_zone is None:
+        return _zoneinfo.ZoneInfo("Europe/Zurich")
+    if isinstance(time_zone, str):
+        return _zoneinfo.ZoneInfo(time_zone)
+    return time_zone
+
+
+def _serialize_jsonb_value(
+    value: object,
+    *,
+    now: _datetime.datetime,
+    tz: _zoneinfo.ZoneInfo,
+    where: str,
+) -> object:
+    """Recursively prepare a value for JSONB: datetimes (naive ones are
+    interpreted in ``tz``), dates, NOW and TODAY become ISO 8601 strings in
+    ``tz`` (see :func:`_resolve_time_zone` for the format decision); dicts and
+    lists are walked. ``SpecialValue.DELETE`` below the top level raises."""
+    if value is SpecialValue.NOW:
+        value = now.astimezone(tz)
+    elif value is SpecialValue.TODAY:
+        return now.astimezone(tz).date().isoformat()
+    elif value is SpecialValue.DELETE:
+        raise ValueError(
+            f"{where}: SpecialValue.DELETE is only allowed as a TOP-LEVEL "
+            "value of a dict (JSONB) column"
+        )
+    if isinstance(value, _datetime.datetime):
+        return value.astimezone(tz).isoformat(timespec="milliseconds")
+    if isinstance(value, _datetime.date):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {
+            key: _serialize_jsonb_value(item, now=now, tz=tz, where=f"{where}[{key!r}]")
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            _serialize_jsonb_value(item, now=now, tz=tz, where=f"{where}[{i}]")
+            for i, item in enumerate(value)
+        ]
+    return value
+
+
+def _resolved_scalar(
+    value: object, now: _datetime.datetime, tz: _zoneinfo.ZoneInfo
+) -> object:
+    if value is SpecialValue.DELETE:
+        return None
+    if value is SpecialValue.NOW:
+        return now
+    if value is SpecialValue.TODAY:
+        return now.astimezone(tz).date()
+    return value
+
+
+def _split_jsonb_value(
+    value: dict, *, where: str, now: _datetime.datetime, tz: _zoneinfo.ZoneInfo
+) -> tuple[dict, list]:
+    """Split a dict value into (keys to set, keys to delete). The kept values
+    are serialized for JSONB (see :func:`_serialize_jsonb_value`)."""
+    set_items: dict = {}
+    delete_keys: list = []
+    for key, item in value.items():
+        if item is SpecialValue.DELETE:
+            delete_keys.append(key)
+        else:
+            set_items[key] = _serialize_jsonb_value(
+                item, now=now, tz=tz, where=f"{where}[{key!r}]"
+            )
+    return set_items, delete_keys
+
+
+def pg_table_insertmany(
+    conn: PgConnectionLike,
+    table_name: str | _psycopg_sql.Identifier,
+    values: _collections_abc.Iterable[_UpdatesType],
+    *,
+    id_col: str | _psycopg_sql.Identifier = "id",
+    now: _datetime.datetime | _datetime.date | str | float | None = None,
+    time_zone: str | _zoneinfo.ZoneInfo | None = None,
+    touch: bool | None = None,
+) -> UpsertResult:
+    """INSERT many rows in one psycopg pipeline, allowing a DIFFERENT column
+    set per row -- the parallel of :func:`pg_table_updatemany`.
+
+    Each element of ``values`` is one value set (a mapping or an iterable of
+    ``(column, value)`` pairs, cf. ``_UpdatesType``); ALL of its columns are
+    written, an empty set inserts a row of database defaults. ``dict`` values
+    are written as JSONB. :class:`SpecialValue` markers are supported: a
+    scalar ``DELETE`` inserts ``NULL``, a ``DELETE`` inside a dict leaves the
+    key unset, ``NOW``/``TODAY`` resolve against ``now`` (same accepted types
+    as ``wsjrdp2027._util.to_datetime``; default: the current local time; a
+    naive datetime is read as wall time in ``time_zone``).
+    There is NO conflict handling: inserting an existing unique/primary key
+    raises the database error.
+
+    ``touch`` (default ``None`` = not set = on): unless explicitly ``False``,
+    every inserted row additionally gets ``created_at = now`` (the resolved
+    value) -- except where the value set itself contains ``created_at`` (an
+    explicit value wins over the stamp). The table must have a ``created_at``
+    column (Rails convention) unless ``touch=False`` is passed.
+
+    Returns an :class:`UpsertResult` with ``inserted_ids``: the ``id_col``
+    value of every inserted row (via ``RETURNING`` -- e.g. a generated serial
+    id), in execution order. Never commits; transaction control stays with
+    the caller.
+    """
+    from psycopg.sql import SQL, Identifier, Placeholder
+    from psycopg.types.json import Jsonb
+
+    connection = to_connection(conn, read_only=False)
+    table_ident = Identifier(table_name) if isinstance(table_name, str) else table_name
+    id_name = as_identifier_str(id_col)
+    id_ident = Identifier(id_name)
+    tz = _resolve_time_zone(time_zone)
+    resolved_now = _resolve_now(now, tz=tz)
+
+    planned: list[tuple[_psycopg_sql.Composed, list]] = []
+    for index, value_set in enumerate(values):
+        pairs = _normalize_updates(value_set)
+        columns: list[str] = []
+        params: list = []
+        for column, value in pairs:
+            if isinstance(value, dict):
+                set_items, _deleted = _split_jsonb_value(
+                    value, where=f"values[{index}][{column!r}]", now=resolved_now, tz=tz
+                )
+                columns.append(column)
+                params.append(Jsonb(set_items))
+            else:
+                columns.append(column)
+                params.append(_resolved_scalar(value, resolved_now, tz))
+        if touch is not False and "created_at" not in columns:
+            columns.append("created_at")
+            params.append(resolved_now)
+        if columns:
+            query = SQL(
+                "INSERT INTO {table} ({columns}) VALUES ({values}) RETURNING {id_col}"
+            ).format(
+                table=table_ident,
+                columns=SQL(", ").join(Identifier(c) for c in columns),
+                values=SQL(", ").join(Placeholder() for _ in columns),
+                id_col=id_ident,
+            )
+        else:
+            query = SQL("INSERT INTO {table} DEFAULT VALUES RETURNING {id_col}").format(
+                table=table_ident, id_col=id_ident
+            )
+        planned.append((query, params))
+
+    result = UpsertResult(id_col=id_name)
+    if not planned:
+        return result
+
+    cursors = []
+    with connection.pipeline():
+        for query, params in planned:
+            cursor = connection.cursor()
+            cursor.execute(query, params)
+            cursors.append(cursor)
+    for cursor in cursors:
+        result.inserted_ids.extend(row[0] for row in cursor.fetchall())
+        cursor.close()
+    return result
+
+
+def pg_table_updatemany(
+    conn: PgConnectionLike,
+    table_name: str | _psycopg_sql.Identifier,
+    updates: _collections_abc.Iterable[_UpdatesType],
+    *,
+    id_col: str | _psycopg_sql.Identifier = "id",
+    key_col: str | _psycopg_sql.Identifier = "id",
+    now: _datetime.datetime | _datetime.date | str | float | None = None,
+    time_zone: str | _zoneinfo.ZoneInfo | None = None,
+    touch: bool | None = None,
+) -> UpsertResult:
+    """Apply many row UPDATEs in one psycopg pipeline, allowing a DIFFERENT
+    column set per row.
+
+    Each element of ``updates`` is one update set (a mapping or an iterable of
+    ``(column, value)`` pairs, cf. ``_UpdatesType``) and MUST contain the
+    ``key_col`` column; its value selects the row(s) -- ``key_col`` need not
+    be unique -- and the remaining columns are written. An update set that
+    contains nothing but the key is skipped (logged at DEBUG). If the same key
+    appears in several update sets, they are applied in order -- the last one
+    wins.
+
+    A ``dict`` value is a PARTIAL update of the stored JSONB dict, merged by
+    the database: only the addressed top-level keys are set -- or DELETED
+    where the item value is ``SpecialValue.DELETE`` -- and every other stored
+    key stays untouched; a stored SQL ``NULL`` counts as the empty dict.
+    :class:`SpecialValue` markers in scalar columns: ``DELETE`` sets the
+    column to SQL ``NULL``, ``NOW``/``TODAY`` resolve against ``now`` (same
+    accepted types as ``wsjrdp2027._util.to_datetime``; default: the current
+    local time; a naive datetime is read as wall time in ``time_zone``).
+    ``NOW``/``TODAY`` are not allowed inside dict values.
+
+    ``touch`` (default ``None`` = not set = on): unless explicitly ``False``,
+    every written row additionally gets ``updated_at = now`` (the resolved
+    value) -- except where the update set itself contains ``updated_at`` (an
+    explicit value wins over the stamp). A key-only update set stays skipped
+    (touch never turns a skip into a pure ``updated_at`` write). The table
+    must have an ``updated_at`` column (Rails convention) unless
+    ``touch=False`` is passed.
+
+    All statements run inside `psycopg pipeline mode`_, so the per-statement
+    round trips collapse; statements sharing a column set are reusable as
+    server-side prepared statements. Identifiers are composed with
+    ``psycopg.sql``; values travel as bound parameters.
+
+    Returns an :class:`UpsertResult`: ``updated_ids`` carries the
+    ``id_col`` value of every actually updated row (collected via
+    ``RETURNING``). If any update set hits no row (unknown key), a
+    ``ValueError`` naming the missed keys is raised AFTER the pipeline has
+    run; the caller owns the transaction (this function never commits) and is
+    expected to roll back in that case.
+
+    .. _psycopg pipeline mode: https://www.psycopg.org/psycopg3/docs/advanced/pipeline.html
+    """
+    from psycopg.sql import SQL, Identifier, Placeholder
+    from psycopg.types.json import Jsonb
+
+    connection = to_connection(conn, read_only=False)
+    table_ident = Identifier(table_name) if isinstance(table_name, str) else table_name
+    key_name = as_identifier_str(key_col)
+    key_ident = Identifier(key_name)
+    id_name = as_identifier_str(id_col)
+    id_ident = Identifier(id_name)
+    tz = _resolve_time_zone(time_zone)
+    resolved_now = _resolve_now(now, tz=tz)
+
+    # Plan everything up front (this also materializes generators and reports
+    # bad update sets before the first statement is sent).
+    planned: list[tuple[_psycopg_sql.Composed, list]] = []
+    planned_keys: list = []
+    for index, update_set in enumerate(updates):
+        pairs = _normalize_updates(update_set)
+        key_values = [v for k, v in pairs if k == key_name]
+        if not key_values:
+            raise ValueError(
+                f"updates[{index}] does not contain the key column {key_name!r}"
+            )
+        key_value = key_values[-1]
+        set_pairs = [(k, v) for k, v in pairs if k != key_name]
+        if not set_pairs:
+            _LOGGER.debug(
+                "Skip UPDATE %s for %s=%r: no columns to set",
+                table_name,
+                key_name,
+                key_value,
+            )
+            continue
+        if touch is not False and all(k != "updated_at" for k, _ in set_pairs):
+            set_pairs.append(("updated_at", resolved_now))
+        assignments: list[_psycopg_sql.Composed] = []
+        params: list = []
+        for column, value in set_pairs:
+            if isinstance(value, dict):
+                set_items, delete_keys = _split_jsonb_value(
+                    value,
+                    where=f"updates[{index}][{column!r}]",
+                    now=resolved_now,
+                    tz=tz,
+                )
+                # Partial JSONB update, merged by the database: delete the
+                # DELETE-marked keys, then overlay the addressed values; a
+                # stored NULL counts as the empty dict. Unaddressed keys stay.
+                assignments.append(
+                    SQL(
+                        "{col} = (COALESCE({col}, '{{}}'::jsonb) - "
+                        "{del_ph}::text[]) || {set_ph}::jsonb"
+                    ).format(
+                        col=Identifier(column),
+                        del_ph=Placeholder(),
+                        set_ph=Placeholder(),
+                    )
+                )
+                params.append(delete_keys)
+                params.append(Jsonb(set_items))
+            else:
+                assignments.append(
+                    SQL("{} = {}").format(Identifier(column), Placeholder())
+                )
+                params.append(_resolved_scalar(value, resolved_now, tz))
+        query = SQL(
+            "UPDATE {table} SET {assignments} WHERE {key_col} = {key_val} "
+            "RETURNING {id_col}"
+        ).format(
+            table=table_ident,
+            assignments=SQL(", ").join(assignments),
+            key_col=key_ident,
+            key_val=Placeholder(),
+            id_col=id_ident,
+        )
+        params.append(key_value)
+        planned.append((query, params))
+        planned_keys.append(key_value)
+
+    result = UpsertResult(id_col=id_name)
+    if not planned:
+        return result
+
+    # One cursor per statement: in pipeline mode each cursor keeps its own
+    # result, so the rowcounts can be read after the pipeline has synced.
+    cursors = []
+    with connection.pipeline():
+        for query, params in planned:
+            cursor = connection.cursor()
+            cursor.execute(query, params)
+            cursors.append(cursor)
+
+    missed = []
+    for key_value, cursor in zip(planned_keys, cursors):
+        returned = cursor.fetchall()
+        if returned:
+            result.updated_ids.extend(row[0] for row in returned)
+        else:
+            missed.append(key_value)
+        cursor.close()
+    if missed:
+        shown = ", ".join(repr(m) for m in missed[:10])
+        more = ", ..." if len(missed) > 10 else ""
+        raise ValueError(
+            f"pg_table_updatemany: {len(missed)} update(s) hit no row in "
+            f"{table_name} ({key_name} = {shown}{more})"
+        )
     return result
 
 

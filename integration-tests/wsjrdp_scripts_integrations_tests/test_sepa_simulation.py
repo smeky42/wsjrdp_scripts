@@ -12,7 +12,7 @@ import wsjrdp2027
 
 
 _DAY_OF_MONTH = 5
-_FIRST_COLLECTION_DATE = _datetime.date(2026, 2, _DAY_OF_MONTH)
+_FIRST_COLLECTION_DATE = _datetime.date(2026, 9, _DAY_OF_MONTH)
 _CUSTOM_PRE_NOTIFICATION_QUERY = """---
 where:
   id: [4, 141, 203, 204]

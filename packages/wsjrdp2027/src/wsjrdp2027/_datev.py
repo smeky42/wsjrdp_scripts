@@ -17,6 +17,67 @@ if _typing.TYPE_CHECKING:
 _LOGGER = _logging.getLogger(__name__)
 
 
+# --------------------------------------------------------------------------
+# Account type (DATEV "Kontenart") classification
+# --------------------------------------------------------------------------
+# Short enum-style account-type codes stored on datev_accounts and copied onto
+# each booking; they represent the DATEV "Kontenart" of an account. PLACEHOLDER:
+# derived purely from the (mapped, SKR42) account number until a real DATEV
+# account export carrying the actual Kontenart is available.
+ACCOUNT_TYPE_BANK = "BANK"  # Bank-/Kassenkonten (Aktiva), z. B. 18xxx
+ACCOUNT_TYPE_TRANSIT = "TRANSIT"  # Geldtransit (Aktiva), z. B. 13xxx
+ACCOUNT_TYPE_CLEARING = "CLEARING"  # Verrechnungskonten, z. B. 36xxx
+ACCOUNT_TYPE_LIABILITY = "LIABILITY"  # Verbindlichkeiten, z. B. 33xxx/37xxx
+ACCOUNT_TYPE_CREDITOR = "CREDITOR"  # Kreditoren / Lieferanten (Personenkonten), 700xxx
+ACCOUNT_TYPE_INCOME = "INCOME"  # Ertraege / Einnahmen, z. B. 4xxxx, 71000
+ACCOUNT_TYPE_EXPENSE = "EXPENSE"  # Aufwendungen, z. B. 6xxxx
+ACCOUNT_TYPE_EQUITY = "EQUITY"  # Eigenkapital / Saldenvortrag, z. B. 9xxxx
+ACCOUNT_TYPE_UNKNOWN = "UNKNOWN"
+
+# Account types whose bookings are P&L (GuV) postings. For these the stored
+# amount sign is flipped relative to the account-centric (Soll +, Haben -) value,
+# so that income comes out positive and expense negative -- i.e. incoming money
+# is positive and outgoing money is negative across every account type.
+PROFIT_LOSS_ACCOUNT_TYPES = frozenset({ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE})
+
+
+def account_type_for_account_number(number: str | None) -> str:
+    """Classify a (mapped, SKR42) DATEV account number into a short account-type
+    code (the DATEV "Kontenart"). Placeholder number-based mapping until a real
+    DATEV account export is available; see the ``ACCOUNT_TYPE_*`` constants."""
+    if not number:
+        return ACCOUNT_TYPE_UNKNOWN
+    n = str(number).strip()
+    if len(n) == 6 and n.startswith("7"):
+        return ACCOUNT_TYPE_CREDITOR  # 700xxx personal accounts (Kreditoren)
+    if len(n) == 5:
+        if n.startswith("13"):
+            return ACCOUNT_TYPE_TRANSIT
+        if n.startswith("18"):
+            return ACCOUNT_TYPE_BANK
+        if n.startswith("36"):
+            return ACCOUNT_TYPE_CLEARING
+        first = n[0]
+        if first == "3":  # 33xxx, 37xxx Verbindlichkeiten
+            return ACCOUNT_TYPE_LIABILITY
+        if first == "4":  # 4xxxx Ertraege/Einnahmen
+            return ACCOUNT_TYPE_INCOME
+        if first == "6":  # 6xxxx Aufwendungen
+            return ACCOUNT_TYPE_EXPENSE
+        if first == "7":  # 71000 Zinsertraege etc.
+            return ACCOUNT_TYPE_INCOME
+        if first == "9":  # 90000 Saldenvortrag
+            return ACCOUNT_TYPE_EQUITY
+    return ACCOUNT_TYPE_UNKNOWN
+
+
+def account_type_is_profit_loss(account_type: str | None) -> bool:
+    """Whether an account type (Kontenart) is a P&L (GuV) account (income/
+    expense), i.e. one whose sign is flipped so income is positive and expense
+    negative."""
+    return account_type in PROFIT_LOSS_ACCOUNT_TYPES
+
+
 _DATEV_EXTF_BUCHUNGSSTAPEL_COLUMNS = [
     "Umsatz (ohne Soll/Haben-Kz)",
     "Soll/Haben-Kennzeichen",
@@ -282,8 +343,21 @@ _EXTF_TYPES = {
 
 class DatevExtfWriter:
     def __init__(
-        self, file, *, fieldnames: _collections_abc.Iterable[str] | None = None
+        self,
+        file,
+        *,
+        fieldnames: _collections_abc.Iterable[str] | None = None,
+        type_overrides: dict[str, str] | None = None,
     ) -> None:
+        """CSV writer for the 125-column DATEV Buchungsstapel record format.
+
+        `type_overrides` maps field names to a serialization type ("Text",
+        "Zahl", ...) overriding _EXTF_TYPES for this writer only. Used by the
+        fake-DTVF generator to match DATEV's own serialization exactly, where
+        it deviates from our defaults (observed on the real 2026 export:
+        "Beteiligtennummer" is quoted-empty i.e. Text, "Generalumkehr (GU)" is
+        an unquoted number).
+        """
         if fieldnames is None:
             fieldnames = _DATEV_EXTF_BUCHUNGSSTAPEL_COLUMNS
         else:
@@ -291,9 +365,15 @@ class DatevExtfWriter:
 
         self._file = file
         self._fieldnames = fieldnames
+        self._types = dict(_EXTF_TYPES)
+        if type_overrides:
+            unknown = [f for f in type_overrides if f not in self._types]
+            if unknown:
+                raise RuntimeError(f"Unknown fields in type_overrides: {unknown}")
+            self._types.update(type_overrides)
         unsupported_fields = []
         for spalte in self._fieldnames:
-            if spalte not in _EXTF_TYPES:
+            if spalte not in self._types:
                 unsupported_fields.append(spalte)
         if unsupported_fields:
             raise RuntimeError(
@@ -301,7 +381,7 @@ class DatevExtfWriter:
             )
 
     def _serialize_field(self, field_name: str, value) -> str:
-        field_type = _EXTF_TYPES[field_name]
+        field_type = self._types[field_name]
         if value is None:
             value = ""
         if field_type == "Text":
@@ -326,6 +406,93 @@ class DatevExtfWriter:
         self._file.write("\n")
 
 
+def win1252_matches_stored(datev: str | None, stored: str | None) -> bool:
+    """Whether a text from DATEV still denotes the value we already store.
+
+    DATEV exports are CP1252 (see doc/fin/datev_cp1252.md in the
+    hitobito_wsjrdp_2027 wagon), so an unchanged value may reach us reduced to
+    its base characters. The check is **deliberately asymmetric**: the incoming
+    DATEV text is compared against the stored text *and* against its
+    transliteration, but never the other way round.
+
+    >>> win1252_matches_stored("Gdansk", "Gdańsk")   # unchanged, just reduced
+    True
+    >>> win1252_matches_stored("Gdańsk", "Gdańsk")   # unchanged, full Unicode
+    True
+    >>> win1252_matches_stored("Danzig", "Gdańsk")   # genuinely renamed
+    False
+
+    The asymmetry is the point: should DATEV ever export the full character set
+    (an xlsx or a UTF-8 Buchungsstapel), an incoming ``Gdańsk`` against a stored
+    ``Gdansk`` counts as a CHANGE, so the import upgrades our value instead of
+    silently keeping the poorer one.
+
+    >>> win1252_matches_stored("Gdańsk", "Gdansk")   # richer than what we hold
+    False
+
+    ``None`` matches only ``None``.
+    """
+    if datev == stored:
+        return True
+    if datev is None or stored is None:
+        return False
+    return datev == to_win1252_compatible(stored)
+
+
+def to_win1252_compatible(string: str) -> str:
+    """Transliterate `string` the way DATEV does when it writes CP1252 exports.
+
+    Characters representable in CP1252 (umlauts, accents, ...) pass through;
+    everything else is reduced to its base character (Polish ``ą`` -> ``a``,
+    ``ń`` -> ``n``, ...). Besides producing DATEV-safe output this is the
+    canonical form for COMPARING a value from a DATEV export against a Unicode
+    value already stored in the database -- see doc/fin/datev_cp1252.md in the
+    hitobito_wsjrdp_2027 wagon.
+    """
+    return _to_win1252_compatible(string)
+
+
+# Latin letters whose base form NFD does NOT expose (the diacritic is part of
+# the glyph, not a combining mark), so they would otherwise degrade to "?".
+_WIN1252_FALLBACKS = {
+    "\u0141": "L", "\u0142": "l",  # L/l with stroke (Polish)
+    "\u0110": "D", "\u0111": "d",  # D/d with stroke
+    "\u00d8": "O", "\u00f8": "o",  # O/o with stroke (Nordic)
+    "\u0126": "H", "\u0127": "h",  # H/h with stroke
+    "\u0166": "T", "\u0167": "t",  # T/t with stroke
+    "\u0131": "i",                  # dotless i (Turkish)
+    "\u1e9e": "SS",                 # capital sharp s (German); ss.upper() convention
+}
+
+
+def win1252_equivalent(left: str | None, right: str | None) -> bool:
+    """Whether two texts denote the same value, allowing for CP1252 transliteration.
+
+    DATEV exports are CP1252 (see doc/fin/datev_cp1252.md in the
+    hitobito_wsjrdp_2027 wagon), so the same value may reach us either in full
+    Unicode or reduced to its base characters. Two strings are considered equal
+    when they are equal outright, or when they are equal after transliterating
+    BOTH sides -- which makes the check independent of which side happens to
+    carry the richer encoding:
+
+    >>> win1252_equivalent("Gdansk", "Gdansk")
+    True
+    >>> win1252_equivalent("Gdańsk", "Gdansk")   # stored Unicode vs CP1252 export
+    True
+    >>> win1252_equivalent("Gdansk", "Gdańsk")   # and the other way round
+    True
+    >>> win1252_equivalent("Gdańsk", "Danzig")
+    False
+
+    ``None`` equals only ``None``.
+    """
+    if left == right:
+        return True
+    if left is None or right is None:
+        return False
+    return to_win1252_compatible(left) == to_win1252_compatible(right)
+
+
 def _to_win1252_compatible(string: str) -> str:
     import unicodedata
 
@@ -340,8 +507,10 @@ def _to_win1252_compatible(string: str) -> str:
             try:
                 base_char.encode("cp1252")
             except:  # noqa: E722
-                _LOGGER.error(f"Cannot encode {base_char!r}")
-                base_char = "?"
+                base_char = _WIN1252_FALLBACKS.get(char, "")
+                if not base_char:
+                    _LOGGER.error(f"Cannot encode {char!r}")
+                    base_char = "?"
             result.append(base_char)
     return "".join(result)
 
@@ -358,6 +527,76 @@ def _prepare_description(
             max_str_length -= 1
             string = string[:max_str_length]
     return string
+
+
+def build_buchungsstapel_header_line(
+    *,
+    kennzeichen: str = "EXTF",
+    erzeugt_am: _datetime.datetime,
+    herkunft: str = "",
+    exportiert_von: str = "wsjrdp",
+    beraternummer: int | str,
+    mandantennummer: int | str,
+    wj_beginn: _datetime.date,
+    sachkontenlaenge: int,
+    datum_von: _datetime.date,
+    datum_bis: _datetime.date,
+    bezeichnung: str,
+    diktatkuerzel: str = "",
+    buchungstyp: int = 1,
+    rechnungslegungszweck: int = 0,
+    festschreibung: int = 0,
+    wkz: str = "EUR",
+    derivatskennzeichen: str = "",
+    reserviert_26: int | str | None = None,
+    sachkontenrahmen: str,
+    branchenloesung_id: int | None = None,
+) -> str:
+    """Metadata header (line 1) of a DATEV-Format "Buchungsstapel" file.
+
+    Field names and positions follow the official format description
+    (https://developer.datev.de/de/file-format/details/datev-format/format-description/header),
+    Versionsnummer 700 / Formatversion 13. Returns the line WITHOUT a trailing
+    newline. `kennzeichen` is "EXTF" for files we hand to DATEV for import and
+    "DTVF" when mimicking a DATEV-generated export (fake test fixtures).
+    `derivatskennzeichen` (position 24) and `reserviert_26` (position 26) are
+    officially empty/reserved, but DATEV's own exporter fills them ("MP" and a
+    per-batch number); they are parameters so fakes can mirror that.
+    """
+    datev_header = [
+        f'"{kennzeichen}"',  # 1 - Kennzeichen
+        700,  # 2 - Versionsnummer
+        21,  # 3 - Formatkategorie (21 = Buchungsstapel)
+        '"Buchungsstapel"',  # 4 - Formatname
+        13,  # 5 - Formatversion
+        erzeugt_am.strftime("%Y%m%d%H%M%S%f")[:-3],  # 6 - Erzeugt am YYYYMMDDHHMMSSFFF
+        None,  # 7 - Importiert (Leerfeld)
+        f'"{herkunft}"',  # 8 - Herkunft
+        f'"{exportiert_von}"',  # 9 - Exportiert von
+        '""',  # 10 - Importiert von
+        beraternummer,  # 11 - Beraternummer
+        mandantennummer,  # 12 - Mandantennummer
+        wj_beginn.strftime("%Y%m%d"),  # 13 - WJ-Beginn YYYYMMDD
+        sachkontenlaenge,  # 14 - Sachkontenlänge
+        datum_von.strftime("%Y%m%d"),  # 15 - Datum von
+        datum_bis.strftime("%Y%m%d"),  # 16 - Datum bis
+        f'"{bezeichnung}"',  # 17 - Bezeichnung
+        f'"{diktatkuerzel}"',  # 18 - Diktatkürzel
+        buchungstyp,  # 19 - Buchungstyp (1 = Finanzbuchführung)
+        rechnungslegungszweck,  # 20 - Rechnungslegungszweck
+        festschreibung,  # 21 - Festschreibung
+        f'"{wkz}"',  # 22 - WKZ
+        None,  # 23 - Reserviert
+        f'"{derivatskennzeichen}"',  # 24 - Derivatskennzeichen
+        None,  # 25 - Reserviert
+        reserviert_26,  # 26 - Reserviert (DATEV: per-batch number)
+        f'"{sachkontenrahmen}"',  # 27 - Sachkontenrahmen
+        branchenloesung_id,  # 28 - ID der Branchenlösung
+        None,  # 29 - Reserviert
+        '""',  # 30 - Reserviert
+        '""',  # 31 - Anwendungsinformation
+    ]
+    return ";".join(str(s if s is not None else "") for s in datev_header)
 
 
 def write_datev_csv_for_pain_id(
@@ -442,46 +681,21 @@ OFFSET {offset or 0}
 
     with open(csv_filename, "w", encoding=csv_file_encoding, newline="\r\n") as csvfile:
         d_writer = DatevExtfWriter(csvfile)
-        datev_header = [
-            '"EXTF"',  # 1 - Kennzeichen
-            700,  # 2 - Versionsnummer
-            21,  # 3 - Formatkategorie
-            '"Buchungsstapel"',  # 4 - Formatname
-            13,  # 5 - Formatversion
-            now.strftime("%Y%m%d%H%M%S%f")[:-3],  # 6 - Erzeugt am YYYYMMDDHHMMSSFFF
-            # 20240130140440439
-            # 20260220024353259
-            None,  # 7 - Importiert
-            '""',  # 8 - Herkunft
-            '"wsjrdp"',  # 9 - Exportiert von
-            '""',  # 10 - Importiert von
-            beraternummer,  # 11 - Beraternummer
-            mandantennummer,  # 12 - Mandantennummer
-            collection_date.replace(month=1, day=1).strftime(
-                "%Y%m%d"
-            ),  # 13 - WJ-Beginn YYYYMMDD
-            sachkontenlaenge,  # 14 - Sachkontenlänge
-            collection_date.strftime("%Y%m%d"),  # 15 - Datum von
-            collection_date.strftime("%Y%m%d"),  # 16 - Datum bis
-            f'"Sammeleinzug {collection_date.strftime("%Y-%m")}"',  # 17 - Bezeichnung
-            '""',  # 18 - Diktatkürzel
-            1,  # 19 - Buchungstyp
-            0,  # 20 - Rechungslegungszweck
-            0,  # 21 - Festschreibung
-            '"EUR"',  # 22 - WKZ
-            None,  # 23 - Reserviert
-            '""',  # 24 - Derivatskennzeichen
-            None,  # 25 - Reserviert
-            None,  # 26 - Reserviert
-            f'"{sachkontenrahmen}"',  # 27 - Sachkontenrahmen
-            None,  # 28 - ID der Branchenlösung
-            None,  # 29 - Reserviert
-            '""',  # 30 - Reserviert
-            '""',  # 31 - Anwendungsinformation
-        ]
-        csvfile.write(
-            ";".join(str(s if s is not None else "") for s in datev_header) + "\n"
+        header_line = build_buchungsstapel_header_line(
+            kennzeichen="EXTF",
+            erzeugt_am=now,
+            herkunft="",
+            exportiert_von="wsjrdp",
+            beraternummer=beraternummer,
+            mandantennummer=mandantennummer,
+            wj_beginn=collection_date.replace(month=1, day=1),
+            sachkontenlaenge=sachkontenlaenge,
+            datum_von=collection_date,
+            datum_bis=collection_date,
+            bezeichnung=f"Sammeleinzug {collection_date.strftime('%Y-%m')}",
+            sachkontenrahmen=sachkontenrahmen,
         )
+        csvfile.write(header_line + "\n")
         d_writer.writeheader()
         sum_cents = 0
         for _, row in df.iterrows():
