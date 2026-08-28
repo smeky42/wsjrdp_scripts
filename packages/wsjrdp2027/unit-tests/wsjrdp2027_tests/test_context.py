@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections as _collections
 import gc
 import logging
 import pathlib as _pathlib
@@ -71,6 +72,99 @@ class Test_Context_ContextManager:
 
             assert get_thread_local_ctx() is ctx2
         assert get_thread_local_ctx() is outer
+
+
+class FakeResource:
+    """Fake resource with just a ``close()`` method; counts every operation."""
+
+    def __init__(self):
+        self.calls = _collections.Counter()
+
+    @property
+    def closed(self) -> bool:
+        return self.calls["close"] > 0
+
+    def close(self):
+        self.calls["close"] += 1
+
+
+class FakeCmResource(FakeResource):
+    """Fake resource that is ALSO a context manager. ``__exit__`` delegates to
+    ``close()`` so ``closed`` and the call counts read the same for both
+    classes."""
+
+    def __enter__(self):
+        self.calls["enter"] += 1
+        return self
+
+    def __exit__(self, *exc_info):
+        self.calls["exit"] += 1
+        self.close()
+
+
+@pytest.mark.parametrize("resource_class", [FakeResource, FakeCmResource])
+class Test_Context_Resources:
+    @pytest.fixture
+    def ctx(self, wsjrdp_config):
+        return WsjRdpContext(wsjrdp_config, parse_arguments=False, setup_logging=False)
+
+    @pytest.fixture
+    def make(self, ctx, resource_class):
+        """Create/fetch a fake resource through the context's resource cache."""
+
+        def make(key="fake", force_new=False):
+            return ctx._get_or_create_resource(
+                key,
+                create=lambda **kwargs: resource_class(),
+                force_new=force_new,
+                audithook=False,
+            )
+
+        return make
+
+    def test_cache_hit_and_close_once(self, ctx, make):
+        with ctx:
+            res = make()
+            assert make() is res  # cache hit: same instance, no second create
+            # The CM variant was entered via its resource exit stack.
+            assert res.calls["enter"] == (1 if isinstance(res, FakeCmResource) else 0)
+            assert not res.closed
+        # The close is reachable twice (resource exit stack + level exit
+        # stack), but ExitStack.close() is idempotent: closed exactly ONCE.
+        assert res.calls["close"] == 1
+
+    def test_inner_level_resource_dies_with_its_level(self, ctx, make):
+        with ctx:
+            outer = make("outer")
+            with ctx:
+                assert make("outer") is outer  # lookup falls through the layers
+                inner = make("inner")  # new key -> created in the INNER layer
+            assert inner.closed  # ...and therefore closed with the inner level
+            assert not outer.closed  # the outer resource survives it
+            assert make("outer") is outer  # and is still cached
+        assert outer.calls["close"] == 1
+
+    def test_force_new_same_level_closes_predecessor_immediately(self, ctx, make):
+        with ctx:
+            first = make()
+            second = make(force_new=True)
+            assert second is not first
+            assert first.closed  # replaced within its OWN level: closed early
+            assert make() is second  # the cache serves the replacement
+        # Early close + level exit still close each resource exactly once.
+        assert first.calls["close"] == 1
+        assert second.calls["close"] == 1
+
+    def test_force_new_across_levels_only_shadows(self, ctx, make):
+        with ctx:
+            outer = make()
+            with ctx:
+                inner = make(force_new=True)
+                assert not outer.closed  # outer level's resource is untouched
+                assert make() is inner  # shadowed for the inner level
+            assert inner.closed
+            assert make() is outer  # the outer entry is visible and alive again
+        assert outer.calls["close"] == 1
 
 
 class Test_find_config_file_paths:

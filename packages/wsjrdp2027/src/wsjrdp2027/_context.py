@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections as _collections
 import contextlib as _contextlib
 import contextvars as _contextvars
 import dataclasses as _dataclasses
@@ -329,6 +330,22 @@ class WsjRdpContextKind(_enum.StrEnum):
         return f"{self.__class__.__qualname__}.{self.name}"
 
 
+@_dataclasses.dataclass
+class _ResourceEntry:
+    """A cached context resource plus the exit stack owning its cleanup.
+
+    The per-resource exit stack makes closing idempotent
+    (``ExitStack.close()`` is a no-op the second time), so a resource can be
+    closed early (e.g. when a ``force_new`` replacement drops it) without
+    conflicting with the close registered on the context level's exit
+    stack."""
+
+    resource: _typing.Any
+    exit_stack: _contextlib.ExitStack = _dataclasses.field(
+        default_factory=_contextlib.ExitStack
+    )
+
+
 class WsjRdpContext:
     """Context (prod or dev?, hosts, ports, ...) of a script execution."""
 
@@ -347,7 +364,12 @@ class WsjRdpContext:
     _skip_db_updates: bool | None = None
     _parsed_args: _argparse.Namespace | None = None
     _approved_categories: set[str] = _typing.cast(set, frozenset([]))
-    _resources: dict[str, _typing.Any]
+    # Layered resource cache: one dict per entered context level, innermost
+    # FIRST. Reads fall through all layers; writes go to the innermost layer
+    # (maps[0] of the ChainMap). Leaving a level drops its whole dict. The
+    # values are _ResourceEntry objects (resource + its own exit stack).
+    __resource_dicts: list[dict[str, _ResourceEntry]]
+    _resources: _collections.ChainMap[str, _ResourceEntry]
     _console_confirm_cache: dict
     _output_files: list[tuple[str, str | _pathlib.Path]]
     _output_files_reported: bool = False
@@ -410,7 +432,8 @@ class WsjRdpContext:
         from . import _util
 
         self.__exit_stacks = [_contextlib.ExitStack()]
-        self._resources = {}
+        self.__resource_dicts = [{}]
+        self._resources = _collections.ChainMap(*self.__resource_dicts)
         self._console_confirm_cache = {}
         self._approved_categories = set()
 
@@ -836,7 +859,38 @@ class WsjRdpContext:
         self.__exit_stacks.append(exit_stack)
         reset_token = set_thread_local_ctx(self)
         exit_stack.enter_context(reset_token)
+
+        # New resource layer for this context level
+        resources: dict[str, _ResourceEntry] = {}
+        self.__resource_dicts.insert(0, resources)
+        self._resources = _collections.ChainMap(*self.__resource_dicts)
+
+        def restore_resources():
+            # Drop `resources` by identity, which is idempotent and
+            # independent of the insertion order.
+            self.__resource_dicts[:] = [
+                d for d in self.__resource_dicts if d is not resources
+            ]
+            self._resources = _collections.ChainMap(*self.__resource_dicts)
+            self.__cleanup_resources(resources)
+
+        # Note: We register `restore_resources()` FIRST on `exit_stack`, so it runs LAST, i.e., all
+        # registered cleanup for resources has already run.
+        exit_stack.callback(restore_resources)
         return self
+
+    def __cleanup_resources(self, resources: dict[str, _ResourceEntry]) -> None:
+        """Cleanup hook for the resources created in one context level.
+
+        Called when the level is left, AFTER its exit stack has closed the
+        context-manager resources themselves. For now it only logs -- this is
+        the place where explicit resource cleanup will live.
+        """
+        self._logger.debug(
+            "Cleanup %d resource(s) of this context level: %s",
+            len(resources),
+            ", ".join(resources) or "-",
+        )
 
     def __report_output(self):
         log_level = _logging.INFO
@@ -980,9 +1034,9 @@ class WsjRdpContext:
 
     def _get_resource_for_keys(self, keys: _typing.Iterable[str]):
         for key in keys:
-            old = self._resources.get(key)
-            if old is not None:
-                return old
+            entry = self._resources.get(key)
+            if entry is not None:
+                return entry.resource
 
     def _get_or_create_resource(
         self,
@@ -994,38 +1048,54 @@ class WsjRdpContext:
         audithook: _collections_abc.Callable | bool | None = None,
         create_kwargs: dict | None = None,
     ):
-        old = self._resources.get(key)
-        if force_new or old is None:
+        old_entry_this_layer = self._resources.maps[0].get(key)
+        old_entry = (
+            self._resources.get(key)
+            if old_entry_this_layer is None
+            else old_entry_this_layer
+        )
+        if force_new or old_entry is None:
+            # The level's exit stack closes the entry. As
+            # ExitStack.close() is idempotent, we can close a resource
+            # exit stack early, e.g., when force_new enforces a
+            # replacement)
+            if old_entry_this_layer is not None:
+                self._logger.debug(
+                    f"Close resource exit stack for {old_entry_this_layer.resource} "
+                    f"(creating new resource due to force_new={force_new}"
+                )
+                old_entry_this_layer.exit_stack.close()
             if dry_run is None:
                 dry_run = self.dry_run
             if audithook is None or audithook is True:
                 audithook = self.create_audithook(key)
             elif audithook is False:
                 audithook = None
-            new = create(dry_run=dry_run, audithook=audithook, **(create_kwargs or {}))
-            self.logger.info(f"Create new {key} instance (dry_run={dry_run}): {new}")
+            new_resource = create(
+                dry_run=dry_run, audithook=audithook, **(create_kwargs or {})
+            )
+            self.logger.info(
+                f"Create new {key} instance (dry_run={dry_run}): {new_resource}"
+            )
 
-            if isinstance(new, _contextlib.AbstractContextManager):
-                self._logger.debug(f"Add {new} to current exit stack")
-                self._exit_stack.enter_context(new)
+            new_entry = _ResourceEntry(resource=new_resource)
+            if isinstance(new_resource, _contextlib.AbstractContextManager):
+                self._logger.debug(f"Enter {new_resource} into its resource exit stack")
+                new_entry.exit_stack.enter_context(new_resource)
+            elif callable(close_resource := getattr(new_resource, "close", None)):
+                self._logger.debug(
+                    f"Add closing callback for {new_resource}.close() to its resource exit stack"
+                )
+                new_entry.exit_stack.callback(close_resource)
             else:
                 self._logger.debug(
-                    f"Add closing callback for {new} to current exit stack"
+                    f"Resource {new_resource} is neither a context manager nor has a .close method, no cleanup registered"
                 )
-
-                def callback():
-                    if callable(close := getattr(new, "close", None)):
-                        close()
-                    self._resources[key] = old
-
-                self._exit_stack.callback(callback)
-            self._resources[key] = new
-            return new
+            self._exit_stack.callback(new_entry.exit_stack.close)
+            self._resources[key] = new_entry
+            return new_resource
         else:
-            # self.logger.debug(
-            #     f"Use existing {key} instance (dry_run={getattr(old, 'dry_run', '???')}): {old}"
-            # )
-            return old
+            return old_entry.resource
 
     def keycloak(
         self, *, force_new: bool = False, dry_run: bool | None = None
