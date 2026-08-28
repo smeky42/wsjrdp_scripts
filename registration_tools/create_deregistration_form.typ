@@ -63,13 +63,24 @@ zum 26. World Scout Jamboree 2027 in Polen von
 
 
 #v(.6em)
-#if has-contractual-compensation-amount [
-    #set text(fill: gray)
-    #(if contract_names.len() == 1 [Mir] else [Uns])
-    ist bekannt, dass dem #rdp laut Abschnitt 7.2 der
-    Teilname- und Reisebedinungen eine Entschädigung in Höhe von 
-    #contractual_compensation_display
-    zusteht.]
+#if refund_amount_cents == none [
+    Falls es eine Rückzahlung gibt, soll diese auf folgendes Konto überwiesen werden: #konto-auszahlung
+
+    #v(.6em)
+    Ausstehende Beiträge werden wir auf das Jamboree-Konto überweisen: #konto-einzahlung
+] else if missing_amount_cents > 0 [
+    Den ausstehenden Betrag von #missing_amount_display
+    #(if contract_names.len() == 1 [werde ich] else [werden wir]) auf das Jamboree-Konto überweisen: #konto-einzahlung
+] else [
+    Die Rückzahlung von
+    #refund_amount_display
+    soll auf folgendes Konto überwiesen werden: #konto-auszahlung]
+
+
+
+#v(.6em)
+Bisher #(if contract_names.len() == 1 [habe ich] else [haben wir]) Teilnahmebeiträge
+in Höhe von #amount_paid_display bezahlt.
 
 #if actual_compensation_cents != none and contractual_compensation_cents != none and (actual_compensation_cents < contractual_compensation_cents) [
   #(if contract_names.len() == 1 [Ich nehme] else [Wir nehmen]) das Angebot an,
@@ -83,22 +94,13 @@ zum 26. World Scout Jamboree 2027 in Polen von
   zu leisten.
 ]
 
-Bisher #(if contract_names.len() == 1 [habe ich] else [haben wir]) Teilnahmebeiträge
-in Höhe von #amount_paid_display bezahlt.
-
-#v(.6em)
-#if refund_amount_cents == none [
-    Falls es eine Rückzahlung gibt, soll diese auf folgendes Konto überwiesen werden: #konto-auszahlung
-
-    #v(.6em)
-    Ausstehende Beiträge werden wir auf das Jamboree-Konto überweisen: #konto-einzahlung
-] else if missing_amount_cents > 0 [
-    Den ausstehenden Betrag von #missing_amount_display
-    #(if contract_names.len() == 1 [werde ich] else [werden wir]) auf das Jamboree-Konto überweisen: #konto-einzahlung
-] else [
-    Die Rückzahlung von
-    #refund_amount_display
-    soll auf folgendes Konto überwiesen werden: #konto-auszahlung]
+#if has-contractual-compensation-amount [
+    #set text(fill: gray)
+    #(if contract_names.len() == 1 [Mir] else [Uns])
+    ist bekannt, dass dem #rdp laut Abschnitt 7.2 der
+    Teilname- und Reisebedinungen eine Entschädigung in Höhe von
+    #contractual_compensation_display
+    zusteht.]
 
 
 
