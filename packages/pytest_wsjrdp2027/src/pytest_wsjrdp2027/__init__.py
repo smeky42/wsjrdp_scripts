@@ -10,6 +10,9 @@ from .fixtures import (
     forbid_to_connection as forbid_to_connection,
     mock_execute_query_fetchall_dicts as mock_execute_query_fetchall_dicts,
 )
+from .integration_testing import (
+    INTEGRATION_TESTING_DB_NAME as INTEGRATION_TESTING_DB_NAME,
+)
 
 
 _LOGGER = _logging.getLogger(__name__)

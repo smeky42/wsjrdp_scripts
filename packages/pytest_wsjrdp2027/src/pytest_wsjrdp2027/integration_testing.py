@@ -1,0 +1,1 @@
+INTEGRATION_TESTING_DB_NAME = "hitobito_wsjrdp_scripts_integration_testing"
