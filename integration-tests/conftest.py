@@ -35,6 +35,7 @@ def docker_cleanup():
 @pytest.fixture
 def ctx(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch):
     from wsjrdp2027 import WsjRdpContext
+    from wsjrdp2027._context import set_thread_local_ctx
 
     test_name = request.node.name
     out_dir = _OUT_DIR / test_name
@@ -51,7 +52,24 @@ def ctx(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch):
             argv=["app"],
         )
         wsjrdp_ctx.configure_log_file(out_dir / f"{test_name}.log")
-        yield wsjrdp_ctx
+        try:
+            yield wsjrdp_ctx
+        finally:
+            set_thread_local_ctx(None)
+
+
+@pytest.fixture
+def integration_testing_ctx(ctx):
+    from pytest_wsjrdp2027 import INTEGRATION_TESTING_DB_NAME
+
+    ro_conn = ctx.hitobito_psycopg_connection(read_only=True)
+    dbname = ro_conn.execute("SELECT current_database()").fetchone()[0]
+    if dbname != INTEGRATION_TESTING_DB_NAME:
+        pytest.fail(
+            f"SAFETY STOP: connected to {dbname!r}, expected "
+            f"{INTEGRATION_TESTING_DB_NAME!r} -- refusing to write."
+        )
+    return ctx
 
 
 @pytest.fixture
