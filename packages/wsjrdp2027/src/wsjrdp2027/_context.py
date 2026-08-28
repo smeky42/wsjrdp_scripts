@@ -464,7 +464,6 @@ class WsjRdpContext:
             self._skip_email = skip_email
         if skip_db_updates is not None:
             self._skip_db_updates = skip_db_updates
-        set_thread_local_ctx_if_not_set(self)
 
     def __del__(self):
         """Clear this context.

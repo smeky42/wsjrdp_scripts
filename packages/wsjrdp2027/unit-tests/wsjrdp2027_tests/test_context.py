@@ -11,6 +11,7 @@ from wsjrdp2027._context import (
     WsjRdpContextConfig,
     _merge_dicts,
     get_thread_local_ctx,
+    set_thread_local_ctx,
 )
 
 
@@ -35,18 +36,41 @@ class Test_Context_ContextManager:
         captured_log = caplog.text
         assert "Finished context cleanup (level=0)" in captured_log
 
-    def test__get_current_ctx(self, wsjrdp_config):
+    def test__get_current_ctx__nothing_set(self, wsjrdp_config):
+        ctx = get_thread_local_ctx()
+        assert ctx is None
+
+    def test__get_current_ctx__explicitly_set(self, wsjrdp_config):
         ctx = WsjRdpContext(wsjrdp_config, parse_arguments=False, setup_logging=False)
+        assert get_thread_local_ctx() is None
+
+        set_thread_local_ctx(ctx)
+        assert get_thread_local_ctx() is ctx
+
+    def test__get_current_ctx__not_modified_by_creating(self, wsjrdp_config):
+        ctx = WsjRdpContext(wsjrdp_config, parse_arguments=False, setup_logging=False)
+        set_thread_local_ctx(ctx)
         assert get_thread_local_ctx() is ctx
 
         ctx2 = WsjRdpContext(wsjrdp_config, parse_arguments=False, setup_logging=False)
+        assert ctx2 is not ctx
         assert get_thread_local_ctx() is ctx
+
+    def test__get_current_ctx__set_by_ctx_cm(self, wsjrdp_config):
+        outer = WsjRdpContext(wsjrdp_config, parse_arguments=False, setup_logging=False)
+        ctx = WsjRdpContext(wsjrdp_config, parse_arguments=False, setup_logging=False)
+        ctx2 = WsjRdpContext(wsjrdp_config, parse_arguments=False, setup_logging=False)
+
+        set_thread_local_ctx(outer)
 
         with ctx2:
             assert get_thread_local_ctx() is ctx2
 
             with ctx:
                 assert get_thread_local_ctx() is ctx
+
+            assert get_thread_local_ctx() is ctx2
+        assert get_thread_local_ctx() is outer
 
 
 class Test_find_config_file_paths:
