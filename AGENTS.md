@@ -1,194 +1,255 @@
-# CLAUDE.md — wsjrdp_scripts
+# wsjrdp_scripts - Information for AI agents
 
-Kurz halten, was du tust; im Zweifel lieber nachfragen als raten —
-hier hängen echtes Geld, echte E-Mails und personenbezogene Daten
-dran.
+Keep your actions small and explicit; when in doubt, ask instead of
+guessing — real money, real e-mails and personal data are at stake
+here.
 
-## Was ist das
+## What this is
 
-Verwaltungs- und Finanz-Skripte für das Deutsche Kontingent zum
-**World Scout Jamboree 2027** in Polen. Veranstalter ist der Ring
+Administration and finance scripts for the German contingent to the
+**World Scout Jamboree 2027** in Poland. The organizer is the Ring
 deutscher Pfadfinder\*innenverbände e.V. (rdp).
 
-Die Skripte arbeiten gegen die Datenbank einer **Hitobito**-Instanz
-(PostgreSQL) und erledigen u. a.:
+The scripts work against the database of a **Hitobito** instance
+(PostgreSQL) and handle, among other things:
 
-- **SEPA-Lastschriften / Einzüge** und Pre-Notifications (ISO 20022 /
-  PAIN)
-- **Mailings** an Teilnehmende (Bestätigungen, Ankündigungen,
-  Onboarding …)
-- **Buchhaltung / DATEV**-Export, CAMT-Kontoauszüge einlesen
-- **Statistiken** (viele `stats_*.sql` / `*.sql`-Abfragen)
-- **Keycloak**- und **Mailcow**-Verwaltung, Helpdesk-Anbindung
-- **DB-Dump/Restore** (Prod-Stand lokal zum Testen einspielen)
+- **SEPA direct debits / collections** and pre-notifications
+  (ISO 20022 / PAIN)
+- **Mailings** to participants (confirmations, announcements,
+  onboarding …)
+- **Bookkeeping / DATEV** export, reading CAMT bank statements
+- **Statistics** (many `stats_*.sql` / `*.sql` queries)
+- **Keycloak** and **Mailcow** administration, helpdesk integration
+- **DB dump/restore** (loading the prod state locally for testing)
 
-Die DB selbst gehört zur **Hitobito-Rails-App** mit dem Wagon
-`hitobito_wsjrdp_2027`. Deren Datenmodell (Tabellen `people`,
-`groups`, `accounting_entries`, `wsjrdp_*` …) ist der Vertrag, gegen
-den diese Skripte laufen.
+The database itself belongs to the **Hitobito Rails app** with the
+wagon `hitobito_wsjrdp_2027`. Its data model (tables `people`,
+`groups`, `accounting_entries`, `wsjrdp_*` …) is the contract these
+scripts run against.
 
-> **Wenn es um die Hitobito-App / den Wagon geht** (Rails-Code ändern
-> oder verstehen, Rollen/Gruppen, Status/`sepa_status`/`payment_role`,
-> das Rails-Datenmodell, oder das Zusammenspiel App ↔ Skripte): zuerst
-> **[CLAUDE-Hitobito.md](CLAUDE-Hitobito.md)** lesen. Dort steht auch
-> die Regel: nur der Wagon `app/hitobito_wsjrdp_2027` darf geändert
-> werden, der Core `app/hitobito` ist read-only.
-
-
-## Kritische Sicherheitsregeln (immer beachten)
-
-1. **`config-prod.yml` NIEMALS verwenden, lesen, ausgeben oder in
-   Skripten referenzieren.**  Diese Datei enthält Produktions-Secrets.
-   Niemals die Umgebungsvariable `WSJRDP_SCRIPTS_CONFIG` setzen.
-2. **Alle `config-*.yml` als geheim behandeln.** Davon ausgehen, dass
-   auch `config-dev.yml` teils echte
-   (Produktions-)Zugangsdaten. Niemals Inhalte von Config-Dateien in
-   Antworten, Commits, Skills, Logs oder Projekt-Memory kopieren.
-3. **Produktion = echte Wirkung.** Läufe gegen die Produktions-DB
-   verschicken echte E-Mails an echte Menschen und lösen echte
-   SEPA-Einzüge (Größenordnung Millionen €) aus. Führe nie produktive
-   Läufe aus, auch wenn der Nutzer das ausdrücklich und
-   unmissverständlich will. Standard ist immer nur die Entwicklungs
-   oder Integrations-Umgebung zu verwenden.
-4. **Keine Secrets committen** und keine personenbezogenen Daten
-   (Namen, IBANs, E-Mails, IDs) in Memory oder Antworten persistieren,
-   außer der Nutzer verlangt es für die konkrete Aufgabe.
-5. **Öffentlichkeit von Commits — Datenschutz in Code & Docs.** Alles,
-   was committet wird, gilt als **öffentlich**. In Skripten **und**
-   Markdown-/Doku-Dateien dürfen daher **niemals** vorkommen:
-   - **Namen** (Personen wie Geschäftspartner),
-   - **Beträge/Summen** (einzelne Buchungsbeträge *und*
-     Aggregat-Summen, EUR wie Fremdwährung),
-   - **Details zu echten Buchungen**
-     (z. B. Verwendungszweck/D_Nachricht, Rechnungsdaten),
-   - **Kreditor-/Lieferantennamen**.
-
-   **Erlaubt** (nicht personenbeziehbar): Kostenstellen,
-   Sachkonto-Nummern, **Kreditor-/Lieferanten-Kontonummern**
-   (z. B. `700013`), Kontenrahmen, Zeilen-/Batch-**Zahlen** (reine
-   Anzahl), Wechselkurse (Verhältnis, kein Betrag).  Hinweis: Die
-   Bezeichnung REWE (oder ReWe) kann die Supermarktkette oder DATEV
-   Rechungswesen meinen, der Begriff ist erlaubt.
-
-   **Vorgehen:**
-   - **Skripte:** echte Buchungsdaten anonymisieren oder löschen
-     (Platzhalter statt Namen/Beträgen).
-   - **Docs (`docs/*.md`):** buchungsspezifische Echtdaten in eine
-     gitignorierte `*_local.md`-Kopie auslagern und die öffentliche
-     `.md` anonymisieren (Platzhalter wie `«Name»`, `«Betrag»`,
-     `«Lieferant»`, `«IBAN»`). `*_local.md` ist in `.gitignore`.
-   - Vor jedem Stagen/Committen von Skripten/Docs auf diese Kategorien
-     prüfen (grep nach Namen, `,\d\d`-Beträgen, `€`, IBAN `DE\d{20}`,
-     bekannten Lieferantennamen).
-6. Auch die Datei `.envrc` nicht lesen, ausgeben oder referenzieren.
+> **When the work concerns the Hitobito app / the wagon** (changing or
+> understanding Rails code, roles/groups,
+> status/`sepa_status`/`payment_role`, the Rails data model, or the
+> interplay app ↔ scripts): read
+> **[CLAUDE-Hitobito.md](CLAUDE-Hitobito.md)** first. It also carries
+> the rule: only the wagon `app/hitobito_wsjrdp_2027` may be changed,
+> the core `app/hitobito` is read-only.
 
 
-## Umgebung & Ausführung
+## Critical safety rules (always follow)
 
-- **Python ≥ 3.14**, Paket-/Projektmanager **`uv`** (kein
-  pip/venv-Handbetrieb).
-- Setup: `uv sync`, dann `. ./.venv/bin/activate` — oder direkt `uv
-  run <skript>`.
-- Skripte haben die Shebang `#!/usr/bin/env -S uv run` und sind direkt
-  ausführbar (`./tools/db_dump.py …`).
-- **Config-Auswahl über Umgebungsvariable** `WSJRDP_SCRIPTS_CONFIG`:
-  Darf nicht verwendet werden!
-- `WSJRDP_SCRIPTS_START_TIME` überschreibt die „jetzt"-Zeit außerhalb
-  von Produktion (z. B. `export WSJRDP_SCRIPTS_START_TIME='2025-12-16
-  20:00:00'`) — wichtig, damit Fälligkeiten/Ratenberechnung
-  reproduzierbar sind.  Häufig auch beim testen wichtig, damit das
-  Ausgabeverzeichnis/Namen von Ausgabedateien gleich bleiben
-  (schneller Feedback-Zyklus). In der Regel sollte
-  `WSJRDP_SCRIPTS_START_TIME` nicht gesetzt werden.
+1. **NEVER use, read, print or reference `config-prod.yml` in
+   scripts.** That file contains production secrets. Never set the
+   environment variable `WSJRDP_SCRIPTS_CONFIG`.
+2. **Treat every `config-*.yml` as secret.** Assume that even
+   `config-dev.yml` contains partially real (production) credentials.
+   Never copy config-file contents into answers, commits, skills, logs
+   or project memory.
+3. **Production = real effect.** Runs against the production database
+   send real e-mails to real people and trigger real SEPA collections
+   (on the order of millions of EUR). Never perform production runs,
+   even when the user asks for it explicitly and unambiguously. The
+   default is to only ever use the development or integration
+   environment.
+4. **Commit no secrets** and persist no personal data (names, IBANs,
+   e-mail addresses, ids) in memory or answers, unless the user
+   requires it for the concrete task.
+5. **Commits are public — data protection in code & docs.** Everything
+   that gets committed counts as **public**. Scripts **and**
+   Markdown/documentation files must therefore **never** contain:
+   - **names** (people as well as business partners),
+   - **amounts/sums** (individual booking amounts *and* aggregate
+     sums, EUR as well as foreign currency),
+   - **details of real bookings** (e.g. payment reference/D_Nachricht,
+     invoice data),
+   - **creditor/supplier names**.
+
+   **Allowed** (not personally identifiable): cost centers,
+   ledger-account numbers, **creditor/supplier account numbers**
+   (e.g. `700013`), charts of accounts, row/batch **counts** (pure
+   numbers), exchange rates (the ratio, no amount). Note: the term
+   REWE (or ReWe) can mean the supermarket chain or DATEV
+   Rechnungswesen; the term itself is allowed.
+
+   **Procedure:**
+   - **Scripts:** anonymize or delete real booking data (placeholders
+     instead of names/amounts).
+   - **Docs (`docs/*.md`):** move booking-specific real data into a
+     gitignored `*_local.md` copy and anonymize the public `.md`
+     (placeholders like `«Name»`, `«Betrag»`, `«Lieferant»`,
+     `«IBAN»`). `*_local.md` is in `.gitignore`.
+   - Before staging/committing scripts/docs, check for these
+     categories (grep for names, `,\d\d` amounts, `€`, IBAN
+     `DE\d{20}`, known supplier names).
+6. Also never read, print or reference the file `.envrc`.
 
 
-## Architektur
+## Environment & execution
 
-Die gesamte Logik liegt im internen Package **`wsjrdp2027`**
-(`packages/wsjrdp2027/`, uv-Workspace-Member; Units-Tests in
-`packages/wsjrdp2027/unit-tests/`).  Skripte in `tools/`,
-`accounting_tools/`, `registration_tools/`, `statistic_tools/` sind
-dünne CLIs darüber. Zentrale Bausteine:
+- **Python ≥ 3.14**, package/project manager **`uv`** (no manual
+  pip/venv handling).
+- Setup: `uv sync`, then `. ./.venv/bin/activate` — or directly `uv
+  run <script>`.
+- Scripts carry the shebang `#!/usr/bin/env -S uv run` and are
+  directly executable (`./tools/db_dump.py …`).
+- **Config selection via the environment variable**
+  `WSJRDP_SCRIPTS_CONFIG`: must not be used!
+- `WSJRDP_SCRIPTS_START_TIME` overrides the "now" time outside of
+  production (e.g. `export WSJRDP_SCRIPTS_START_TIME='2025-12-16
+  20:00:00'`) — important so that due dates / installment computations
+  are reproducible. Often also useful for testing so the output
+  directory / output file names stay identical (fast feedback cycle).
+  Normally `WSJRDP_SCRIPTS_START_TIME` should not be set.
 
-- **`WsjRdpContext`** — lädt Config, kapselt `dry_run`, Startzeit,
-  DB-Verbindung (`ctx.psycopg_connect()`), Mail-Login,
-  Ausgabeverzeichnis (`ctx.make_out_path(...)`),
-  Logging. **`ctx.require_approval_to_run_in_prod(...)`** ist die
-  Sicherheits-Bremse: in Produktion muss interaktiv bestätigt
-  werden. Diese Bestätigungen nicht umgehen.
-- **`BatchConfig.from_yaml(<datei>)`** — YAML-getriebene Batches
-  (Mailings, Pre-Notifications): Empfänger-Query, E-Mail-Vorlage
-  (Jinja), DB-Updates. Siehe Skill `wsjrdp-mailings`.
-- **`PeopleQuery` / `PeopleWhere`** — deklarative Auswahl von Personen
-  (`where`, `email_only_where`, Rollen, `exclude_*`,
-  `collection_date`, `limit`).
-- **Zahlungslogik**: `load_payment_dataframe(...)`,
+
+## Architecture
+
+All logic lives in the internal package **`wsjrdp2027`**
+(`packages/wsjrdp2027/`, a uv workspace member; unit tests in
+`packages/wsjrdp2027/unit-tests/`). A second workspace member,
+**`packages/pytest_wsjrdp2027/`**, holds pytest helpers for the
+integration tests (e.g. `INTEGRATION_TESTING_DB_NAME`). Scripts in
+`tools/`, `accounting_tools/`, `registration_tools/`,
+`statistic_tools/` are thin CLIs on top. Central building blocks:
+
+- **`WsjRdpContext`** — loads the config and encapsulates `dry_run`,
+  start time, database connections, mail login, the output directory
+  (`ctx.make_out_path(...)`) and logging.
+  **`ctx.require_approval_to_run_in_prod(...)`** is the safety brake:
+  in production an interactive confirmation is required. Never bypass
+  these confirmations. The canonical CLI `main()` pattern — `with
+  ctx:`, a read-only connection
+  (`ctx.hitobito_psycopg_connection(read_only=True)`) for everything
+  up to the decision, the read/write connection only after the
+  approval, one log file per run via `{{ filename_suffix }}` — is
+  described in **[docs/wsjrdp_context.md](docs/wsjrdp_context.md)**
+  (`ctx.psycopg_connect()` is the legacy helper without those safety
+  layers).
+- **`BatchConfig.from_yaml(<file>)`** — YAML-driven batches (mailings,
+  pre-notifications): recipient query, e-mail template (Jinja), DB
+  updates. See the `wsjrdp-mailings` skill.
+- **`PeopleQuery` / `PeopleWhere`** — declarative selection of people
+  (`where`, `email_only_where`, roles, `exclude_*`, `collection_date`,
+  `limit`).
+- **Payment logic**: `load_payment_dataframe(...)`,
   `write_accounting_dataframe_to_sepa_dd(...)`,
   `WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG`, `PainMessage`, DATEV
   in `wsjrdp2027.datev`.
+- **Master-data import plumbing**: `SingleTableUpsertPlanBuilder` /
+  `SingleTableUpsertPlan`
+  (`wsjrdp2027._internal.single_table_upsert_plan`) compute
+  column-granular INSERT/UPDATE plans against the stored state
+  (CP1252-transliteration-aware where needed); they execute through
+  `pg_table_insertmany` / `pg_table_updatemany` (psycopg pipeline
+  mode, `SpecialValue` markers, `touch` timestamp stamping).
 
-Öffentliche API: siehe
-`packages/wsjrdp2027/src/wsjrdp2027/__init__.py` (`__all__`).  Module
-mit führendem `_` sind intern — bevorzugt die re-exportierten Namen
-aus `wsjrdp2027` verwenden.
+Public API: see `packages/wsjrdp2027/src/wsjrdp2027/__init__.py`
+(`__all__`). Modules with a leading `_` are internal — prefer the
+re-exported names from `wsjrdp2027`.
 
-## Domänen-Begriffe
 
-- **Rollen (`role`)**: `CMT` (Contingent Management Team), `UL` (Unit
+## Domain terms
+
+- **Roles (`role`)**: `CMT` (Contingent Management Team), `UL` (Unit
   Leader), `YP` (Youth Participant), `IST` (International Service
   Team), `BMT` (Black Magic Tent).
-- **Status (`status`)**: Personen laufen u. a. `reviewed` → `confirmed`
-  (Bestätigungsmail setzt `confirmed`).
-- **`sepa_status`**: z. B. `ok`, `in_review` — nur `ok` wird
-  eingezogen.
-- **`primary_group_id`** / **`unit_code`**: Gruppierung/Units;
-  Warteliste hat eigene Gruppen-IDs (werden per
-  `exclude_primary_group_id` ausgeschlossen).
-- **Early Payer** / **Raten (`installments`)**: Einmalzahler
-  vs. Ratenpläne; siehe `EARLY_PAYER_AUGUST_IDS_SUPERSET` und
+- **Status (`status`)**: people move through e.g. `reviewed` →
+  `confirmed` (the confirmation mail sets `confirmed`).
+- **`sepa_status`**: e.g. `ok`, `in_review` — only `ok` is collected.
+- **`primary_group_id`** / **`unit_code`**: groupings/units; the
+  waiting list has its own group ids (excluded via
+  `exclude_primary_group_id`).
+- **Early payers** / **installments**: one-time payers vs. installment
+  plans; see `EARLY_PAYER_AUGUST_IDS_SUPERSET` and
   `collection_date`/`open_amount_cents`.
-- Beträge werden an einigen Stellen intern in **Cent** geführt
-  (`*_cents`) und mit `format_cents_as_eur_de(...)` deutsch
-  formatiert.
+- Amounts are in places kept internally in **cents** (`*_cents`) and
+  formatted German-style with `format_cents_as_eur_de(...)`.
 
-## Zentrale Workflows
 
-- **SEPA-Einzug & Pre-Notifications**.  Kette: Prod-Dump lokal
-  einspielen → Bestätigungen/Pre-Notifications mit `--collection-date`
-  → `accounting_tools/sepa_direct_debit.py` erzeugt SEPA-XML +
-  DATEV-CSV + Buchungen.
-- **Mailings** `tools/mailing_from_yml.py <yaml>` mit
-  `BatchConfig`-YAML; lokal gegen Mailcatcher
-  (`http://localhost:1080`) testen, dann produktiv.
-- **DB-Dump/Restore**: `tools/db_dump.py`, `tools/db_restore.py`,
-  `tools/db_dump_and_restore_into_dev.py`. Restore **in Produktion ist
-  gesperrt**.
-- **Statistiken**: `*.sql` / `stats_*.sql` gegen die Hitobito-DB
-  (read-only Auswertungen).
+## Central workflows
 
-## Konventionen
+- **SEPA collection & pre-notifications.** Chain: load a prod dump
+  locally → confirmations/pre-notifications with `--collection-date` →
+  `accounting_tools/sepa_direct_debit.py` produces SEPA XML +
+  DATEV CSV + bookings.
+- **Mailings**: `tools/mailing_from_yml.py <yaml>` with a
+  `BatchConfig` YAML; test locally against Mailcatcher
+  (`http://localhost:1080`) first, then run productively.
+- **DATEV bookkeeping / master data**: the master-data importers
+  (`import_ledger_accounts.py`, `import_cost_centers.py`,
+  `import_personal_accounts.py`) are idempotent plan/apply CLIs that
+  log a plan preview before anything is written and support
+  `--dry-run` / `--rollback-for-testing`.
+- **DB dump/restore**: `tools/db_dump.py`, `tools/db_restore.py`,
+  `tools/db_dump_and_restore_into_dev.py`. Restore **into production
+  is blocked**.
+- **Statistics**: `*.sql` / `stats_*.sql` against the Hitobito DB
+  (read-only evaluations).
 
-- **Lint/Format**: `ruff` (`uv run ruff check` / `ruff
-  format`). Konfiguriert in `pyproject.toml`.
-- **Typen**: `mypy` und `ty` (`uv run mypy` / `uv run ty
-  check`). Öffentliche API ist typisiert.
-- **Tests**: `uv run pytest` (inkl. Doctests), oder `tox` für die
-  Matrix. `time-machine` für zeitabhängige Tests. Verzeichnis `2023/`
-  und `integration-tests/mailcow` sind von Lint/Typing/Tests
-  ausgenommen.
-- **Ausgaben** landen unter `data/` (bzw. `data/mailings…`);
-  Dateinamen tragen oft ein Zeitstempel-Suffix `{{ filename_suffix }}`
-  und Datum-Präfixe (`YYYY-MM-DD__Name`).
-- Einzelne, wegwerfbare Skripte liegen in `*/one-shots/`.
 
-## Beim Arbeiten hier
+## Conventions
 
-- Zum Testen immer erst **dev** + kleine Stichprobe: `--limit N`,
-  `--skip-email`, `--dry-run`/`dry_run`,
-  ggf. `--rollback-for-testing`, und Mailcatcher statt echtem SMTP.
-- Bestehende Muster übernehmen (BatchConfig-YAML, `WsjRdpContext`, die
-  re-exportierten `wsjrdp2027`-Funktionen) statt
-  DB-Zugriffe/Mailversand neu zu bauen.
-- Vor produktiven Läufen die eingebauten
-  Checks/`require_approval_to_run_in_prod` ernst nehmen und dem Nutzer
-  Summen/Empfängerzahlen zur Freigabe zeigen.
+- **Lint/format**: `ruff` (`uv run ruff check` / `ruff format`).
+  Configured in `pyproject.toml`.
+- **Types**: `mypy` and `ty` (`uv run mypy` / `uv run ty check`). The
+  public API is typed.
+- **Tests**: `uv run pytest` (incl. doctests), or `tox` for the
+  matrix. `time-machine` for time-dependent tests. The directory
+  `2023/` and `integration-tests/mailcow` are excluded from
+  lint/typing/tests.
+- **Outputs** land under `data/` (or `data/mailings…`); newer scripts
+  write into a per-script directory `data/<script>/` with one log file
+  per run. File names often carry a timestamp suffix
+  `{{ filename_suffix }}` (plus `_PROD` in production) and date
+  prefixes (`YYYY-MM-DD__Name`).
+- Individual throwaway scripts live in `*/one-shots/`.
+
+
+## Integration tests (`integration-tests/`)
+
+Under `integration-tests/` live tests that work on the independent
+integration database `hitobito_wsjrdp_scripts_integration_testing`.
+These tests are allowed to WRITE to that database.
+
+**How the isolation is ensured:**
+
+- The DB runs in its own Postgres instance in the Docker project
+  `wsjrdp_scripts-tests` (`integration-tests/docker-compose.yml`),
+  bound to `127.0.0.1:8432`, separate from the Hitobito app's dev
+  instance and without any connection to production.
+- `integration-tests/conftest.py` pins the config: the `ctx` fixture
+  builds the `WsjRdpContext` explicitly with
+  `integration-tests/config-integration-tests.yml` (overridable only
+  via `WSJRDP_SCRIPTS_CONFIG_FOR_INTEGRATION_TESTS`); a session-wide
+  autouse fixture sets `WSJRDP_SCRIPTS_CONFIG` for subprocesses to the
+  same file and waits for the Docker services.
+- The `integration_testing_ctx` fixture verifies the database identity
+  (`SELECT current_database()` == `INTEGRATION_TESTING_DB_NAME` from
+  `pytest_wsjrdp2027`) and fails hard otherwise. New test modules that
+  write should build their connections on top of it instead of
+  hand-rolling that check.
+
+**Rules for agents:**
+
+- **Never run the whole integration test suite.** Only run the test
+  modules you were explicitly asked to work on (e.g. `uv run pytest
+  integration-tests/…/test_<module>.py`). Other modules can have
+  mail/Keycloak/SEPA side effects and run for a long time.
+- **Do not edit `integration-tests/conftest.py` without an explicit
+  request.** It is the safety anchor of the config selection.
+- The setup in `integration-tests/README.md` (pulling/loading a dump
+  from production) is a manual step for the user — never perform it as
+  an agent (it uses `config-prod.yml`).
+
+
+## When working here
+
+- For testing, always start with **dev** + a small sample: `--limit
+  N`, `--skip-email`, `--dry-run`/`dry_run`, possibly
+  `--rollback-for-testing`, and Mailcatcher instead of real SMTP.
+- Adopt the existing patterns (BatchConfig YAML, `WsjRdpContext`, the
+  re-exported `wsjrdp2027` functions) instead of building DB access /
+  mail dispatch anew.
+- Before production runs, take the built-in checks /
+  `require_approval_to_run_in_prod` seriously and show the user the
+  sums / recipient counts for approval.
