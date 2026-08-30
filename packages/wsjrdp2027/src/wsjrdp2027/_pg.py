@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections.abc as _collections_abc
 import dataclasses as _dataclasses
 import datetime as _datetime
+import decimal as _decimal
 import enum as _enum
 import logging as _logging
 import textwrap as _textwrap
@@ -1625,7 +1626,7 @@ def pg_select_camt_tx_unique_db_key2row(
         t"""SELECT
   id,
   camt_type, account_identification, account_servicer_reference, transaction_details_index,
-  amount_cents, amount_currency, value_date
+  signed_base_amount, base_amount, base_currency, debit_credit, value_date
 FROM wsjrdp_camt_transactions
 WHERE {where:q}""",
         show_result=show_result,
@@ -1648,8 +1649,8 @@ def pg_insert_camt_transaction(
     account_identification: str,
     account_servicer_reference: str,
     credit_debit_indication: str,
-    amount_cents: int,
-    amount_currency: str,
+    signed_base_amount: _decimal.Decimal | float,
+    base_currency: str,
     value_date: _datetime.date | str,
     description: str | None = None,
     # message
@@ -1714,10 +1715,11 @@ def pg_insert_camt_transaction(
         ("transaction_details_index", transaction_details_index or 0),
     ]
     other_colval_pairs = [
-        # Mandatory
+        # Mandatory (house money standard, EUR-only: signed_base_amount is the
+        # input; base_amount/debit_credit are DB-generated, never written)
         ("credit_debit_indication", credit_debit_indication),
-        ("amount_cents", amount_cents),
-        ("amount_currency", amount_currency or "EUR"),
+        ("signed_base_amount", signed_base_amount),
+        ("base_currency", base_currency or "EUR"),
         ("value_date", _util.to_date(value_date)),
         ("description", description),
         # message
@@ -1832,8 +1834,8 @@ def pg_insert_camt_transaction_from_tx(
         account_identification=tx.account_identification,
         account_servicer_reference=tx.account_servicer_reference,
         credit_debit_indication=tx.credit_debit_indication,
-        amount_cents=tx.amount_cents,
-        amount_currency=tx.amount_currency,
+        signed_base_amount=_decimal.Decimal(tx.amount_cents) / 100,
+        base_currency=tx.amount_currency,
         value_date=tx.value_date,
         description=tx.description,
         # message
