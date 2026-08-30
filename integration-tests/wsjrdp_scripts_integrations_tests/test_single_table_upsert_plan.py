@@ -445,7 +445,9 @@ class Test_SingleTableUpsertPlan_markers:
         # the NOW marker resolves to that AWARE instant; storing it in the
         # naive timestamp column goes through the session time zone (UTC on
         # the test instance), hence 08:00+02:00 -> 06:00.
-        assert fetch_all(rw_conn)["1"]["created_at"] == NOW - datetime.timedelta(hours=2)
+        assert fetch_all(rw_conn)["1"]["created_at"] == NOW - datetime.timedelta(
+            hours=2
+        )
 
         # Update path: the marker row always counts as changed, even though
         # nothing else differs.
@@ -456,7 +458,9 @@ class Test_SingleTableUpsertPlan_markers:
         )
         assert updated == ["1"]
         assert planned.updates == [{"created_at": SpecialValue.NOW, "number": "1"}]
-        assert fetch_all(rw_conn)["1"]["created_at"] == LATER - datetime.timedelta(hours=2)
+        assert fetch_all(rw_conn)["1"]["created_at"] == LATER - datetime.timedelta(
+            hours=2
+        )
 
     def test_today_resolves_to_date_of_now(self, rw_conn):
         run_cycle(rw_conn, [{"number": "1", "name": "x"}])
@@ -593,3 +597,193 @@ class Test_SingleTableUpsertPlan_write:
             SCRATCH_TABLE: OperationCounts(inserts=0, updates=0, deletes=0)
         }
         assert planned.apply(rw_conn, now=NOW) == ([], [])
+
+
+def run_composite_cycle(conn, values, *, now=NOW):
+    """run_cycle with the COMPOSITE key (number, name) -- key values are
+    tuples in exactly that order."""
+    builder = SingleTableUpsertPlanBuilder(SCRATCH_TABLE, ("number", "name"), values)
+    builder.load_existing(conn)
+    planned = builder.plan()
+    inserted, updated = planned.apply(conn, now=now)
+    return planned, inserted, updated
+
+
+class Test_SingleTableUpsertPlan_composite_key:
+    """key_col as a sequence of column names (the shape of the DATEV
+    Buchungsstapel identity tuple): key values are tuples everywhere."""
+
+    def test_insert_update_untouched_cycle(self, rw_conn):
+        planned, inserted, updated = run_composite_cycle(
+            rw_conn,
+            [
+                {"number": "1", "name": "a", "amount": 1},
+                {"number": "2", "name": "b", "amount": 2},
+            ],
+        )
+        assert (inserted, updated) == ([("1", "a"), ("2", "b")], [])
+        state = fetch_all(rw_conn)
+        assert state["1"]["amount"] == 1 and state["1"]["name"] == "a"
+        assert state["1"]["created_at"] == NOW - datetime.timedelta(hours=2)
+        assert state["1"]["updated_at"] is None
+
+        planned, inserted, updated = run_composite_cycle(
+            rw_conn,
+            [
+                {"number": "1", "name": "a", "amount": 10},
+                {"number": "2", "name": "b", "amount": 2},
+            ],
+            now=LATER,
+        )
+        assert (inserted, updated) == ([], [("1", "a")])
+        assert planned.untouched_keys == [("2", "b")]
+        # The update row carries ALL key columns plus the changed column.
+        assert planned.updates == [{"amount": 10, "number": "1", "name": "a"}]
+        state = fetch_all(rw_conn)
+        assert state["1"]["amount"] == 10
+        assert state["2"]["updated_at"] is None
+
+    def test_duplicate_composite_key_raises(self, rw_conn):
+        with pytest.raises(ValueError, match=r"\(number, name\) = \('1', 'a'\) twice"):
+            SingleTableUpsertPlanBuilder(
+                SCRATCH_TABLE,
+                ("number", "name"),
+                [
+                    {"number": "1", "name": "a", "amount": 1},
+                    {"number": "1", "name": "a", "amount": 2},
+                ],
+            )
+        # Same first column with a DIFFERENT second column is a distinct key.
+        SingleTableUpsertPlanBuilder(
+            SCRATCH_TABLE,
+            ("number", "name"),
+            [
+                {"number": "1", "name": "a", "amount": 1},
+                {"number": "1", "name": "b", "amount": 2},
+            ],
+        )
+
+    def test_missing_key_column_and_bad_key_col_raise(self, rw_conn):
+        with pytest.raises(ValueError, match=r"values\[0\].*'name'"):
+            SingleTableUpsertPlanBuilder(
+                SCRATCH_TABLE, ("number", "name"), [{"number": "1", "amount": 1}]
+            )
+        with pytest.raises(TypeError, match="non-empty sequence"):
+            SingleTableUpsertPlanBuilder(SCRATCH_TABLE, (), [])
+        with pytest.raises(ValueError, match="duplicate"):
+            SingleTableUpsertPlanBuilder(SCRATCH_TABLE, ("number", "number"), [])
+
+    def test_operation_counts_and_merge_values(self, rw_conn):
+        run_composite_cycle(rw_conn, [{"number": "1", "name": "a", "amount": 1}])
+        builder = SingleTableUpsertPlanBuilder(
+            SCRATCH_TABLE,
+            ("number", "name"),
+            [{"number": "1", "name": "a", "amount": 5}],
+        )
+        # merge_values keys on the same tuples.
+        builder.merge_values(
+            [
+                {"number": "1", "name": "a", "short_name": "S"},
+                {"number": "2", "name": "b"},
+            ]
+        )
+        builder.load_existing(rw_conn)
+        planned = builder.plan()
+        assert planned.operation_counts() == {
+            SCRATCH_TABLE: OperationCounts(inserts=1, updates=1, deletes=0)
+        }
+        inserted, updated = planned.apply(rw_conn, now=LATER)
+        assert (inserted, updated) == ([("2", "b")], [("1", "a")])
+        state = fetch_all(rw_conn)
+        assert state["1"]["amount"] == 5 and state["1"]["short_name"] == "S"
+
+
+class Test_SingleTableUpsertPlan_list_columns:
+    """A list value is a JSONB array column: diffed and replaced as a whole."""
+
+    def test_insert_rerun_untouched_then_replace(self, rw_conn):
+        slots = [{"num": 1, "key": "Konto", "value": "18000"}, "x", 2]
+        _, inserted, _ = run_cycle(rw_conn, [{"number": "1", "extra": slots}])
+        assert inserted == ["1"]
+        assert fetch_all(rw_conn)["1"]["extra"] == slots
+
+        # Identical list -> untouched (no write at all).
+        planned, _, _ = run_cycle(rw_conn, [{"number": "1", "extra": slots}], now=LATER)
+        assert planned.untouched_keys == ["1"]
+        assert fetch_all(rw_conn)["1"]["updated_at"] is None
+
+        # A changed list is REPLACED as a whole (no per-element merge).
+        changed = [{"num": 1, "key": "Konto", "value": "27400"}]
+        planned, _, updated = run_cycle(
+            rw_conn, [{"number": "1", "extra": changed}], now=LATER
+        )
+        assert updated == ["1"]
+        assert planned.updates == [{"extra": changed, "number": "1"}]
+        assert fetch_all(rw_conn)["1"]["extra"] == changed
+
+    def test_dates_inside_lists_serialize_and_stay_idempotent(self, rw_conn):
+        aware = datetime.datetime(2027, 8, 1, 6, 0, 0, tzinfo=datetime.UTC)
+        values = [{"number": "1", "extra": [datetime.date(2027, 8, 1), aware]}]
+        run_cycle(rw_conn, values)
+        assert fetch_all(rw_conn)["1"]["extra"] == [
+            "2027-08-01",
+            "2027-08-01T08:00:00.000+02:00",  # Zurich, like inside dicts
+        ]
+        planned, _, _ = run_cycle(rw_conn, values, now=LATER)
+        assert planned.untouched_keys == ["1"]
+
+    def test_delete_marker_inside_list_raises(self, rw_conn):
+        with pytest.raises(ValueError, match="TOP-LEVEL"):
+            SingleTableUpsertPlanBuilder(
+                SCRATCH_TABLE,
+                "number",
+                [{"number": "1", "extra": [SpecialValue.DELETE]}],
+            )
+
+
+class Test_SingleTableUpsertPlan_replace_dict_columns:
+    """plan(replace_dict_columns=...): the incoming dict is the FULL target
+    state (snapshot semantics) -- stored-only keys are deleted."""
+
+    def run_replace_cycle(self, conn, values, *, now=NOW):
+        builder = SingleTableUpsertPlanBuilder(SCRATCH_TABLE, "number", values)
+        builder.load_existing(conn)
+        planned = builder.plan(replace_dict_columns=["extra"])
+        inserted, updated = planned.apply(conn, now=now)
+        return planned, inserted, updated
+
+    def test_stored_only_key_is_deleted_with_minimal_delta(self, rw_conn):
+        run_cycle(rw_conn, [{"number": "1", "extra": {"a": 1, "b": 2}}])
+        planned, _, updated = self.run_replace_cycle(
+            rw_conn, [{"number": "1", "extra": {"a": 1, "c": 3}}], now=LATER
+        )
+        assert updated == ["1"]
+        # Minimal delta: the equal key "a" is not rewritten; "b" is deleted.
+        assert planned.updates == [
+            {"extra": {"c": 3, "b": SpecialValue.DELETE}, "number": "1"}
+        ]
+        assert fetch_all(rw_conn)["1"]["extra"] == {"a": 1, "c": 3}
+
+    def test_equal_snapshot_is_untouched(self, rw_conn):
+        run_cycle(rw_conn, [{"number": "1", "extra": {"a": 1}}])
+        planned, _, _ = self.run_replace_cycle(
+            rw_conn, [{"number": "1", "extra": {"a": 1}}], now=LATER
+        )
+        assert planned.untouched_keys == ["1"]
+
+    def test_default_merge_still_keeps_stored_only_keys(self, rw_conn):
+        run_cycle(rw_conn, [{"number": "1", "extra": {"a": 1, "b": 2}}])
+        planned, _, _ = run_cycle(
+            rw_conn, [{"number": "1", "extra": {"a": 1}}], now=LATER
+        )
+        # Without replace semantics the same input is a no-op: "b" survives.
+        assert planned.untouched_keys == ["1"]
+        assert fetch_all(rw_conn)["1"]["extra"] == {"a": 1, "b": 2}
+
+    def test_unknown_replace_column_raises(self, rw_conn):
+        builder = SingleTableUpsertPlanBuilder(
+            SCRATCH_TABLE, "number", [{"number": "1", "name": "x"}]
+        )
+        builder.load_existing(rw_conn)
+        with pytest.raises(ValueError, match="replace_dict_columns.*unknown"):
+            builder.plan(replace_dict_columns=["nope"])

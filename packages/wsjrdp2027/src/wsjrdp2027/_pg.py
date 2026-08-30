@@ -904,7 +904,9 @@ def pg_table_updatemany(
     updates: _collections_abc.Iterable[_UpdatesType],
     *,
     id_col: str | _psycopg_sql.Identifier = "id",
-    key_col: str | _psycopg_sql.Identifier = "id",
+    key_col: str
+    | _psycopg_sql.Identifier
+    | _collections_abc.Sequence[str | _psycopg_sql.Identifier] = "id",
     now: _datetime.datetime | _datetime.date | str | float | None = None,
     time_zone: str | _zoneinfo.ZoneInfo | None = None,
     touch: bool | None = None,
@@ -915,10 +917,13 @@ def pg_table_updatemany(
     Each element of ``updates`` is one update set (a mapping or an iterable of
     ``(column, value)`` pairs, cf. ``_UpdatesType``) and MUST contain the
     ``key_col`` column; its value selects the row(s) -- ``key_col`` need not
-    be unique -- and the remaining columns are written. An update set that
-    contains nothing but the key is skipped (logged at DEBUG). If the same key
-    appears in several update sets, they are applied in order -- the last one
-    wins.
+    be unique -- and the remaining columns are written. ``key_col`` may also
+    be a sequence of column names (a COMPOSITE key, e.g. the identity tuple of
+    a DATEV Buchungsstapel): then every update set must contain ALL of those
+    columns and a row is selected by matching every one of them. An update set
+    that contains nothing but the key is skipped (logged at DEBUG). If the
+    same key appears in several update sets, they are applied in order -- the
+    last one wins.
 
     A ``dict`` value is a PARTIAL update of the stored JSONB dict, merged by
     the database: only the addressed top-level keys are set -- or DELETED
@@ -957,8 +962,16 @@ def pg_table_updatemany(
 
     connection = to_connection(conn, read_only=False)
     table_ident = Identifier(table_name) if isinstance(table_name, str) else table_name
-    key_name = as_identifier_str(key_col)
-    key_ident = Identifier(key_name)
+    if isinstance(key_col, str) or not isinstance(key_col, _collections_abc.Sequence):
+        key_names = [as_identifier_str(key_col)]
+    else:
+        key_names = [as_identifier_str(k) for k in key_col]
+        if not key_names:
+            raise ValueError("key_col must name at least one column")
+    # Human-readable key description for messages; single-key values stay
+    # scalars (composite ones become tuples).
+    composite = len(key_names) > 1
+    key_desc = "(" + ", ".join(key_names) + ")" if composite else key_names[0]
     id_name = as_identifier_str(id_col)
     id_ident = Identifier(id_name)
     tz = _resolve_time_zone(time_zone)
@@ -970,18 +983,25 @@ def pg_table_updatemany(
     planned_keys: list = []
     for index, update_set in enumerate(updates):
         pairs = _normalize_updates(update_set)
-        key_values = [v for k, v in pairs if k == key_name]
-        if not key_values:
-            raise ValueError(
-                f"updates[{index}] does not contain the key column {key_name!r}"
-            )
-        key_value = key_values[-1]
-        set_pairs = [(k, v) for k, v in pairs if k != key_name]
+        key_value_by_name: dict[str, _typing.Any] = {}
+        for name in key_names:
+            name_values = [v for k, v in pairs if k == name]
+            if not name_values:
+                raise ValueError(
+                    f"updates[{index}] does not contain the key column {name!r}"
+                )
+            key_value_by_name[name] = name_values[-1]
+        key_value: _typing.Any = (
+            tuple(key_value_by_name[n] for n in key_names)
+            if composite
+            else key_value_by_name[key_names[0]]
+        )
+        set_pairs = [(k, v) for k, v in pairs if k not in key_value_by_name]
         if not set_pairs:
             _LOGGER.debug(
                 "Skip UPDATE %s for %s=%r: no columns to set",
                 table_name,
-                key_name,
+                key_desc,
                 key_value,
             )
             continue
@@ -1018,16 +1038,16 @@ def pg_table_updatemany(
                 )
                 params.append(_resolved_scalar(value, resolved_now, tz))
         query = SQL(
-            "UPDATE {table} SET {assignments} WHERE {key_col} = {key_val} "
-            "RETURNING {id_col}"
+            "UPDATE {table} SET {assignments} WHERE {where} RETURNING {id_col}"
         ).format(
             table=table_ident,
             assignments=SQL(", ").join(assignments),
-            key_col=key_ident,
-            key_val=Placeholder(),
+            where=SQL(" AND ").join(
+                SQL("{} = {}").format(Identifier(n), Placeholder()) for n in key_names
+            ),
             id_col=id_ident,
         )
-        params.append(key_value)
+        params.extend(key_value_by_name[n] for n in key_names)
         planned.append((query, params))
         planned_keys.append(key_value)
 
@@ -1057,7 +1077,7 @@ def pg_table_updatemany(
         more = ", ..." if len(missed) > 10 else ""
         raise ValueError(
             f"pg_table_updatemany: {len(missed)} update(s) hit no row in "
-            f"{table_name} ({key_name} = {shown}{more})"
+            f"{table_name} ({key_desc} = {shown}{more})"
         )
     return result
 

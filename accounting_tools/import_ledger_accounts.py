@@ -5,7 +5,7 @@ auto-detecting the source of each given file.
 Supported sources (detected by extension + header):
 
   * DATEV Sachkonten export (.xlsx, or .csv with a "Konto von" column) --
-    writes: name, account_type (derived from the number for now), datev_purpose
+    writes: name, account_kind (derived from the number for now), datev_purpose
     ("Kontenzweck"), datev_function_type ("HFTyp"), datev_function_number
     ("Funktion"), datev_additional_function ("Zusatzfunktion") and any remaining
     populated columns into other_datev_columns (FE, Anlagenspiegelfkt.,
@@ -14,7 +14,7 @@ Supported sources (detected by extension + header):
     "Name","Expense Account - Number","Category","Status". Writes: name,
     moss_status, moss_category, and any extra columns into other_moss_columns.
   * Hitobito accounts CSV -- columns number,name,short_name. Writes: name,
-    short_name (Hitobito-only), account_type (derived from the number).
+    short_name (Hitobito-only), account_kind (derived from the number).
 
 Rules:
   * `number` is the shared key; account numbers are left-padded to 5 digits
@@ -24,7 +24,7 @@ Rules:
     likely sync error, then overwritten.
   * Each branch touches ONLY its own columns. The DATEV branch never changes
     moss_*/other_moss_columns; the Moss branch never changes
-    datev_*/account_type/other_datev_columns; short_name is written only by the
+    datev_*/account_kind/other_datev_columns; short_name is written only by the
     Hitobito branch; no branch touches the Hitobito-only aliases,
     description, comment, visibility and additional_info (display_short_name
     is database-generated; moss_status stays NULL for accounts Moss does not
@@ -202,7 +202,7 @@ def _read_datev(path: _pathlib.Path) -> list[dict]:
             {
                 "number": number,
                 "name": _norm(r[3]) or None,
-                "account_type": wsjrdp2027.datev.account_type_for_account_number(
+                "account_kind": wsjrdp2027.datev.account_kind_for_account_number(
                     number
                 ),
                 "datev_purpose": _norm(r[15]) or None,
@@ -261,7 +261,7 @@ def _read_hitobito(path: _pathlib.Path) -> list[dict]:
                     "number": number,
                     "name": _norm(row.get("name")) or None,
                     "short_name": _norm(row.get("short_name")) or None,
-                    "account_type": wsjrdp2027.datev.account_type_for_account_number(
+                    "account_kind": wsjrdp2027.datev.account_kind_for_account_number(
                         number
                     ),
                 }

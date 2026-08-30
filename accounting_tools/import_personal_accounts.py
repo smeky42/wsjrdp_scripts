@@ -76,7 +76,7 @@ _STATUS_DEACTIVATED = "deactivated"
 # file over the Moss values and when DIFFING the plan against the stored rows
 # (other_datev_columns is covered key by key by the plan's minimal deltas).
 # Excluded: codes and technical identifiers (number, iban, bic, post_code,
-# country, datev_nummer_fremdsystem) and enums (account_type).
+# country, datev_nummer_fremdsystem) and enums (account_kind).
 _MERGE_TRANSLIT_COLUMNS = ("name", "street", "address_second_line", "city")
 _PLAN_TRANSLIT_COLUMNS = (
     "name",
@@ -135,7 +135,7 @@ _MOSS_TO_COLUMN = {
 _MOSS_SCALAR_COLUMNS = [
     "number",
     "name",
-    "account_type",
+    "account_kind",
     "moss_account_holder_name",
     "moss_type",
     "moss_status",
@@ -208,7 +208,7 @@ def _read_moss(path: _pathlib.Path) -> list[dict[str, object]]:
             for header, column in _MOSS_TO_COLUMN.items():
                 record[column] = _norm(row.get(header)) or None
             record["number"] = number
-            record["account_type"] = wsjrdp2027.datev.account_type_for_account_number(
+            record["account_kind"] = wsjrdp2027.datev.account_kind_for_account_number(
                 number
             )
             record["moss_status"] = _normalize_status(row.get("Status"))
@@ -244,7 +244,7 @@ def _read_datev(path: _pathlib.Path) -> list[dict[str, object]]:
             continue
         record: dict[str, object] = {
             "number": number,
-            "account_type": wsjrdp2027.datev.account_type_for_account_number(number),
+            "account_kind": wsjrdp2027.datev.account_kind_for_account_number(number),
         }
         for field, column in _DATEV_TO_COLUMN.items():
             value = _norm(raw[index[field]]) or None
