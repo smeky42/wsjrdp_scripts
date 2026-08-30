@@ -529,9 +529,18 @@ class SingleTableUpsertPlanBuilder:
             raise RuntimeError("load_existing() has not been called yet")
         return self._existing
 
-    def load_existing(self, conn: PgConnectionLike) -> None:
-        """Read-only load of the addressed rows, restricted to the union of
-        the columns appearing in the value sets."""
+    def load_existing(
+        self, conn: PgConnectionLike, *, read_only_columns: _typing.Sequence[str] = ()
+    ) -> None:
+        """Read-only load of the addressed rows, restricted to the union of the
+        columns appearing in the value sets.
+
+        ``read_only_columns`` adds further columns to that SELECT: they are
+        exposed via :attr:`existing` for the caller's own use (e.g. a stability
+        check on an INSERT-only column) but are NEVER diffed or written by
+        :meth:`plan`/:meth:`apply`. Columns already among the value-set columns
+        (or the key) are merged/deduplicated, so naming one that is auto-loaded
+        anyway is harmless."""
         import psycopg.rows
         import psycopg.sql
 
@@ -544,11 +553,20 @@ class SingleTableUpsertPlanBuilder:
             else self.table_name
         )
         keys = list(self._rows)
-        if not keys or not self._columns:
+        # Value-set columns first, then any read-only extras not already covered
+        # by the value set or the key (deduplicated, order preserved).
+        load_columns = list(
+            dict.fromkeys(
+                c
+                for c in (*self._columns, *read_only_columns)
+                if c not in self._key_names
+            )
+        )
+        if not keys or not load_columns:
             self._existing = {}
             return
         columns_sql = psycopg.sql.SQL(", ").join(
-            psycopg.sql.Identifier(c) for c in (*self._key_names, *self._columns)
+            psycopg.sql.Identifier(c) for c in (*self._key_names, *load_columns)
         )
         if self._composite_key:
             # Composite key: match the key tuples against a VALUES list

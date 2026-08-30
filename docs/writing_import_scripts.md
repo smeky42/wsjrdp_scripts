@@ -5,9 +5,10 @@ Hitobito database: the importers for standing-data
 (`accounting_tools/import_cost_centers.py`, `import_ledger_accounts.py`,
 `import_personal_accounts.py`) and the DATEV booking importer
 (`import_datev_buchungsstapel.py`) were used as the reference implementations.
+`import_camt_bank_statements.py` (CAMT bank statements) has since been migrated
+to the same shape.
 
-Older scripts (`import_camt_bank_statements.py`,
-`import_moss_balance_movements.py`,
+Older scripts (`import_moss_balance_movements.py`,
 `import_moss_card_transactions.py`) predate these conventions. They still work;
 migrate them when you touch them anyway (checklist at the end).
 
@@ -15,8 +16,7 @@ migrate them when you touch them anyway (checklist at the end).
 > `ctx.psycopg_connect()` opens a read-write session regardless of
 > `ctx.dry_run` (verified: `SHOW default_transaction_read_only` -> `off`), so
 > a script that does not check `ctx.dry_run` itself -- as
-> `import_camt_bank_statements.py` and
-> `import_moss_balance_movements.py` do not -- **writes to the
+> `import_moss_balance_movements.py` does not -- **writes to the
 > database even with `--dry-run`**. The modern
 > `hitobito_psycopg_connection(read_only=False)` is downgraded to read-only
 > under `--dry-run` by the context, so the database itself refuses the write.
