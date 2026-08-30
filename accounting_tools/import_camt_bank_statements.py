@@ -16,8 +16,10 @@ Multiple files are processed OLDEST FIRST (by ``GrpHdr/CreDtTm``,
 ``CamtMessage.creation_date_time``) and deduplicated on the composite key, so
 the NEWEST export wins per key.
 
-Columns written from the CAMT file: the amount and value/booking dates,
-description, status, the counterparty fields (cdtr_*/dbtr_*), the SEPA
+Columns written from the CAMT file: the signed amount ``signed_base_amount``
+(numeric EUR, + = inflow) and ``base_currency`` (``base_amount`` = ABS and
+``debit_credit`` = C/D are DB-generated, never written), the value/booking
+dates, description, status, the counterparty fields (cdtr_*/dbtr_*), the SEPA
 references (endtoend_id, mandate_id, ``references`` JSONB), the bank transaction
 codes, return_reason, and the raw ``ntry`` / ``tx_dtls`` JSONB snapshots.
 ``references``/``ntry``/``tx_dtls`` are snapshot columns (the file is the full
@@ -64,7 +66,7 @@ Never touched by this importer (manual / downstream): ``comment``,
 ``account_id``/``account_type``, ``offsetting_*``, ``cost_center_number``,
 ``sphere_number``). New rows get their database defaults there.
 
-Safety: the money/identity columns amount_cents, amount_currency, value_date
+Safety: the money/identity columns signed_base_amount, base_currency, value_date
 are immutable for a given key -- an incoming file that would change them on an
 existing row aborts the import before writing (a booked transaction's amount
 must not silently change under the same bank reference). Likewise
@@ -84,6 +86,7 @@ making the rows look freshly changed.
 from __future__ import annotations
 
 import datetime as _datetime
+import decimal as _decimal
 import logging as _logging
 import pathlib as _pathlib
 import sys as _sys
@@ -113,7 +116,7 @@ _KEY = (
 # Snapshot JSONB columns: the CAMT file is the full truth, stale keys are dropped.
 _JSONB_SNAPSHOT = ["references", "ntry", "tx_dtls"]
 # Immutable money/identity columns: a change on an existing key aborts the run.
-_IMMUTABLE = ("amount_cents", "amount_currency", "value_date")
+_IMMUTABLE = ("signed_base_amount", "base_currency", "value_date")
 # Report ENVELOPE columns: they describe the export a transaction was first
 # captured from, NOT the transaction itself, so the SAME booked entry carries
 # different values across overlapping exports. Written on INSERT only
@@ -196,8 +199,11 @@ def _tx_value_row(tx: CamtTransactionDetails) -> dict:
         "transaction_details_index": tx.transaction_details_index or 0,
         # amounts / dates (immutable for a key)
         "credit_debit_indication": tx.credit_debit_indication,
-        "amount_cents": tx.amount_cents,
-        "amount_currency": tx.amount_currency or "EUR",
+        # House money standard (EUR-only): the signed base amount is the input;
+        # base_amount (ABS) and debit_credit (C/D) are DB-generated. EUR minor
+        # unit is 2, so cents/100 is exact; base_currency's CHECK rejects non-EUR.
+        "signed_base_amount": _decimal.Decimal(tx.amount_cents) / 100,
+        "base_currency": tx.amount_currency or "EUR",
         "value_date": wsjrdp2027.to_date(tx.value_date),
         "booking_date": _to_date_or_none(tx.booking_date),
         # description / metadata
