@@ -741,6 +741,41 @@ class Test_SingleTableUpsertPlan_list_columns:
             )
 
 
+class Test_SingleTableUpsertPlan_read_only_columns:
+    def test_read_only_column_is_exposed_but_not_diffed(self, rw_conn):
+        # Seed a row, then set `amount` behind the plan's back (as an
+        # INSERT-only / app-maintained column would be).
+        run_cycle(rw_conn, [{"number": "1", "name": "N"}])
+        rw_conn.execute(
+            psycopg.sql.SQL("UPDATE {} SET amount = 42 WHERE number = '1'").format(
+                psycopg.sql.Identifier(SCRATCH_TABLE)
+            )
+        )
+        builder = SingleTableUpsertPlanBuilder(
+            SCRATCH_TABLE, "number", [{"number": "1", "name": "N"}]
+        )
+        builder.load_existing(rw_conn, read_only_columns=["amount"])
+        # Exposed via `existing` for the caller...
+        assert builder.existing["1"]["amount"] == 42
+        # ...but never diffed: the row is untouched and `amount` survives.
+        planned = builder.plan()
+        assert planned.untouched_keys == ["1"]
+        assert planned.apply(rw_conn, now=NOW) == ([], [])
+        assert fetch_all(rw_conn)["1"]["amount"] == 42
+
+    def test_read_only_column_already_auto_loaded_is_deduped(self, rw_conn):
+        # Naming a value-set column (or the key) as read-only is harmless.
+        run_cycle(rw_conn, [{"number": "1", "name": "N", "amount": 7}])
+        builder = SingleTableUpsertPlanBuilder(
+            SCRATCH_TABLE, "number", [{"number": "1", "name": "N", "amount": 7}]
+        )
+        builder.load_existing(rw_conn, read_only_columns=["name", "amount", "number"])
+        assert builder.existing["1"]["name"] == "N"
+        assert builder.existing["1"]["amount"] == 7
+        planned = builder.plan()
+        assert planned.untouched_keys == ["1"]
+
+
 class Test_SingleTableUpsertPlan_replace_dict_columns:
     """plan(replace_dict_columns=...): the incoming dict is the FULL target
     state (snapshot semantics) -- stored-only keys are deleted."""
