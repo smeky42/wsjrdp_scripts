@@ -27,6 +27,7 @@ qr_code/*/*.png
 
 /CLAUDE.local.md
 /.claude/settings.local.json
+.claude/worktrees/
 
 # Local, non-public copies of docs with real booking data (names, sums, IBANs)
 *_local.md
