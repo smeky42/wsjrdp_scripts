@@ -24,58 +24,58 @@ _LOGGER = _logging.getLogger(__name__)
 # each booking; they represent the DATEV "Kontenart" of an account. PLACEHOLDER:
 # derived purely from the (mapped, SKR42) account number until a real DATEV
 # account export carrying the actual Kontenart is available.
-ACCOUNT_TYPE_BANK = "BANK"  # Bank-/Kassenkonten (Aktiva), z. B. 18xxx
-ACCOUNT_TYPE_TRANSIT = "TRANSIT"  # Geldtransit (Aktiva), z. B. 13xxx
-ACCOUNT_TYPE_CLEARING = "CLEARING"  # Verrechnungskonten, z. B. 36xxx
-ACCOUNT_TYPE_LIABILITY = "LIABILITY"  # Verbindlichkeiten, z. B. 33xxx/37xxx
-ACCOUNT_TYPE_CREDITOR = "CREDITOR"  # Kreditoren / Lieferanten (Personenkonten), 700xxx
-ACCOUNT_TYPE_INCOME = "INCOME"  # Ertraege / Einnahmen, z. B. 4xxxx, 71000
-ACCOUNT_TYPE_EXPENSE = "EXPENSE"  # Aufwendungen, z. B. 6xxxx
-ACCOUNT_TYPE_EQUITY = "EQUITY"  # Eigenkapital / Saldenvortrag, z. B. 9xxxx
-ACCOUNT_TYPE_UNKNOWN = "UNKNOWN"
+ACCOUNT_KIND_BANK = "BANK"  # Bank-/Kassenkonten (Aktiva), z. B. 18xxx
+ACCOUNT_KIND_TRANSIT = "TRANSIT"  # Geldtransit (Aktiva), z. B. 13xxx
+ACCOUNT_KIND_CLEARING = "CLEARING"  # Verrechnungskonten, z. B. 36xxx
+ACCOUNT_KIND_LIABILITY = "LIABILITY"  # Verbindlichkeiten, z. B. 33xxx/37xxx
+ACCOUNT_KIND_CREDITOR = "CREDITOR"  # Kreditoren / Lieferanten (Personenkonten), 700xxx
+ACCOUNT_KIND_INCOME = "INCOME"  # Ertraege / Einnahmen, z. B. 4xxxx, 71000
+ACCOUNT_KIND_EXPENSE = "EXPENSE"  # Aufwendungen, z. B. 6xxxx
+ACCOUNT_KIND_EQUITY = "EQUITY"  # Eigenkapital / Saldenvortrag, z. B. 9xxxx
+ACCOUNT_KIND_UNKNOWN = "UNKNOWN"
 
 # Account types whose bookings are P&L (GuV) postings. For these the stored
 # amount sign is flipped relative to the account-centric (Soll +, Haben -) value,
 # so that income comes out positive and expense negative -- i.e. incoming money
 # is positive and outgoing money is negative across every account type.
-PROFIT_LOSS_ACCOUNT_TYPES = frozenset({ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE})
+PROFIT_LOSS_ACCOUNT_KINDS = frozenset({ACCOUNT_KIND_INCOME, ACCOUNT_KIND_EXPENSE})
 
 
-def account_type_for_account_number(number: str | None) -> str:
+def account_kind_for_account_number(number: str | None) -> str:
     """Classify a (mapped, SKR42) DATEV account number into a short account-type
     code (the DATEV "Kontenart"). Placeholder number-based mapping until a real
-    DATEV account export is available; see the ``ACCOUNT_TYPE_*`` constants."""
+    DATEV account export is available; see the ``ACCOUNT_KIND_*`` constants."""
     if not number:
-        return ACCOUNT_TYPE_UNKNOWN
+        return ACCOUNT_KIND_UNKNOWN
     n = str(number).strip()
     if len(n) == 6 and n.startswith("7"):
-        return ACCOUNT_TYPE_CREDITOR  # 700xxx personal accounts (Kreditoren)
+        return ACCOUNT_KIND_CREDITOR  # 700xxx personal accounts (Kreditoren)
     if len(n) == 5:
         if n.startswith("13"):
-            return ACCOUNT_TYPE_TRANSIT
+            return ACCOUNT_KIND_TRANSIT
         if n.startswith("18"):
-            return ACCOUNT_TYPE_BANK
+            return ACCOUNT_KIND_BANK
         if n.startswith("36"):
-            return ACCOUNT_TYPE_CLEARING
+            return ACCOUNT_KIND_CLEARING
         first = n[0]
         if first == "3":  # 33xxx, 37xxx Verbindlichkeiten
-            return ACCOUNT_TYPE_LIABILITY
+            return ACCOUNT_KIND_LIABILITY
         if first == "4":  # 4xxxx Ertraege/Einnahmen
-            return ACCOUNT_TYPE_INCOME
+            return ACCOUNT_KIND_INCOME
         if first == "6":  # 6xxxx Aufwendungen
-            return ACCOUNT_TYPE_EXPENSE
+            return ACCOUNT_KIND_EXPENSE
         if first == "7":  # 71000 Zinsertraege etc.
-            return ACCOUNT_TYPE_INCOME
+            return ACCOUNT_KIND_INCOME
         if first == "9":  # 90000 Saldenvortrag
-            return ACCOUNT_TYPE_EQUITY
-    return ACCOUNT_TYPE_UNKNOWN
+            return ACCOUNT_KIND_EQUITY
+    return ACCOUNT_KIND_UNKNOWN
 
 
-def account_type_is_profit_loss(account_type: str | None) -> bool:
+def account_kind_is_profit_loss(account_kind: str | None) -> bool:
     """Whether an account type (Kontenart) is a P&L (GuV) account (income/
     expense), i.e. one whose sign is flipped so income is positive and expense
     negative."""
-    return account_type in PROFIT_LOSS_ACCOUNT_TYPES
+    return account_kind in PROFIT_LOSS_ACCOUNT_KINDS
 
 
 _DATEV_EXTF_BUCHUNGSSTAPEL_COLUMNS = [
@@ -462,7 +462,7 @@ _WIN1252_FALLBACKS = {
     "\u0166": "T", "\u0167": "t",  # T/t with stroke
     "\u0131": "i",                  # dotless i (Turkish)
     "\u1e9e": "SS",                 # capital sharp s (German); ss.upper() convention
-}
+}  # fmt: skip
 
 
 def win1252_equivalent(left: str | None, right: str | None) -> bool:

@@ -373,6 +373,72 @@ class Test_pg_table_updatemany:
         assert state[399]["extra"] == {"i": 399}
 
 
+class Test_pg_table_updatemany_composite_key:
+    """key_col as a SEQUENCE of column names: the update set must contain all
+    of them and a row is selected by matching every one (the shape of the
+    DATEV Buchungsstapel identity tuple)."""
+
+    def test_matches_all_key_columns(self, conn):
+        updated = wsjrdp2027.pg_table_updatemany(
+            conn,
+            TABLE,
+            [{"name": "Alpha", "short_name": "A", "amount": 99}],
+            key_col=("name", "short_name"),
+        )
+        conn.commit()
+        assert updated.updated_ids == [1]
+        state = fetch_all(conn)
+        assert state[1]["amount"] == 99
+        # Key columns select, they are not written.
+        assert state[1]["name"] == "Alpha"
+
+    def test_missing_key_column_raises(self, conn):
+        with pytest.raises(ValueError, match=r"updates\[0\].*'short_name'"):
+            wsjrdp2027.pg_table_updatemany(
+                conn,
+                TABLE,
+                [{"name": "Alpha", "amount": 1}],
+                key_col=("name", "short_name"),
+            )
+        conn.rollback()
+        assert fetch_all(conn) == seed_state()
+
+    def test_missed_tuple_raises_with_tuple_in_message(self, conn):
+        with pytest.raises(
+            ValueError, match=r"\(name, short_name\) = \('Alpha', 'nope'\)"
+        ):
+            wsjrdp2027.pg_table_updatemany(
+                conn,
+                TABLE,
+                # Half-matching tuple: name exists, the short_name does not.
+                [{"name": "Alpha", "short_name": "nope", "amount": 1}],
+                key_col=("name", "short_name"),
+            )
+        conn.rollback()
+        assert fetch_all(conn) == seed_state()
+
+    def test_key_only_set_is_skipped(self, conn):
+        updated = wsjrdp2027.pg_table_updatemany(
+            conn,
+            TABLE,
+            [
+                {"name": "Alpha", "short_name": "A"},
+                {"name": "Beta", "short_name": "B", "amount": 21},
+            ],
+            key_col=("name", "short_name"),
+        )
+        conn.commit()
+        assert updated.updated_ids == [2]
+        assert fetch_all(conn)[1] == seed_state()[1]
+
+    def test_empty_key_col_sequence_raises(self, conn):
+        with pytest.raises(ValueError, match="at least one column"):
+            wsjrdp2027.pg_table_updatemany(
+                conn, TABLE, [{"id": 1, "amount": 1}], key_col=()
+            )
+        conn.rollback()
+
+
 class Test_pg_table_insertmany:
     def test_heterogeneous_inserts_with_generated_ids(self, conn):
         result = wsjrdp2027.pg_table_insertmany(

@@ -6,7 +6,12 @@
    incoming rows (same element shape as ``pg_table_updatemany``: mappings or
    ``(column, value)`` pair iterables; every set must contain ``key_col``, and
    a key appearing twice raises ``ValueError`` -- combining sources is
-   :meth:`~SingleTableUpsertPlanBuilder.merge_values`' job).
+   :meth:`~SingleTableUpsertPlanBuilder.merge_values`' job). ``key_col`` may
+   also be a sequence of column names -- a COMPOSITE key (e.g. the identity
+   tuple of a DATEV Buchungsstapel): every value set must then contain ALL of
+   those columns, and everywhere a key value appears (``untouched_keys``, the
+   return of :meth:`~SingleTableUpsertPlan.apply`, ...) it is the tuple of the
+   values in ``key_col`` order.
 2. :meth:`~SingleTableUpsertPlanBuilder.load_existing` -- read the current
    state of the addressed rows (read-only; the column set is the union of the
    columns appearing in ``values``).
@@ -34,7 +39,13 @@ Column semantics (uniform for scalar columns and JSONB keys):
 * JSONB key = ``SpecialValue.DELETE`` -> the key is
   DELETED from the stored dict. ``dict`` values are merged into the stored
   dict at the top level (see :func:`merge_jsonb`); nested dicts replace their
-  key's value entirely;
+  key's value entirely. Columns named in ``plan(replace_dict_columns=...)``
+  REPLACE the stored dict instead (the incoming dict is the full target
+  state; stored-only keys are deleted) -- for snapshot-style columns like a
+  raw import record;
+* a **list** value is a JSONB array: compared and written as a WHOLE (no
+  per-element merge; date/datetime elements are serialized like inside
+  dicts);
 * scalar column = ``SpecialValue.NOW`` / ``SpecialValue.TODAY`` -> resolved at
   apply time to the ``now`` timestamp resp. its date.
 
@@ -45,6 +56,7 @@ https://www.psycopg.org/psycopg3/docs/).
 
 from __future__ import annotations
 
+import collections.abc as _collections_abc
 import dataclasses as _dataclasses
 import datetime as _datetime
 import logging as _logging
@@ -88,19 +100,28 @@ class SingleTableUpsertPlan:
         self,
         *,
         table_name: str | _psycopg_sql.Identifier,
-        key_name: str,
+        key_names: tuple[str, ...],
+        composite_key: bool,
         time_zone: _zoneinfo.ZoneInfo,
         inserts: list[dict],
         updates: list[dict],
         untouched_keys: list,
     ) -> None:
         self._table_name = table_name
-        self._key_name = key_name
+        self._key_names = key_names
+        self._composite_key = composite_key
         self._tz = time_zone
         self.inserts = inserts
         self.updates = updates
         self.untouched_keys = untouched_keys
         self._applied = False
+
+    def _row_key(self, row: dict) -> object:
+        """The key value of a plan row -- a scalar, or the tuple of the key
+        columns for a composite key."""
+        if self._composite_key:
+            return tuple(row[name] for name in self._key_names)
+        return row[self._key_names[0]]
 
     @property
     def affected_tables(self) -> tuple[str, ...]:
@@ -151,34 +172,52 @@ class SingleTableUpsertPlan:
                 "this plan has already been applied; build a fresh one via "
                 "load_existing() + plan()"
             )
+        from psycopg.types.json import Jsonb
+
         from .._pg import pg_table_insertmany, pg_table_updatemany, to_connection
 
         connection = to_connection(conn, read_only=False)
 
+        def rows_for_write(rows: list[dict]) -> list[dict]:
+            # A list value is a JSONB array column: the *many helpers would
+            # bind a bare Python list as a PostgreSQL ARRAY, so wrap it here
+            # (dicts go through unwrapped -- their partial-merge handling
+            # lives in the helpers). The plan rows themselves stay unwrapped.
+            return [
+                {
+                    column: Jsonb(value) if isinstance(value, list) else value
+                    for column, value in row.items()
+                }
+                for row in rows
+            ]
+
+        # id_col is only used for RETURNING; any present column works, so the
+        # first key column serves both the single and the composite case.
+        first_key = self._key_names[0]
         pg_table_insertmany(
             connection,
             self._table_name,
-            self.inserts,
-            id_col=self._key_name,
+            rows_for_write(self.inserts),
+            id_col=first_key,
             now=now,
             time_zone=self._tz,
             touch=touch,
         )
-        inserted_keys = [row[self._key_name] for row in self.inserts]
+        inserted_keys = [self._row_key(row) for row in self.inserts]
 
         pg_table_updatemany(
             connection,
             self._table_name,
-            self.updates,
-            key_col=self._key_name,
-            id_col=self._key_name,
+            rows_for_write(self.updates),
+            key_col=self._key_names if self._composite_key else first_key,
+            id_col=first_key,
             now=now,
             time_zone=self._tz,
             touch=touch,
         )
         # pg_table_updatemany raises when any update set hits no row, so at
         # this point every planned update has been applied.
-        updated_keys = [row[self._key_name] for row in self.updates]
+        updated_keys = [self._row_key(row) for row in self.updates]
 
         self._applied = True
         return inserted_keys, updated_keys
@@ -301,7 +340,7 @@ class SingleTableUpsertPlanBuilder:
     def __init__(
         self,
         table_name: str | _psycopg_sql.Identifier,
-        key_col: str,
+        key_col: str | _typing.Sequence[str],
         values: _typing.Iterable[_UpdatesType],
         *,
         time_zone: str | _zoneinfo.ZoneInfo | None = None,
@@ -314,13 +353,33 @@ class SingleTableUpsertPlanBuilder:
         # ctx.hitobito_time_zone (see _pg._resolve_time_zone for the format
         # decision and the Europe/Zurich default).
         self._tz = _resolve_time_zone(time_zone)
-        if not isinstance(key_col, str):
-            # The plain name is needed to look up the key inside the value
-            # sets; an Identifier cannot provide it reliably.
-            raise TypeError("key_col must be given as str (the plain column name)")
-        key_name = key_col
+        # The plain names are needed to look the key up inside the value
+        # sets; an Identifier cannot provide them reliably. A sequence of
+        # names is a COMPOSITE key: key values are then tuples in this order.
+        key_names: tuple[str, ...]
+        if isinstance(key_col, str):
+            key_names = (key_col,)
+            self._composite_key = False
+        else:
+            if not isinstance(key_col, _collections_abc.Sequence):
+                raise TypeError(
+                    "key_col must be given as str or a non-empty sequence of "
+                    "str (the plain column names)"
+                )
+            key_names = tuple(key_col)
+            if not key_names or not all(isinstance(k, str) for k in key_names):
+                raise TypeError(
+                    "key_col must be given as str or a non-empty sequence of "
+                    "str (the plain column names)"
+                )
+            if len(set(key_names)) != len(key_names):
+                raise ValueError(f"key_col contains duplicate columns: {key_col!r}")
+            self._composite_key = True
 
-        self._key_name = key_name
+        self._key_names = key_names
+        self._key_desc = (
+            "(" + ", ".join(key_names) + ")" if self._composite_key else key_names[0]
+        )
         # {key value: {column: value}} -- insertion-ordered, mirroring the
         # shape of the loaded state (self._existing).
         self._rows: dict = {}
@@ -331,7 +390,7 @@ class SingleTableUpsertPlanBuilder:
         for key_value, row in self._normalized_value_sets(values):
             if key_value in self._rows:
                 raise ValueError(
-                    f"values contain the key {key_name} = {key_value!r} twice"
+                    f"values contain the key {self._key_desc} = {key_value!r} twice"
                 )
             self._column_set.update(row)
             self._rows[key_value] = row
@@ -341,13 +400,13 @@ class SingleTableUpsertPlanBuilder:
     ) -> _typing.Iterator[tuple[object, dict]]:
         from .._pg import _normalize_updates
 
-        key_name = self._key_name
         for index, value_set in enumerate(values):
             row = dict(_normalize_updates(value_set))
-            if key_name not in row:
-                raise ValueError(
-                    f"values[{index}] does not contain the key column {key_name!r}"
-                )
+            for key_name in self._key_names:
+                if key_name not in row:
+                    raise ValueError(
+                        f"values[{index}] does not contain the key column {key_name!r}"
+                    )
             for column, column_value in list(row.items()):
                 if column_value is SpecialValue.DELETE:
                     # A scalar DELETE means "set the column to SQL NULL" --
@@ -367,7 +426,19 @@ class SingleTableUpsertPlanBuilder:
                         tz=self._tz,
                         where=f"values[{index}][{column!r}]",
                     )
-            key_value = row.pop(key_name)
+                elif isinstance(column_value, list):
+                    # A list is a JSONB array column: serialize date/time
+                    # elements the same way (a DELETE marker inside raises --
+                    # arrays have no per-element merge).
+                    row[column] = _intake_serialize(
+                        column_value,
+                        tz=self._tz,
+                        where=f"values[{index}][{column!r}]",
+                    )
+            if self._composite_key:
+                key_value: object = tuple(row.pop(k) for k in self._key_names)
+            else:
+                key_value = row.pop(self._key_names[0])
             yield key_value, row
 
     @property
@@ -461,6 +532,7 @@ class SingleTableUpsertPlanBuilder:
     def load_existing(self, conn: PgConnectionLike) -> None:
         """Read-only load of the addressed rows, restricted to the union of
         the columns appearing in the value sets."""
+        import psycopg.rows
         import psycopg.sql
 
         from .._pg import to_connection
@@ -475,35 +547,84 @@ class SingleTableUpsertPlanBuilder:
         if not keys or not self._columns:
             self._existing = {}
             return
-        query = psycopg.sql.SQL(
-            "SELECT {columns} FROM {table} WHERE {key} = ANY(%s)"
-        ).format(
-            columns=psycopg.sql.SQL(", ").join(
-                psycopg.sql.Identifier(c) for c in (self._key_name, *self._columns)
-            ),
-            table=table,
-            key=psycopg.sql.Identifier(self._key_name),
+        columns_sql = psycopg.sql.SQL(", ").join(
+            psycopg.sql.Identifier(c) for c in (*self._key_names, *self._columns)
         )
-        import psycopg.rows
+        if self._composite_key:
+            # Composite key: match the key tuples against a VALUES list
+            # ((k1, ..., kn) IN (VALUES (...), ...)); psycopg sends typed
+            # parameters, so the VALUES columns compare cleanly against the
+            # table columns.
+            key_tuple_sql = psycopg.sql.SQL("({})").format(
+                psycopg.sql.SQL(", ").join(
+                    psycopg.sql.Placeholder() for _ in self._key_names
+                )
+            )
+            query = psycopg.sql.SQL(
+                "SELECT {columns} FROM {table} WHERE ({key_columns}) IN "
+                "(VALUES {key_tuples})"
+            ).format(
+                columns=columns_sql,
+                table=table,
+                key_columns=psycopg.sql.SQL(", ").join(
+                    psycopg.sql.Identifier(k) for k in self._key_names
+                ),
+                key_tuples=psycopg.sql.SQL(", ").join(key_tuple_sql for _ in keys),
+            )
+            params: list = [value for key in keys for value in key]
+        else:
+            query = psycopg.sql.SQL(
+                "SELECT {columns} FROM {table} WHERE {key} = ANY(%s)"
+            ).format(
+                columns=columns_sql,
+                table=table,
+                key=psycopg.sql.Identifier(self._key_names[0]),
+            )
+            params = [keys]
 
         with connection.cursor(row_factory=psycopg.rows.dict_row) as cur:
-            cur.execute(query, (keys,))
-            self._existing = {row.pop(self._key_name): row for row in cur.fetchall()}
+            cur.execute(query, params)
+            if self._composite_key:
+                self._existing = {
+                    tuple(row.pop(k) for k in self._key_names): row
+                    for row in cur.fetchall()
+                }
+            else:
+                self._existing = {
+                    row.pop(self._key_names[0]): row for row in cur.fetchall()
+                }
 
     # -- phase 2: plan -------------------------------------------------------
+
+    def _key_columns_dict(self, key_value: object) -> dict:
+        """The key value spelled out as {column: value} (in ``key_col``
+        order), for insert rows and for putting the key back into update
+        rows."""
+        if self._composite_key:
+            return dict(zip(self._key_names, _typing.cast("tuple", key_value)))
+        return {self._key_names[0]: key_value}
 
     def plan(
         self,
         *,
         skip_update_for_cp1252_equality: bool | _typing.Sequence[str] = False,
+        replace_dict_columns: _typing.Sequence[str] = (),
     ) -> SingleTableUpsertPlan:
         """Compute the per-row, per-column changes against the loaded state.
 
         ``skip_update_for_cp1252_equality``: ``True`` applies the
         CP1252-transliteration-aware string comparison to every column
         (recursively inside dicts), ``False`` to none, a sequence of column
-        names to exactly those columns. Raises if :meth:`load_existing` has
-        not run. Returns a :class:`SingleTableUpsertPlan`, writes nothing."""
+        names to exactly those columns.
+
+        ``replace_dict_columns``: dict (JSONB) columns whose incoming dict is
+        the FULL target state (snapshot semantics) instead of a partial
+        top-level merge: keys present only in the stored dict are DELETED.
+        The written delta is still minimal (only genuinely changing keys,
+        transliteration-aware where enabled).
+
+        Raises if :meth:`load_existing` has not run. Returns a
+        :class:`SingleTableUpsertPlan`, writes nothing."""
         if self._existing is None:
             raise RuntimeError("plan() requires load_existing() first")
         if skip_update_for_cp1252_equality is True:
@@ -518,6 +639,12 @@ class SingleTableUpsertPlanBuilder:
                     "skip_update_for_cp1252_equality names unknown "
                     f"column(s): {sorted(unknown)}"
                 )
+        replace_columns = set(replace_dict_columns)
+        unknown = replace_columns.difference(self._columns)
+        if unknown:
+            raise ValueError(
+                f"replace_dict_columns names unknown column(s): {sorted(unknown)}"
+            )
 
         inserts: list[dict] = []
         updates: list[dict] = []
@@ -526,7 +653,7 @@ class SingleTableUpsertPlanBuilder:
         for key_value, row in self._rows.items():
             current = self._existing.get(key_value)
             if current is None:
-                insert_row = {self._key_name: key_value}
+                insert_row = self._key_columns_dict(key_value)
                 for column, value in row.items():
                     insert_row[column] = (
                         _strip_delete_keys(value) if isinstance(value, dict) else value
@@ -539,7 +666,12 @@ class SingleTableUpsertPlanBuilder:
                 translit = column in translit_columns
                 if isinstance(value, dict):
                     stored_dict = stored_value if isinstance(stored_value, dict) else {}
-                    target: object = merge_jsonb(stored_dict, value)
+                    if column in replace_columns:
+                        # Snapshot semantics: the incoming dict IS the target
+                        # state; stored-only keys are deleted.
+                        target: object = _strip_delete_keys(value)
+                    else:
+                        target = merge_jsonb(stored_dict, value)
                     if _values_equal(target, stored_value, translit=translit):
                         if translit and target != stored_value:
                             translit_kept += 1
@@ -552,6 +684,10 @@ class SingleTableUpsertPlanBuilder:
                     minimal = _minimal_jsonb_delta(
                         value, stored_dict, translit=translit
                     )
+                    if column in replace_columns:
+                        for stored_key in stored_dict:
+                            if stored_key not in value:
+                                minimal[stored_key] = SpecialValue.DELETE
                     if not minimal:
                         continue
                     changed[column] = minimal
@@ -562,7 +698,7 @@ class SingleTableUpsertPlanBuilder:
                     continue
                 changed[column] = value
             if changed:
-                changed[self._key_name] = key_value
+                changed.update(self._key_columns_dict(key_value))
                 updates.append(changed)
             else:
                 untouched_keys.append(key_value)
@@ -574,7 +710,8 @@ class SingleTableUpsertPlanBuilder:
             )
         return SingleTableUpsertPlan(
             table_name=self.table_name,
-            key_name=self._key_name,
+            key_names=self._key_names,
+            composite_key=self._composite_key,
             time_zone=self._tz,
             inserts=inserts,
             updates=updates,
