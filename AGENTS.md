@@ -179,7 +179,10 @@ re-exported names from `wsjrdp2027`.
   (`import_ledger_accounts.py`, `import_cost_centers.py`,
   `import_personal_accounts.py`) are idempotent plan/apply CLIs that
   log a plan preview before anything is written and support
-  `--dry-run` / `--rollback-for-testing`.
+  `--dry-run` / `--rollback-for-testing`. When writing or migrating an
+  import script, follow
+  **[docs/writing_import_scripts.md](docs/writing_import_scripts.md)**
+  (conventions, migration checklist, ...).
 - **DB dump/restore**: `tools/db_dump.py`, `tools/db_restore.py`,
   `tools/db_dump_and_restore_into_dev.py`. Restore **into production
   is blocked**.
