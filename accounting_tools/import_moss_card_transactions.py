@@ -233,6 +233,11 @@ IGNORED = {
     "Period Day",
     "Period Month (double-digit)",
     "Accounting Period",
+    # Soll/Haben-Richtung ("Credit"/"Debit"), neu im WSJ27-Export ab 2026-08-30.
+    # Keine Kontonummer, sondern die Buchungsrichtung -- redundant zum
+    # vorzeichenbehafteten Betrag und der DB-generierten Spalte debit_credit.
+    "Account Debit/Credit",
+    "Account Debit/Credit Reverse",
 }
 # Being removed from the WSJ27 export; tolerated (and ignored) if still present.
 NOT_EXPORTED = {
@@ -424,8 +429,12 @@ def _validate_headers(headers: list[str], csv_filename: str) -> None:
     )
     unknown = [h for h in headers if h not in known]
     if unknown:
-        raise SystemExit(
-            f"{csv_filename}: unbekannte CSV-Spalten (bitte klassifizieren): {unknown}"
+        # Unknown columns are tolerated: warn and ignore them. Only the
+        # classified columns above are ever read, so unmapped columns are
+        # simply skipped -- this keeps the import working when Moss adds new
+        # columns to the export.
+        _LOGGER.warning(
+            "%s: ignoring unknown/unclassified CSV columns: %s", csv_filename, unknown
         )
 
 
