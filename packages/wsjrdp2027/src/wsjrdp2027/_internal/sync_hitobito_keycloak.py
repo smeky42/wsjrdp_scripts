@@ -337,6 +337,9 @@ def sync(
 
     keycloak_adapter = ctx.keycloak()
 
+    # Materialize once as *people* may be a single-use generator.
+    people = list(_person.iter_people(people))
+
     errors = []
     email2row = {}
 
