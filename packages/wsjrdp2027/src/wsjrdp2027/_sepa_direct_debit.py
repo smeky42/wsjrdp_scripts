@@ -22,6 +22,23 @@ _LOGGER = _logging.getLogger(__name__)
 CREDITOR_ID = "DE81WSJ00002017275"
 
 
+#: ISO 20022 pain.008 message versions that :mod:`sepaxml` can produce
+#: (an XSD for each is bundled with the library).
+SUPPORTED_SEPA_DD_SCHEMAS: tuple[str, ...] = (
+    "pain.008.001.02",
+    "pain.008.001.08",
+    "pain.008.001.09",
+    "pain.008.001.10",
+)
+
+#: Default pain.008 version for generated SEPA direct debit files.
+#:
+#: From 14 November 2026 on, German banks (DFÜ-Abkommen der Deutschen
+#: Kreditwirtschaft, Anlage 3) only accept ``pain.008.001.08`` via EBICS;
+#: ``pain.008.001.02`` is rejected after the cut-off on 13 November 2026.
+DEFAULT_SEPA_DD_SCHEMA = "pain.008.001.08"
+
+
 WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG: _types.SepaDirectDebitConfig = {
     "name": "Ring deutscher Pfadfinder*innenverbände e.V.",
     "IBAN": "DE70830654080005498201",
@@ -58,8 +75,21 @@ class SepaDirectDebit:
     _num_payments: int
 
     def __init__(
-        self, config: _types.SepaDirectDebitConfig, *, schema: str = "pain.008.001.02"
+        self,
+        config: _types.SepaDirectDebitConfig,
+        *,
+        schema: str = DEFAULT_SEPA_DD_SCHEMA,
     ) -> None:
+        """Create a SEPA direct debit (pain.008) document builder.
+
+        :param schema: ISO 20022 message version, one of
+            :data:`~wsjrdp2027.SUPPORTED_SEPA_DD_SCHEMAS`.
+        """
+        if schema not in SUPPORTED_SEPA_DD_SCHEMAS:
+            raise ValueError(
+                f"Unsupported SEPA direct debit schema {schema!r}, "
+                f"expected one of {', '.join(SUPPORTED_SEPA_DD_SCHEMAS)}"
+            )
         raw_config: dict = config.copy()  # type: ignore
         raw_config.pop("address_as_single_line", None)  # not to be seen by sepaxml
         raw_config.setdefault("currency", "EUR")
@@ -69,7 +99,13 @@ class SepaDirectDebit:
                 raw_config[key] = _german_transliterate(raw_config[key])
 
         self._dd = _sepaxml.SepaDD(raw_config, schema=schema, clean=True)
+        self._schema = schema
         self._num_payments = 0
+
+    @property
+    def schema(self) -> str:
+        """The ISO 20022 message version (e.g. ``pain.008.001.08``)."""
+        return self._schema
 
     @property
     def num_payments(self) -> int:
@@ -152,6 +188,7 @@ def write_accounting_dataframe_to_sepa_dd(
     path: str | _pathlib.Path,
     *,
     config: _types.SepaDirectDebitConfig,
+    schema: str = DEFAULT_SEPA_DD_SCHEMA,
     pedantic: bool = True,
     print_progress_message=None,
 ) -> int:
@@ -160,7 +197,8 @@ def write_accounting_dataframe_to_sepa_dd(
     if print_progress_message is None:
         print_progress_message = _util.print_progress_message
 
-    dd = SepaDirectDebit(config)
+    dd = SepaDirectDebit(config, schema=schema)
+    _LOGGER.info("[SDD] Writing SEPA direct debit (schema=%s) to %s", dd.schema, path)
 
     already_not_ok = len(df[df["payment_status"] != "ok"])
 
@@ -222,7 +260,7 @@ def write_accounting_dataframe_to_sepa_dd(
     if dd.num_payments == 0:
         _LOGGER.warning("[SDD] No payments added to Direct Debit => No file written")
     else:
-        _LOGGER.info("[SDD] Write %s", path)
+        _LOGGER.info("[SDD] Wrote %s", path)
         dd.export_file(path)
 
     return dd.num_payments

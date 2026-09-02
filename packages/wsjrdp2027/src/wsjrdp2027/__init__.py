@@ -145,6 +145,10 @@ if _typing.TYPE_CHECKING:
         build_report_tree_widget as build_report_tree_widget,
         show_report_tree as show_report_tree,
     )
+    from ._sepa_direct_debit import (
+        DEFAULT_SEPA_DD_SCHEMA as DEFAULT_SEPA_DD_SCHEMA,
+        SUPPORTED_SEPA_DD_SCHEMAS as SUPPORTED_SEPA_DD_SCHEMAS,
+    )
     from ._util import dedup as dedup
 
 
@@ -154,11 +158,13 @@ __all__ = [
     "DB_PEOPLE_ALL_STATUS",
     "DEFAULT_MSGID_DOMAIN",
     "DEFAULT_MSGID_IDSTRING",
+    "DEFAULT_SEPA_DD_SCHEMA",
     "EMAIL_SIGNATURE_BMT",
     "EMAIL_SIGNATURE_CMT",
     "EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION",
     "EMAIL_SIGNATURE_HOC",
     "EMAIL_SIGNATURE_ORG",
+    "SUPPORTED_SEPA_DD_SCHEMAS",
     "WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG",
     "WSJRDP_SKATBANK_DIRECT_DEBIT_CONFIG",
     #
@@ -336,9 +342,11 @@ This set was fixed before sending the Pre-Notification.
 
 
 __ALIASES__ = {
+    "DEFAULT_SEPA_DD_SCHEMA": ("._sepa_direct_debit", "DEFAULT_SEPA_DD_SCHEMA"),
     "EMAIL_SIGNATURE_BMT": ("._internal.signatures", "EMAIL_SIGNATURE_BMT"),
     "EMAIL_SIGNATURE_CMT": ("._internal.signatures", "EMAIL_SIGNATURE_CMT"),
     "EMAIL_SIGNATURE_HOC": ("._internal.signatures", "EMAIL_SIGNATURE_HOC"),
+    "SUPPORTED_SEPA_DD_SCHEMAS": ("._sepa_direct_debit", "SUPPORTED_SEPA_DD_SCHEMAS"),
     #
     "CamtMessage": (f"._camt", "CamtMessage"),
     "CamtTransactionDetails": (f"._camt", "CamtTransactionDetails"),

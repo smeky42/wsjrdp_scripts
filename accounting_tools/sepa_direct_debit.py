@@ -368,6 +368,14 @@ def create_argument_parser():
     )
     p.add_argument("--exclude-id", action="append")
     p.add_argument("--end-to-end-id-suffix", default=None)
+    p.add_argument(
+        "--sepa-schema",
+        choices=wsjrdp2027.SUPPORTED_SEPA_DD_SCHEMAS,
+        default=wsjrdp2027.DEFAULT_SEPA_DD_SCHEMA,
+        help="""ISO 20022 message version of the generated SEPA direct debit XML
+        (default: %(default)s). Banks only accept pain.008.001.08 from
+        14 November 2026 on.""",
+    )
     p.add_argument("--rollback-for-testing", action="store_true", default=False)
     return p
 
@@ -477,6 +485,7 @@ def main(argv=None):
             df,
             xml_filename,
             config=wsjrdp2027.WSJRDP_PAXBANK_ROVERWAY_DIRECT_DEBIT_CONFIG,
+            schema=args.sepa_schema,
             pedantic=True,
         )
 
