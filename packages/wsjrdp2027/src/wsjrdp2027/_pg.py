@@ -1437,7 +1437,7 @@ def pg_insert_payment_initiation(
     created_at: _datetime.datetime | _datetime.date | str | int = "NOW",
     updated_at: _datetime.datetime | _datetime.date | str | int | None = None,
     status: str = "planned",
-    sepa_schema: str = "pain.008.001.02",
+    sepa_schema: str | None = None,
     message_identification: str | None = None,
     number_of_transactions: int | None = None,
     control_sum_cents: int | None = None,
@@ -1446,7 +1446,15 @@ def pg_insert_payment_initiation(
     initiating_party_bic: str | None = None,
     sepa_dd_config: _types.SepaDirectDebitConfig | None = None,
 ) -> int:
-    from . import _util
+    """Insert a row into ``wsjrdp_payment_initiations`` and return its id.
+
+    :param sepa_schema: ISO 20022 message version; defaults to
+        :data:`~wsjrdp2027.DEFAULT_SEPA_DD_SCHEMA`.
+    """
+    from . import _sepa_direct_debit, _util
+
+    if sepa_schema is None:
+        sepa_schema = _sepa_direct_debit.DEFAULT_SEPA_DD_SCHEMA
 
     if sepa_dd_config:
         if not initiating_party_name:

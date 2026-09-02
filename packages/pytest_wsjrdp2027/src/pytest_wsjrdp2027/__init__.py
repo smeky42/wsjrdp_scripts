@@ -77,7 +77,13 @@ def parse_sdd_xml(filename: _pathlib.Path | str) -> dict:
         x_tree = lxml.etree.parse(f)
 
     x = x_tree.getroot()
-    ns = {"sepa": "urn:iso:std:iso:20022:tech:xsd:pain.008.001.02"}
+    # Namespace of the root element, e.g.
+    # "urn:iso:std:iso:20022:tech:xsd:pain.008.001.08"; works for any
+    # pain.008 version.
+    namespace = lxml.etree.QName(x).namespace
+    if not namespace:
+        raise ValueError(f"SEPA XML root element has no namespace: {filename}")
+    ns = {"sepa": namespace}
     grp_hdr_elt = x.xpath(
         "//sepa:Document/sepa:CstmrDrctDbtInitn/sepa:GrpHdr", namespaces=ns
     )[0]
