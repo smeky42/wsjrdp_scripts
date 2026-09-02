@@ -18,7 +18,8 @@ L = logging.getLogger(__name__)
 
 
 def _parse_description(description) -> dict:
-    # SEPA Lastschrifteinzug wsjrdp202714-0-91f6e56989 zum 15.08.2025 (Kontoinhaber*in: Ines Höfig, IBAN: DE22120300001036882692, Sequenz: OOFF)
+    # SEPA Lastschrifteinzug wsjrdp2027«id»-0-«hash» zum «Datum»
+    # (Kontoinhaber*in: «Name», IBAN: «IBAN», Sequenz: OOFF)
     d = {}
     if m := re.search(r" (wsjrdp2027[a-zA-Z0-9-]+) ", description):
         d["endtoend_id"] = m[1]
@@ -42,7 +43,11 @@ def _iban(p_row, ae_row):
 def _sepa_dd_description(row):
     id = row["id"]
     short_full_name = row["short_full_name"]
-    short_role_name = row["payment_role"].short_role_name
+    short_role_name = getattr(row.get("payment_role"), "short_role_name", None)
+    if not short_role_name:
+        # payment_role may be NULL; omit it instead of crashing
+        L.warning("%s: no payment_role, description without role name", id)
+        return f"WSJ 2027 Beitrag {short_full_name} {id}"
     return f"WSJ 2027 Beitrag {short_full_name} {short_role_name} {id}"
 
 

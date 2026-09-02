@@ -48,7 +48,8 @@ def main():
             group_dict = group_id2group_dict[row["primary_group_id"]]
             group_description = group_dict["description"]
             _LOGGER.info(
-                f"{row['payment_role'].short_role_name} {row['id_and_name']} :: "
+                f"{getattr(row.get('payment_role'), 'short_role_name', None) or '-'}"
+                f" {row['id_and_name']} :: "
                 f"{row['first_name']} + {row['last_name']} -> {row['wsjrdp_email']}"
             )
             if row["wsjrdp_email"] not in group_description:
