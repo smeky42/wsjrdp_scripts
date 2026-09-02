@@ -210,6 +210,16 @@ _SAVE_AS_CALCULATED_COLUMNS = [
 ]
 
 
+def _short_role_name_or_placeholder(row, placeholder: str = "-") -> str:
+    """Short role name of ``row``, or ``placeholder`` if ``payment_role`` is ``None``.
+
+    Rows without a payment role can reach the reporting/skip loops (e.g. the
+    role was removed after the pre-notification), so log output must not
+    dereference ``row["payment_role"]`` directly.
+    """
+    return getattr(row.get("payment_role"), "short_role_name", None) or placeholder
+
+
 def _dd_description_from_row(row) -> str:
     """Compute the direct debit description.
 
@@ -907,7 +917,7 @@ WHERE
                 )
                 _LOGGER.info(
                     "    %s %s %s",
-                    row["payment_role"].short_role_name,
+                    _short_role_name_or_placeholder(row),
                     row["id"],
                     row["short_full_name"],
                 )
@@ -927,7 +937,7 @@ WHERE
                 )
                 _LOGGER.info(
                     "    %s %s %s",
-                    row["payment_role"].short_role_name,
+                    _short_role_name_or_placeholder(row),
                     row["id"],
                     row["short_full_name"],
                 )
@@ -965,6 +975,24 @@ def report_direct_debit_amount_differences(
     if logger is None:
         logger = _LOGGER
 
+    required_columns = (
+        "calculated_open_amount_cents",
+        "pn_amount_cents",
+        "pn_pre_notified_amount_cents",
+        "pn_debit_sequence_type",
+        "calculated_sepa_dd_sequence_type",
+    )
+    missing_columns = [c for c in required_columns if c not in df.columns]
+    if missing_columns:
+        # The dataframe was not loaded from a payment initiation (no
+        # pre-notification data joined), so there is nothing to compare.
+        logger.info(
+            "No pre-notification data in dataframe (missing columns: %s);"
+            " skipping amount difference report",
+            ", ".join(missing_columns),
+        )
+        return
+
     amount_changed_df = df[
         (df["payment_status"] == "ok")
         & (
@@ -987,7 +1015,7 @@ def report_direct_debit_amount_differences(
     for _, row in amount_changed_df.iterrows():
         diff_msg = (
             f"amount difference between pre-notification, amount in pre-notification and current computation:\n"
-            f"  {row['payment_role'].short_role_name} {row['id']} {row['short_full_name']}\n"
+            f"  {_short_role_name_or_placeholder(row)} {row['id']} {row['short_full_name']}\n"
             f"  pn_amount_cents:              {to_eur(row['pn_amount_cents'])} (used amount)\n"
             f"  pn_pre_notified_amount_cents: {to_eur(row['pn_pre_notified_amount_cents'])} (originally notified)\n"
             f"  calculated_open_amount_cents: {to_eur(row['calculated_open_amount_cents'])} (newly calculated)\n"

@@ -220,7 +220,7 @@ def _report_df_unusual(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> None:
     for _, row in df.iterrows():
         _LOGGER.info(
             "%4s%5s %20s |%11s |%11s |%11s |%11s |%11s",
-            row["payment_role"].short_role_name,
+            getattr(row.get("payment_role"), "short_role_name", None) or "-",
             row["id"],
             cut_to(row["short_full_name"], 20),
             row["sepa_status"],

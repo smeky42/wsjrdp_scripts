@@ -158,6 +158,15 @@ def _report_pain_message(pain_message):
             raise RuntimeError("Payment Info control sum mismatch!")
 
 
+def _short_role_name(row) -> str:
+    """Short role name of the row, or ``"-"`` if ``payment_role`` is ``None``.
+
+    Skipped rows may have no payment role (skip reason "payment_role IS
+    NULL"), so the report must not dereference ``row["payment_role"]``.
+    """
+    return getattr(row.get("payment_role"), "short_role_name", None) or "-"
+
+
 def _report_df(
     df: _pandas.DataFrame, *, pain_message: wsjrdp2027.PainMessage | None = None
 ) -> None:
@@ -177,11 +186,11 @@ def _report_df(
         for _, row in df_not_ok.iterrows():
             skipped_msg = (
                 f"Found payment_status != 'ok'\n"
-                f"  {row['payment_role'].short_role_name} {row['id']} {row['short_full_name']}\n"
+                f"  {_short_role_name(row)} {row['id']} {row['short_full_name']}\n"
                 f"  payment_status: {row['payment_status']}\n"
                 f"  payment_status_reason: {row['payment_status_reason']}\n"
                 f"  open_amount_cents: {to_eur(row['open_amount_cents'])}\n"
-                f"  pn_comment: {row['pn_comment']}\n"
+                f"  pn_comment: {row.get('pn_comment')}\n"
             )
             _LOGGER.info(skipped_msg)
             _LOGGER.debug("row:\n%s", textwrap.indent(row.to_string(), "  | "))
