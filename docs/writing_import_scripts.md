@@ -8,15 +8,17 @@ Hitobito database: the importers for standing-data
 `import_camt_bank_statements.py` (CAMT bank statements) has since been migrated
 to the same shape.
 
-Older scripts (`import_moss_balance_movements.py`,
-`import_moss_card_transactions.py`) predate these conventions. They still work;
-migrate them when you touch them anyway (checklist at the end).
+The two legacy Moss importers (`import_moss_balance_movements.py`,
+`import_moss_card_transactions.py`) predated these conventions; they were
+replaced by `accounting_tools/import_moss_transactions.py` (2026-09-01), which
+follows this document. Other scripts still on the legacy shape: migrate them
+when you touch them anyway (checklist at the end).
 
-> ⚠ **`--dry-run` might not be safe in the old scripts.** The legacy
+> ⚠ **`--dry-run` might not be safe in old-shape scripts.** The legacy
 > `ctx.psycopg_connect()` opens a read-write session regardless of
 > `ctx.dry_run` (verified: `SHOW default_transaction_read_only` -> `off`), so
-> a script that does not check `ctx.dry_run` itself -- as
-> `import_moss_balance_movements.py` does not -- **writes to the
+> a script that does not check `ctx.dry_run` itself -- as the old
+> `import_moss_balance_movements.py` did not -- **writes to the
 > database even with `--dry-run`**. The modern
 > `hitobito_psycopg_connection(read_only=False)` is downgraded to read-only
 > under `--dry-run` by the context, so the database itself refuses the write.
@@ -216,7 +218,7 @@ For each script, in this order:
    Watch out for the **change in update semantics**, the one thing a
    migration can silently get wrong:
 
-   * `ON CONFLICT DO NOTHING` (e.g. `insert_moss_balance_movement`) means an
+   * `ON CONFLICT DO NOTHING` (e.g. the legacy `insert_moss_balance_movement`) means an
      already-imported row is never touched again -- a re-import with
      corrected data does nothing. The plan/apply flow instead aligns the row
      with the file. That is usually what you want, but it now overwrites

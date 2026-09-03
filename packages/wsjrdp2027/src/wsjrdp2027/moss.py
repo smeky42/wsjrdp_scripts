@@ -215,7 +215,7 @@ class MossBalanceMovement:
         self.note = note or ""
         self.recipient_account_number = recipient_account_number or None
         self.recipient_bank_code = recipient_bank_code or None
-        self.payment_reference = _normalize_payment_reference(payment_reference)
+        self.payment_reference = normalize_payment_reference(payment_reference)
         self.invoice_number = invoice_number or None
         self.team_name = team_name or None
         self.cardholder = cardholder or None
@@ -313,29 +313,32 @@ _PAYMENT_REFERENCE_RDP_RE = _re.compile(
 _PAYMENT_REFERENCE_RDP_SUFFIX = "Ring deutscher Pfadfinder.innenverbände e.V."
 
 
-def _normalize_payment_reference(text: str | None, /, length: int = 140) -> str | None:
-    """Normalize payment reference
+def normalize_payment_reference(text: str | None, /, length: int = 140) -> str | None:
+    """Normalize a Moss payment reference: drop the trailing "- Ring deutscher
+    Pfadfinder.innenverbände e.V." that Moss appends (our own name says nothing
+    in our own payment reference, and Moss truncates it at *length*, so it also
+    appears cut off), then truncate to *length*.
 
-    >>> _normalize_payment_reference("Kundennummer: 123456 / Belegnummer: 345678 / WSJ27 Unit T1 / abcdef01-2345-6789-abcd-ef0123456790 - Ring deutscher Pfadfinder.innenverbände")
+    >>> normalize_payment_reference("Kundennummer: 123456 / Belegnummer: 345678 / WSJ27 Unit T1 / abcdef01-2345-6789-abcd-ef0123456790 - Ring deutscher Pfadfinder.innenverbände")
     'Kundennummer: 123456 / Belegnummer: 345678 / WSJ27 Unit T1 / abcdef01-2345-6789-abcd-ef0123456790'
-    >>> _normalize_payment_reference("foo - Ring deutscher Pfadfinder.innenverbände e.V.")
+    >>> normalize_payment_reference("foo - Ring deutscher Pfadfinder.innenverbände e.V.")
     'foo'
-    >>> _normalize_payment_reference("foo ring deutscher Pfadfinder.innenverbände e.V.")
+    >>> normalize_payment_reference("foo ring deutscher Pfadfinder.innenverbände e.V.")
     'foo'
-    >>> _normalize_payment_reference("foo ring deutscher Pfadfinder*innenverbände e.V.")
+    >>> normalize_payment_reference("foo ring deutscher Pfadfinder*innenverbände e.V.")
     'foo'
-    >>> _normalize_payment_reference("foo ring deutscher Pfadfinder'innenverbaende e.V.")
+    >>> normalize_payment_reference("foo ring deutscher Pfadfinder'innenverbaende e.V.")
     'foo'
-    >>> _normalize_payment_reference("foo   - Ring deutscher Pfadfinder'innenverbaende eV")
+    >>> normalize_payment_reference("foo   - Ring deutscher Pfadfinder'innenverbaende eV")
     'foo'
 
-    >>> _normalize_payment_reference("foo - Ring deutscher Pfadfinder.innenverbände", length=4)
+    >>> normalize_payment_reference("foo - Ring deutscher Pfadfinder.innenverbände", length=4)
     'foo'
-    >>> _normalize_payment_reference("foo - Ring deutscher Pfadfinder.innenverb", length=4)
+    >>> normalize_payment_reference("foo - Ring deutscher Pfadfinder.innenverb", length=4)
     'foo'
-    >>> _normalize_payment_reference("foo - Ring deutscher Pfadfinder.", length=4)
+    >>> normalize_payment_reference("foo - Ring deutscher Pfadfinder.", length=4)
     'foo'
-    >>> _normalize_payment_reference("foo - Ring deutsche", length=4)
+    >>> normalize_payment_reference("foo - Ring deutsche", length=4)
     'foo'
     """
     text = text or ""

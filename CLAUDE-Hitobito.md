@@ -60,7 +60,8 @@ app/
     wsjrdp_2027/     #   person.rb, group.rb, event.rb, wizards/, paper_trail/ …
     group/           #   root.rb, unit.rb, ist.rb, extern.rb  (group hierarchy + roles)
     concerns/        #   wsjrdp_transaction.rb (shared booking logic)
-    accounting_entry.rb, wsjrdp_*.rb, moss_balance_movement.rb, wsj27_rdp_fee_rule.rb
+    accounting_entry.rb, wsjrdp_*.rb, moss_transaction.rb (+ moss_expense.rb, moss_booking.rb
+    and their STI subclasses), wsj27_rdp_fee_rule.rb
   controllers/       # fin/ (finance), person/ (detail tabs), contingent/, wsjrdp_2027/, public/
   abilities/wsjrdp_2027/   # permissions
   decorators/wsjrdp_2027/  # presentation logic
@@ -71,7 +72,7 @@ app/
 config/
   routes.rb          # additional routes (additive to the core)
   settings.yml       # app settings (status labels, sepa_status, roles, diets …)
-  locales/wsjrdp_2027.de.yml  # German i18n strings (610 lines; app is de-only)
+  locales/wsjrdp_2027.de.yml  # German i18n strings (app is de-only)
   rdp_groups*.yml    # association/group structure (dev/new/prod)
 db/
   migrate/           # wagon migrations, timestamp prefix — details below
@@ -157,7 +158,7 @@ The largest extension. Key points:
 - **`AccountingEntry`** (`accounting_entries`): booking, `belongs_to :subject`
   (polymorphic, usually Person), `amount_cents`/`_eur`, linkable to
   `direct_debit_payment_info`, `direct_debit_pre_notification`,
-  `payment_initiation`, `camt_transaction`, `moss_balance_movement`;
+  `payment_initiation`, `camt_transaction`, `moss_booking`;
   reversal via `reverses`/`reversed_by`.
 - **`WsjrdpDirectDebitPreNotification`** (`pn`): SEPA pre-notification
   (`collection_date`, `amount_cents`, `payment_status`, debtor/creditor
@@ -171,7 +172,10 @@ The largest extension. Key points:
 - **`WsjrdpFinAccount`** (`acc`): bank accounts (IBAN, opening balance …).
 - **`WsjrdpPaymentPlan`** / **`Wsj27RdpFeeRule`**: installment plans
   (standard vs. individual).
-- **`MossBalanceMovement`** (`moss_bm`): MOSS balance movements.
+- **`MossTransaction`** / **`MossExpense`** / **`MossBooking`** (`moss_booking`):
+  the three levels of the unified Moss model (one transaction -> its expenses ->
+  its splits; STI per kind: card transaction, invoice, reimbursement, top-up).
+  Design: the wagon's `doc/plans/2026-08_moss-transaction-unification.md`.
 - **Master data:** `WsjrdpLedgerAccount`
   (`wsjrdp_ledger_accounts`), `WsjrdpPersonalAccount`
   (`wsjrdp_personal_accounts`, Debitoren/Kreditoren),
@@ -187,7 +191,7 @@ The largest extension. Key points:
 - Person detail tabs: `.../people/:id/{print,upload,medical,status,unit,accounting}`,
   plus `finance/fee/spend/deregistration/debit_return`.
 - Finance area under `scope "fin"`: `ae` (accounting_entries), `pn`, `tx`,
-  `acc`, `moss_bm`, `payment_plans`, `person_fees`.
+  `acc`, `moss_booking`, `payment_plans`, `person_fees`.
 - `namespace :contingent`: overviews `cmt`, `ist`, contingent.
 - `public/statistics` (public), `groups/:id/map`, `groups/:id/statistics/data`.
 
@@ -297,7 +301,8 @@ When changing permissions, start here, not in the core.
   `Change<Table>…` / `Move…` depending on purpose; file name in matching
   snake_case.
 - **Own tables** are named `wsjrdp_*` (resp. `wsj27_rdp_*`,
-  `accounting_entries`, `moss_balance_movements`). Person/group attributes
+  `accounting_entries`, `moss_transactions` / `moss_expenses` /
+  `moss_bookings`). Person/group attributes
   are attached **directly to the core tables** `people` / `groups`
   (`add_column :people, …`).
 - **Money amounts** always as `*_cents` integers (never float/decimal euros
@@ -371,7 +376,8 @@ DB directly** (dev: `localhost:5432`, container `development-postgres-1`).
 The wagon schema described here (tables `people`, `groups`,
 `accounting_entries`, `wsjrdp_direct_debit_pre_notifications`,
 `wsjrdp_payment_*`, `wsjrdp_ledger_accounts`, `wsjrdp_personal_accounts`,
-`wsjrdp_cost_centers`, `wsjrdp_spheres`, `moss_balance_movements`,
+`wsjrdp_cost_centers`, `wsjrdp_spheres`, `moss_transactions` /
+`moss_expenses` / `moss_bookings`,
 `wsj27_rdp_fee_rules`, `roles` …) is therefore the **contract** between the
 app and the scripts:
 
