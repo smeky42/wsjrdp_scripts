@@ -1070,12 +1070,16 @@ def main(argv=None):
             # wsjrdp_camt_transactions reference datev_bookings. TRUNCATE CASCADE
             # would therefore wipe those tables -- so null the (now stale) links
             # first and DELETE (which respects the FKs by checking actual rows,
-            # and leaves the reference tables untouched) instead. Requires the
-            # only other referencing table, moss_card_transaction_bookings, to be
-            # empty (it is until Moss card data is imported).
+            # and leaves the reference tables untouched) instead. The Moss
+            # tables reference datev_bookings the same way (moss_bookings'
+            # expense leg, moss_transactions' clearing leg; both FKs are ON
+            # DELETE SET NULL): their ids would be nulled by the DELETE anyway,
+            # so clear them together with their provenance meta, which the FK
+            # would leave behind stale.
             _LOGGER.info(
                 "Clear reversed links on accounting_entries / "
-                "wsjrdp_camt_transactions, then DELETE %s, %s",
+                "wsjrdp_camt_transactions / moss_bookings / moss_transactions, "
+                "then DELETE %s, %s",
                 _BOOKINGS_TABLE,
                 _BATCHES_TABLE,
             )
@@ -1087,6 +1091,16 @@ def main(argv=None):
             rw_conn.execute(
                 "UPDATE wsjrdp_camt_transactions SET datev_booking_id = NULL"
                 " WHERE datev_booking_id IS NOT NULL"
+            )
+            rw_conn.execute(
+                "UPDATE moss_bookings SET expense_datev_booking_id = NULL,"
+                " expense_datev_booking_link_meta = '{}'::jsonb"
+                " WHERE expense_datev_booking_id IS NOT NULL"
+            )
+            rw_conn.execute(
+                "UPDATE moss_transactions SET clearing_datev_booking_id = NULL,"
+                " clearing_datev_booking_link_meta = '{}'::jsonb"
+                " WHERE clearing_datev_booking_id IS NOT NULL"
             )
             rw_conn.execute(f"DELETE FROM {_BOOKINGS_TABLE}")
             rw_conn.execute(f"DELETE FROM {_BATCHES_TABLE}")
