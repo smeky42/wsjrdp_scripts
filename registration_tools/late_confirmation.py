@@ -278,57 +278,81 @@ def _confirmation_note(
 def _confirm_person(
     *,
     ctx: wsjrdp2027.WsjRdpContext,
-    conn: _psycopg.Connection,
+    conn: _psycopg.Connection | None = None,
     person: wsjrdp2027.Person,
     batch_name: str,
     new_status: str = "confirmed",
 ) -> None:
-    allow_reconfirmation = bool(ctx.parsed_args.allow_reconfirmation)
-    skip_status_update = bool(ctx.parsed_args.skip_status_update)
-    person_id: int = int(person["id"])
-    old_status = person["status"]
-    old_primary_group_id = wsjrdp2027.to_int_or_none(person.get("primary_group_id"))
-    old_group = (
-        wsjrdp2027.Group.db_load(conn, group_arg=old_primary_group_id)
-        if old_primary_group_id is not None
-        else None
-    )
+    # Entering the context here (instead of in `main()`) makes this function
+    # usable from any caller: the thread-local ctx is what lets helpers such as
+    # `Group.load_unit_leader()` obtain a connection on their own.  Nesting is
+    # harmless if the caller already entered the context -- the cached psycopg
+    # clients of the outer level are reused.
+    with ctx:
+        # Everything this function reads goes through `conn`; the writes happen
+        # in `ctx.update_db_and_send_mailing()` below, which takes the
+        # read/write connection from the context itself.
+        if conn is None:
+            conn = ctx.hitobito_psycopg_connection(read_only=True)
+        allow_reconfirmation = bool(ctx.parsed_args.allow_reconfirmation)
+        skip_status_update = bool(ctx.parsed_args.skip_status_update)
+        person_id: int = int(person["id"])
+        old_status = person["status"]
+        old_primary_group_id = wsjrdp2027.to_int_or_none(person.get("primary_group_id"))
+        old_group = (
+            wsjrdp2027.Group.db_load(conn, group_arg=old_primary_group_id)
+            if old_primary_group_id is not None
+            else None
+        )
 
-    old_tag_list = person.get("tag_list") or []
-    group_arg: str | int | None = ctx.parsed_args.group
-    new_group: wsjrdp2027.Group | None = None
-    if group_arg is None:
-        if person.is_yp_or_ul or old_primary_group_id is None:
+        old_tag_list = person.get("tag_list") or []
+        group_arg: str | int | None = ctx.parsed_args.group
+        new_group: wsjrdp2027.Group | None = None
+        if group_arg is None:
+            if person.is_yp_or_ul or old_primary_group_id is None:
+                _LOGGER.error(
+                    f"Missing --group for confirmation of {person.role_id_name}"
+                )
+                raise SystemExit(1)
+            else:
+                new_group = wsjrdp2027.Group.db_load_for_group_id(
+                    conn, old_primary_group_id
+                )
+        else:
+            new_group = wsjrdp2027.Group.db_load(
+                conn, group_arg, auto_group_id=old_primary_group_id
+            )
+        if person.is_yp_or_ul and not new_group:
             _LOGGER.error(f"Missing --group for confirmation of {person.role_id_name}")
             raise SystemExit(1)
-        else:
-            new_group = wsjrdp2027.Group.db_load_for_group_id(
-                conn, old_primary_group_id
-            )
-    else:
-        new_group = wsjrdp2027.Group.db_load(
-            conn, group_arg, auto_group_id=old_primary_group_id
+        unit_code: str | None = new_group.unit_code if new_group else None
+        support_cmt_mail_addresses = new_group.additional_info.get(
+            "support_cmt_mail_addresses"
         )
-    if person.is_yp_or_ul and not new_group:
-        _LOGGER.error(f"Missing --group for confirmation of {person.role_id_name}")
-        raise SystemExit(1)
-    unit_code: str | None = new_group.unit_code if new_group else None
-    support_cmt_mail_addresses = new_group.additional_info.get(
-        "support_cmt_mail_addresses"
-    )
-    if skip_status_update:
-        _LOGGER.warning(f"Skipping status update (--skip-status-update given)")
-        new_status = old_status
-        confirmation_tag = None
-    else:
-        if new_status == "confirmed":
-            confirmation_tag = f"{person.wsjrdp_role}-Confirmation-Mail"
-        else:
+        if skip_status_update:
+            _LOGGER.warning(f"Skipping status update (--skip-status-update given)")
+            new_status = old_status
             confirmation_tag = None
+        else:
+            if new_status == "confirmed":
+                confirmation_tag = f"{person.wsjrdp_role}-Confirmation-Mail"
+            else:
+                confirmation_tag = None
 
-        if new_status == old_status:
-            err_msg = f"Already status = {new_status!r} for {person.role_id_name}"
+            if new_status == old_status:
+                err_msg = f"Already status = {new_status!r} for {person.role_id_name}"
+                if allow_reconfirmation:
+                    _LOGGER.warning(err_msg)
+                    _LOGGER.warning(f"  continue due to --allow-reconfirmation")
+                else:
+                    print(flush=True)
+                    _LOGGER.error(err_msg)
+                    raise SystemExit(1)
+
+        if confirmation_tag in old_tag_list:
+            err_msg = f"Tag {confirmation_tag} already set for {person.role_id_name}"
             if allow_reconfirmation:
+                confirmation_tag = None
                 _LOGGER.warning(err_msg)
                 _LOGGER.warning(f"  continue due to --allow-reconfirmation")
             else:
@@ -336,96 +360,85 @@ def _confirm_person(
                 _LOGGER.error(err_msg)
                 raise SystemExit(1)
 
-    if confirmation_tag in old_tag_list:
-        err_msg = f"Tag {confirmation_tag} already set for {person.role_id_name}"
-        if allow_reconfirmation:
-            confirmation_tag = None
-            _LOGGER.warning(err_msg)
-            _LOGGER.warning(f"  continue due to --allow-reconfirmation")
+        # load batch config
+        batch_config = ctx.load_batch_config_from_yaml(
+            _SELFDIR / f"late_confirmation_{person.wsjrdp_role}.yml",
+            name=batch_name,
+            jinja_extra_globals={
+                render_confirmation_info.__name__: render_confirmation_info,
+                render_upcoming_payment_text.__name__: render_upcoming_payment_text,
+                render_group_contact_info.__name__: render_group_contact_info,
+                "show_payment_info": ctx.parsed_args.show_payment_info,
+                "new_group": new_group,
+            },
+        )
+
+        # Add to extra_email_bcc
+        if bcc := ctx.parsed_args.bcc:
+            _LOGGER.info(f"Add extra_email_bcc (from --bcc): {bcc}")
+            batch_config.extend_extra_email_bcc(bcc)
+        if support_cmt_mail_addresses:
+            _LOGGER.info(
+                f"Add extra_email_bcc (from additional_info['support_cmt_mail_addresses'] of group): {support_cmt_mail_addresses}",
+            )
+            batch_config.extend_extra_email_bcc(support_cmt_mail_addresses)
+
+        # Handle late_confirmation_issue
+        if person.late_confirmation_issue:
+            batch_config.email_subject += f" {person.late_confirmation_issue}"
+            batch_config.extend_extra_email_bcc(person.helpdesk_email)
+
+        batch_config.query.where = wsjrdp2027.PeopleWhere(id=person_id)
+        if ctx.parsed_args.collection_date:
+            batch_config.query = batch_config.query.replace(
+                collection_date=ctx.parsed_args.collection_date,
+                include_sepa_mail_in_mailing_to=True,
+            )
+
+        if new_status != old_status:
+            batch_config.updates["new_status"] = new_status
+        if "Warteliste" in old_tag_list:
+            batch_config.updates.setdefault("remove_tags", []).append("Warteliste")
+        if confirmation_tag and confirmation_tag not in old_tag_list:
+            batch_config.updates["add_tags"] = confirmation_tag
+        if new_group.id != old_primary_group_id:
+            _LOGGER.info(
+                f"Set new_primary_group_id={new_group.id} (derived from --group={group_arg})"
+            )
+            batch_config.updates["new_primary_group_id"] = new_group.id
+        if note := _confirmation_note(
+            ctx,
+            batch_config=batch_config,
+            old_group=old_group,
+            new_group=new_group,
+            old_status=person["status"],
+            new_status=new_status,
+            person=person,
+        ):
+            _LOGGER.info(f"Note: {note}")
+            batch_config.updates["add_note"] = note
         else:
-            print(flush=True)
-            _LOGGER.error(err_msg)
-            raise SystemExit(1)
+            _LOGGER.info("No note for confirmation")
+        if person.is_yp_or_ul and (unit_code := new_group.unit_code):
+            _LOGGER.info(
+                f"Set new_unit_code={unit_code!r} (derived from --group={group_arg})"
+            )
+            if unit_code != person["unit_code"]:
+                batch_config.updates["new_unit_code"] = unit_code
+        _LOGGER.info("Query:\n%s", batch_config.query)
 
-    # load batch config
-    batch_config = ctx.load_batch_config_from_yaml(
-        _SELFDIR / f"late_confirmation_{person.wsjrdp_role}.yml",
-        name=batch_name,
-        jinja_extra_globals={
-            render_confirmation_info.__name__: render_confirmation_info,
-            render_upcoming_payment_text.__name__: render_upcoming_payment_text,
-            render_group_contact_info.__name__: render_group_contact_info,
-            "show_payment_info": ctx.parsed_args.show_payment_info,
-            "new_group": new_group,
-        },
-    )
+        print(flush=True)
+        _LOGGER.info(person.role_id_name)
+        if batch_config.updates:
+            _LOGGER.info("Updates:\n%s", pprint.pformat(batch_config.updates))
+        else:
+            _LOGGER.info("Updates: %r", batch_config.updates)
+        print(flush=True)
 
-    # Add to extra_email_bcc
-    if bcc := ctx.parsed_args.bcc:
-        _LOGGER.info(f"Add extra_email_bcc (from --bcc): {bcc}")
-        batch_config.extend_extra_email_bcc(bcc)
-    if support_cmt_mail_addresses:
-        _LOGGER.info(
-            f"Add extra_email_bcc (from additional_info['support_cmt_mail_addresses'] of group): {support_cmt_mail_addresses}",
+        prepared_batch = ctx.load_people_and_prepare_batch(
+            batch_config, log_resulting_data_frame=False
         )
-        batch_config.extend_extra_email_bcc(support_cmt_mail_addresses)
-
-    # Handle late_confirmation_issue
-    if person.late_confirmation_issue:
-        batch_config.email_subject += f" {person.late_confirmation_issue}"
-        batch_config.extend_extra_email_bcc(person.helpdesk_email)
-
-    batch_config.query.where = wsjrdp2027.PeopleWhere(id=person_id)
-    if ctx.parsed_args.collection_date:
-        batch_config.query = batch_config.query.replace(
-            collection_date=ctx.parsed_args.collection_date,
-            include_sepa_mail_in_mailing_to=True,
-        )
-
-    if new_status != old_status:
-        batch_config.updates["new_status"] = new_status
-    if "Warteliste" in old_tag_list:
-        batch_config.updates.setdefault("remove_tags", []).append("Warteliste")
-    if confirmation_tag and confirmation_tag not in old_tag_list:
-        batch_config.updates["add_tags"] = confirmation_tag
-    if new_group.id != old_primary_group_id:
-        _LOGGER.info(
-            f"Set new_primary_group_id={new_group.id} (derived from --group={group_arg})"
-        )
-        batch_config.updates["new_primary_group_id"] = new_group.id
-    if note := _confirmation_note(
-        ctx,
-        batch_config=batch_config,
-        old_group=old_group,
-        new_group=new_group,
-        old_status=person["status"],
-        new_status=new_status,
-        person=person,
-    ):
-        _LOGGER.info(f"Note: {note}")
-        batch_config.updates["add_note"] = note
-    else:
-        _LOGGER.info("No note for confirmation")
-    if person.is_yp_or_ul and (unit_code := new_group.unit_code):
-        _LOGGER.info(
-            f"Set new_unit_code={unit_code!r} (derived from --group={group_arg})"
-        )
-        if unit_code != person["unit_code"]:
-            batch_config.updates["new_unit_code"] = unit_code
-    _LOGGER.info("Query:\n%s", batch_config.query)
-
-    print(flush=True)
-    _LOGGER.info(person.role_id_name)
-    if batch_config.updates:
-        _LOGGER.info("Updates:\n%s", pprint.pformat(batch_config.updates))
-    else:
-        _LOGGER.info("Updates: %r", batch_config.updates)
-    print(flush=True)
-
-    prepared_batch = ctx.load_people_and_prepare_batch(
-        batch_config, log_resulting_data_frame=False
-    )
-    ctx.update_db_and_send_mailing(prepared_batch, zip_eml=False)
+        ctx.update_db_and_send_mailing(prepared_batch, zip_eml=False)
 
 
 def main(argv=None):
@@ -440,7 +453,8 @@ def main(argv=None):
     person_id = int(ctx.parsed_args.id)
     print(flush=True)
     _LOGGER.info(f"Confirm person {person_id}")
-    with ctx.psycopg_connect() as conn:
+    with ctx:
+        conn = ctx.hitobito_psycopg_connection(read_only=True)
         person = _load_person(ctx, conn, person_id=person_id)
         assert person.wsjrdp_role
         wsjrdp_role = person.wsjrdp_role
