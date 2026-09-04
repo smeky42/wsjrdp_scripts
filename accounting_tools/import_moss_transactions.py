@@ -793,8 +793,8 @@ def _read_csv(path: _pathlib.Path) -> list[dict[str, str]]:
         return list(_csv.DictReader(handle, delimiter=_CSV_DELIMITER))
 
 
-def _detect_kind(headers: list[str]) -> str:
-    """Which Moss export this is, from its columns.
+def _detect_kind(headers: list[str], source: str = "") -> str:
+    """Which Moss export this is, from its columns; `source` names the file in the error.
 
     >>> _detect_kind(["Unique Reimbursement ID", "Amount"])
     'reimbursement'
@@ -814,8 +814,10 @@ def _detect_kind(headers: list[str]) -> str:
         return _KIND_BALANCE
     if "Merchant Name" in header_set:
         return _KIND_CARD
+    where = f"{source}: " if source else ""
     raise SystemExit(
-        f"unrecognised Moss export (columns: {sorted(header_set)[:8]} ...)"
+        f"{where}unrecognised Moss export -- none of the four Moss CSV layouts "
+        f"(columns: {sorted(header_set)[:8]} ...)"
     )
 
 
@@ -876,7 +878,7 @@ def _read_all(paths: list[str]) -> dict[str, list[dict]]:
         if not rows:
             _LOGGER.warning("%s: empty export, skipped.", path.name)
             continue
-        kind = _detect_kind(list(rows[0]))
+        kind = _detect_kind(list(rows[0]), source=str(path))
         _report_unknown_columns(kind, list(rows[0]), path.name)
         for row in rows:
             row["__source_file__"] = path.name
