@@ -1,5 +1,5 @@
 query:
-  collection_date: 2026-09-07  # Datum des nächsten Einzugs!
+  collection_date: 2026-10-05  # Datum des nächsten Einzugs!
   include_sepa_mail_in_mailing_to: true
   where:
     id: []
@@ -10,13 +10,14 @@ email_subject: WSJ27 Einzug {{ missing_installment_year_month }} Retoure {{ pers
 content: |
   Hallo {{ person.greeting_name }},
 
-  wir haben festgestellt, dass der {{ estimated_collection_date | month_de }}-Lastschrifteinzug bei dir fehlgeschlagen ist. Bei uns ist eine Rücklastschrift in Höhe von {{ retoure_cents | format_cents_as_eur_de }} eingegangen. Davon sind {{ bank_fees_cents | format_cents_as_eur_de }} Gebühren, die wir auf den zu zahlenden Betrag aufschlagen müssen.
+  wir haben festgestellt, dass der {{ estimated_collection_date | month_de }}-Lastschrifteinzug bei dir fehlgeschlagen ist. Bei uns ist eine Rücklastschrift in Höhe von {{ retoure_cents | format_cents_as_eur_de }} eingegangen.{% if bank_fees_cents > 0 %} Davon sind {{ bank_fees_cents | format_cents_as_eur_de }} Gebühren, die wir auf den zu zahlenden Betrag aufschlagen müssen.{% endif %}
 
-  Wir bitten dich, uns bis spätestens {{ response_due_date | date_de }} zu bestätigen, dass wir den fehlenden Betrag im {{ upcoming_collection_date | month_de }} (mit der {{ upcoming_collection_date | month_de }}-Rate) einziehen können. Das ergibt dann einen Einzug in Höhe von {{ person.open_amount_cents | format_cents_as_eur_de }}.
+
+  Wir bitten dich, uns bis spätestens {{ response_due_date | date_de }} zu bestätigen, dass wir den fehlenden Betrag im {{ upcoming_collection_date | month_de }} einziehen können. Das ergibt dann einen Einzug in Höhe von {{ person.open_amount_cents | format_cents_as_eur_de }}.
 
   Nimm bitte sofort mit uns Kontakt auf, wenn dir das finanziell nicht möglich ist. Wir können auch über eine Anpassung des Zahlungsplans reden und wollen weitere Rücklastschrift-Gebühren vermeiden.
 
-  Überprüfe bitte auch die hinterlege Kontoverbindung:
+  Überprüfe bitte auch die hinterlegte Kontoverbindung:
 
       Kontoinhaber*in: {{ person.sepa_name }}
       IBAN: {{ person.sepa_iban }}

@@ -189,6 +189,10 @@ E-Mail Adressen:
     return debit_return_issue
 
 
+def _one_month_back(d: _datetime.date, /, *, day=5) -> _datetime.date:
+    return (d.replace(day=1) - _datetime.timedelta(days=2)).replace(day=day)
+
+
 def _send_missing_installment_notification(
     *,
     ctx: wsjrdp2027.WsjRdpContext,
@@ -210,17 +214,37 @@ def _send_missing_installment_notification(
     assert upcoming_collection_date is not None
     person = ctx.load_person_for_id(person.id, collection_date=upcoming_collection_date)
 
-    estimated_collection_date = (
-        upcoming_collection_date - _datetime.timedelta(days=30)
-    ).replace(day=5)
+    estimated_collection_date = _one_month_back(upcoming_collection_date, day=5)
 
     prev_month_person = ctx.load_person_for_id(
         person.id, collection_date=estimated_collection_date
     )
     retoure_cents = prev_month_person.open_amount_cents
-    missing_installment_cents = prev_month_person[
-        "amount_due_in_collection_date_month_cents"
-    ]
+
+    prev_installment_collection_date = estimated_collection_date
+    prev_installment_person = prev_month_person
+    while True:
+        missing_installment_cents = prev_installment_person[
+            "amount_due_in_collection_date_month_cents"
+        ]
+        if (
+            missing_installment_cents == 0
+            and prev_installment_collection_date > _datetime.date(2026, 1, 1)
+        ):
+            prev_installment_collection_date = _one_month_back(
+                prev_installment_collection_date, day=5
+            )
+            prev_installment_person = ctx.load_person_for_id(
+                person.id, collection_date=prev_installment_collection_date
+            )
+        else:
+            break
+
+    _LOGGER.info(
+        f"estimated prev installment collection date: {prev_installment_collection_date}"
+    )
+    _LOGGER.info(f"missing_installment_cents: {missing_installment_cents}")
+
     bank_fees_cents = retoure_cents - missing_installment_cents
 
     batch_config.jinja_extra_globals.update(
