@@ -8,6 +8,7 @@ import enum as _enum
 import logging as _logging
 import textwrap as _textwrap
 import typing as _typing
+import uuid as _uuid
 import zoneinfo as _zoneinfo
 
 from psycopg.sql import Composable
@@ -643,11 +644,167 @@ class SpecialValue(_enum.Enum):
     ``NOW`` / ``TODAY``: resolved against the function's ``now`` parameter to
     the timestamp ("jetzt") resp. its date ("heute"); inside ``dict`` (JSONB)
     values they are written as ISO 8601 strings (see
-    :func:`_serialize_jsonb_value`)."""
+    :func:`_serialize_jsonb_value`).
+
+    The other value marker of those helpers is :class:`PgArray`, which selects
+    a NATIVE PostgreSQL ARRAY column (and its REPLACE/APPEND semantics)."""
 
     DELETE = _enum.auto()
     NOW = _enum.auto()
     TODAY = _enum.auto()
+
+
+class ArrayMode(_enum.Enum):
+    """How a :class:`PgArray` value reaches a native ARRAY column on UPDATE.
+
+    ``REPLACE``: the given elements ARE the target state, the whole array is
+    written. ``APPEND``: the given elements are appended to the stored ones.
+    On INSERT both modes write the array as given."""
+
+    REPLACE = _enum.auto()
+    APPEND = _enum.auto()
+
+
+class ArrayElementType(_enum.Enum):
+    """Element type of a :class:`PgArray`.
+
+    The member value is the SQL type name and a CODE CONSTANT -- it is never
+    built from caller input, so the rendered cast (:attr:`cast_sql`) can never
+    carry foreign SQL. Adding a type is one member plus one rule in
+    :meth:`normalize`."""
+
+    UUID = "uuid"
+    TEXT = "text"
+    INTEGER = "integer"
+    BIGINT = "bigint"
+    DATE = "date"
+
+    @property
+    def cast_sql(self) -> _psycopg_sql.SQL:
+        """The ``::<type>[]`` cast fragment for this element type, e.g.
+        ``::uuid[]``. Built from the member value (a code constant)."""
+        import psycopg.sql
+
+        return psycopg.sql.SQL("::" + self.value + "[]")
+
+    def normalize(self, element: object, *, where: str) -> object:
+        """Coerce one array element to the Python type psycopg binds to this
+        SQL type; a wrong type raises ``TypeError`` naming ``where``.
+
+        ``UUID``: a ``uuid.UUID`` as is, a ``str`` parsed (a Postgres ``uuid``
+        column never matches a bare string). ``TEXT``: ``str`` only.
+        ``INTEGER``/``BIGINT``: ``int`` only -- a ``bool`` is rejected, it is
+        never a meaningful array element. ``DATE``: a ``datetime.date`` as is
+        or an ISO ``str``; a ``datetime.datetime`` is rejected as ambiguous
+        (which day depends on the time zone -- pass its ``.date()``)."""
+        if self is ArrayElementType.UUID:
+            if isinstance(element, _uuid.UUID):
+                return element
+            if isinstance(element, str):
+                return _uuid.UUID(element)
+        elif self is ArrayElementType.TEXT:
+            if isinstance(element, str):
+                return element
+        elif self is ArrayElementType.DATE:
+            if isinstance(element, _datetime.datetime):
+                raise TypeError(
+                    f"{where}: a datetime is ambiguous for a date[] element, "
+                    f"pass a datetime.date: {element!r}"
+                )
+            if isinstance(element, _datetime.date):
+                return element
+            if isinstance(element, str):
+                return _datetime.date.fromisoformat(element)
+        elif self in (ArrayElementType.INTEGER, ArrayElementType.BIGINT):
+            if isinstance(element, int) and not isinstance(element, bool):
+                return element
+        raise TypeError(
+            f"{where}: not a valid {self.value}[] element: {element!r} "
+            f"({type(element).__name__})"
+        )
+
+
+@_dataclasses.dataclass(frozen=True)
+class PgArray:
+    """A NATIVE PostgreSQL ARRAY column value for :func:`pg_table_insertmany`
+    / :func:`pg_table_updatemany` (and, re-used, for
+    ``wsjrdp2027._internal.single_table_upsert_plan``).
+
+    The semantics hang on the VALUE (like :class:`SpecialValue`, like a
+    ``dict``), not on a function parameter -- each caller decides per column
+    whether it owns the array or accumulates into it:
+
+    ==============  ==========================================================
+    INSERT          both modes write the array as given (an empty ``PgArray``
+                    writes ``{}``, not ``NULL``)
+    UPDATE REPLACE  the whole array is written; the given elements are the
+                    target state
+    UPDATE APPEND   the given elements are appended VERBATIM to the stored
+                    ones (``array_cat``, order kept); a stored ``NULL``
+                    counts as the empty array. The caller passes the DELTA --
+                    the statement does not deduplicate against the stored
+                    array; the plan builder computes that delta, which is
+                    what makes a re-import idempotent
+    ==============  ==========================================================
+
+    A bare ``list`` is NOT a ``PgArray``: it goes to psycopg's own adaptation
+    (and the plan builder wraps it as a JSONB array). Only ``PgArray`` selects
+    a native ARRAY column with an explicit element type.
+
+    A ``PgArray`` is only valid as a TOP-LEVEL column value -- inside a
+    ``dict``/JSONB value it raises. ``None`` as the column value sets SQL
+    ``NULL`` like for any other column (that is a plain scalar, not a
+    ``PgArray``).
+
+    ``elements`` may be given as any iterable (a ``str`` is not accepted -- it
+    would be an iterable of characters); every element is normalized by
+    ``element_type`` (see :meth:`ArrayElementType.normalize`), duplicates
+    collapse keeping the FIRST occurrence, and the canonical result is stored
+    as a ``tuple``. ``None`` and :class:`SpecialValue` elements raise."""
+
+    elements: _collections_abc.Iterable[_typing.Any]
+    element_type: ArrayElementType
+    mode: ArrayMode = ArrayMode.REPLACE
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.element_type, ArrayElementType):
+            raise TypeError(
+                "PgArray element_type must be an ArrayElementType member, got "
+                f"{self.element_type!r}"
+            )
+        if not isinstance(self.mode, ArrayMode):
+            raise TypeError(
+                f"PgArray mode must be an ArrayMode member, got {self.mode!r}"
+            )
+        raw = self.elements
+        if isinstance(raw, str | bytes | bytearray):
+            raise TypeError(
+                "PgArray elements must be an iterable of elements, not a "
+                f"{type(raw).__name__} (an iterable of characters/bytes)"
+            )
+        if not isinstance(raw, _collections_abc.Iterable):
+            raise TypeError(f"PgArray elements must be iterable, got {raw!r}")
+        normalized: list = []
+        seen: set = set()
+        for index, element in enumerate(raw):
+            where = f"PgArray elements[{index}]"
+            if element is None:
+                raise ValueError(
+                    f"{where}: None is not an array element -- pass None as the "
+                    "COLUMN value to set the column to SQL NULL"
+                )
+            if isinstance(element, SpecialValue):
+                # ValueError, not TypeError: a marker is a well-typed object
+                # used in the wrong place -- as for None above.
+                raise ValueError(  # noqa: TRY004
+                    f"{where}: SpecialValue markers are not allowed inside a PgArray"
+                )
+            value = self.element_type.normalize(element, where=where)
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+        object.__setattr__(self, "elements", tuple(normalized))
 
 
 def as_identifier_str(column: str | _psycopg_sql.Identifier) -> str:
@@ -669,6 +826,27 @@ def as_identifier_str(column: str | _psycopg_sql.Identifier) -> str:
                 return inner.replace('""', '"')
         raise TypeError(f"not a plain single-part identifier: {rendered!r}")
     raise TypeError(f"expected str or psycopg.sql.Identifier, got {type(column)!r}")
+
+
+def _table_identifier(
+    table_name: str | _psycopg_sql.Identifier,
+) -> _psycopg_sql.Identifier:
+    """Return the table identifier to compose a statement with: a ``str`` is
+    quoted as an ``Identifier``, an ``Identifier`` (also a multi-part one such
+    as ``Identifier("schema", "table")``) passes through, anything else raises
+    ``TypeError``.
+
+    Defence in depth: a bare ``psycopg.sql.SQL`` would otherwise reach the
+    statement unquoted and unchecked."""
+    import psycopg.sql
+
+    if isinstance(table_name, str):
+        return psycopg.sql.Identifier(table_name)
+    if isinstance(table_name, psycopg.sql.Identifier):
+        return table_name
+    raise TypeError(
+        f"table_name must be a str or psycopg.sql.Identifier, got {type(table_name)!r}"
+    )
 
 
 @_dataclasses.dataclass(kw_only=True)
@@ -749,7 +927,8 @@ def _serialize_jsonb_value(
     """Recursively prepare a value for JSONB: datetimes (naive ones are
     interpreted in ``tz``), dates, NOW and TODAY become ISO 8601 strings in
     ``tz`` (see :func:`_resolve_time_zone` for the format decision); dicts and
-    lists are walked. ``SpecialValue.DELETE`` below the top level raises."""
+    lists are walked. ``SpecialValue.DELETE`` and :class:`PgArray` below the
+    top level raise."""
     if value is SpecialValue.NOW:
         value = now.astimezone(tz)
     elif value is SpecialValue.TODAY:
@@ -758,6 +937,10 @@ def _serialize_jsonb_value(
         raise ValueError(
             f"{where}: SpecialValue.DELETE is only allowed as a TOP-LEVEL "
             "value of a dict (JSONB) column"
+        )
+    elif isinstance(value, PgArray):
+        raise ValueError(
+            f"{where}: PgArray is only allowed as a TOP-LEVEL column value"
         )
     if isinstance(value, _datetime.datetime):
         return value.astimezone(tz).isoformat(timespec="milliseconds")
@@ -805,6 +988,35 @@ def _split_jsonb_value(
     return set_items, delete_keys
 
 
+def _array_slot(value: PgArray) -> _psycopg_sql.Composed:
+    """The VALUES slot of a native ARRAY column in an INSERT: one bound
+    parameter plus the element type's cast (``%s::uuid[]``). The cast comes
+    from :class:`ArrayElementType` (a code constant), the elements travel as
+    the single bound parameter ``list(value.elements)``."""
+    from psycopg.sql import SQL, Placeholder
+
+    return SQL("{}{}").format(Placeholder(), value.element_type.cast_sql)
+
+
+def _array_assignment(column: str, value: PgArray) -> _psycopg_sql.Composed:
+    """The SET assignment of a native ARRAY column in an UPDATE.
+
+    ``ArrayMode.REPLACE`` writes the whole array; ``ArrayMode.APPEND``
+    concatenates the given elements onto the stored ones (``array_cat``, a
+    stored ``NULL`` counting as the empty array) WITHOUT deduplicating -- the
+    caller passes the delta. The column name is an ``Identifier``, the
+    elements are the single bound parameter ``list(value.elements)``."""
+    from psycopg.sql import SQL, Identifier, Placeholder
+
+    col = Identifier(column)
+    cast = value.element_type.cast_sql
+    if value.mode is ArrayMode.APPEND:
+        return SQL(
+            "{col} = array_cat(COALESCE({col}, '{{}}'{cast}), {ph}{cast})"
+        ).format(col=col, cast=cast, ph=Placeholder())
+    return SQL("{col} = {ph}{cast}").format(col=col, ph=Placeholder(), cast=cast)
+
+
 def pg_table_insertmany(
     conn: PgConnectionLike,
     table_name: str | _psycopg_sql.Identifier,
@@ -829,6 +1041,15 @@ def pg_table_insertmany(
     There is NO conflict handling: inserting an existing unique/primary key
     raises the database error.
 
+    A :class:`PgArray` value writes a NATIVE PostgreSQL ARRAY column (e.g.
+    ``uuid[]``): the elements travel as ONE bound parameter carrying the
+    element type's cast, so BOTH :class:`ArrayMode` values insert the array as
+    given (the mode only distinguishes updates). An empty ``PgArray`` inserts
+    ``{}``, not ``NULL`` -- pass ``None`` as the column value for ``NULL``. A
+    ``PgArray`` inside a ``dict`` (JSONB) value raises before the first
+    statement; a bare ``list`` is not a ``PgArray`` and goes to psycopg's own
+    adaptation.
+
     ``touch`` (default ``None`` = not set = on): unless explicitly ``False``,
     every inserted row additionally gets ``created_at = now`` (the resolved
     value) -- except where the value set itself contains ``created_at`` (an
@@ -844,7 +1065,7 @@ def pg_table_insertmany(
     from psycopg.types.json import Jsonb
 
     connection = to_connection(conn, read_only=False)
-    table_ident = Identifier(table_name) if isinstance(table_name, str) else table_name
+    table_ident = _table_identifier(table_name)
     id_name = as_identifier_str(id_col)
     id_ident = Identifier(id_name)
     tz = _resolve_time_zone(time_zone)
@@ -854,19 +1075,29 @@ def pg_table_insertmany(
     for index, value_set in enumerate(values):
         pairs = _normalize_updates(value_set)
         columns: list[str] = []
+        # One value slot per column: a plain placeholder, or a placeholder
+        # plus the element type cast for a native ARRAY column.
+        slots: list[Composable] = []
         params: list = []
         for column, value in pairs:
-            if isinstance(value, dict):
+            if isinstance(value, PgArray):
+                columns.append(column)
+                slots.append(_array_slot(value))
+                params.append(list(value.elements))
+            elif isinstance(value, dict):
                 set_items, _deleted = _split_jsonb_value(
                     value, where=f"values[{index}][{column!r}]", now=resolved_now, tz=tz
                 )
                 columns.append(column)
+                slots.append(Placeholder())
                 params.append(Jsonb(set_items))
             else:
                 columns.append(column)
+                slots.append(Placeholder())
                 params.append(_resolved_scalar(value, resolved_now, tz))
         if touch is not False and "created_at" not in columns:
             columns.append("created_at")
+            slots.append(Placeholder())
             params.append(resolved_now)
         if columns:
             query = SQL(
@@ -874,7 +1105,7 @@ def pg_table_insertmany(
             ).format(
                 table=table_ident,
                 columns=SQL(", ").join(Identifier(c) for c in columns),
-                values=SQL(", ").join(Placeholder() for _ in columns),
+                values=SQL(", ").join(slots),
                 id_col=id_ident,
             )
         else:
@@ -936,6 +1167,20 @@ def pg_table_updatemany(
     local time; a naive datetime is read as wall time in ``time_zone``).
     ``NOW``/``TODAY`` are not allowed inside dict values.
 
+    A :class:`PgArray` value writes a NATIVE PostgreSQL ARRAY column (e.g.
+    ``uuid[]``), with the mode deciding the semantics:
+    ``ArrayMode.REPLACE`` writes the whole array (the given elements are the
+    target state, an empty ``PgArray`` empties the column), while
+    ``ArrayMode.APPEND`` appends the given elements VERBATIM to the stored
+    ones -- order kept, a stored ``NULL`` counting as (and being replaced by)
+    the empty array, an empty ``PgArray`` leaving a stored array as it is.
+    APPEND does not
+    deduplicate against the stored array: the caller passes the delta (the
+    plan builder computes it, which is what keeps a re-import idempotent).
+    ``None`` as the column value sets SQL ``NULL`` like for any other column;
+    a ``PgArray`` inside a ``dict`` (JSONB) value raises before the first
+    statement, a bare ``list`` is not a ``PgArray``.
+
     ``touch`` (default ``None`` = not set = on): unless explicitly ``False``,
     every written row additionally gets ``updated_at = now`` (the resolved
     value) -- except where the update set itself contains ``updated_at`` (an
@@ -962,7 +1207,7 @@ def pg_table_updatemany(
     from psycopg.types.json import Jsonb
 
     connection = to_connection(conn, read_only=False)
-    table_ident = Identifier(table_name) if isinstance(table_name, str) else table_name
+    table_ident = _table_identifier(table_name)
     if isinstance(key_col, str) or not isinstance(key_col, _collections_abc.Sequence):
         key_names = [as_identifier_str(key_col)]
     else:
@@ -1033,6 +1278,11 @@ def pg_table_updatemany(
                 )
                 params.append(delete_keys)
                 params.append(Jsonb(set_items))
+            elif isinstance(value, PgArray):
+                # Native ARRAY column: REPLACE writes the whole array, APPEND
+                # concatenates the passed delta onto the stored elements.
+                assignments.append(_array_assignment(column, value))
+                params.append(list(value.elements))
             else:
                 assignments.append(
                     SQL("{} = {}").format(Identifier(column), Placeholder())

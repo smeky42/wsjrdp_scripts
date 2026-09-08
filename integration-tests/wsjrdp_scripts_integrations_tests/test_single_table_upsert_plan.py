@@ -14,6 +14,7 @@ touched. Every test runs inside a transaction that is rolled back.
 from __future__ import annotations
 
 import datetime
+import uuid
 
 import psycopg
 import psycopg.sql
@@ -24,9 +25,22 @@ from wsjrdp2027._internal.single_table_upsert_plan import (
     SingleTableUpsertPlanBuilder,
 )
 
+# Native ARRAY markers -- reached through wsjrdp2027._pg, they are not
+# re-exported (yet).
+from wsjrdp2027._pg import ArrayElementType, ArrayMode, PgArray
+
 
 EXPECTED_DATABASE = "hitobito_wsjrdp_scripts_integration_testing"
 SCRATCH_TABLE = "test_single_table_upsert_plan_scratch"
+
+U1 = uuid.UUID("11111111-1111-4111-8111-111111111111")
+U2 = uuid.UUID("22222222-2222-4222-8222-222222222222")
+U3 = uuid.UUID("33333333-3333-4333-8333-333333333333")
+U4 = uuid.UUID("44444444-4444-4444-8444-444444444444")
+
+UUID_T = ArrayElementType.UUID
+TEXT_T = ArrayElementType.TEXT
+APPEND = ArrayMode.APPEND
 
 
 # Naive datetimes on purpose: the pg_table_* helpers read them as wall time
@@ -50,6 +64,9 @@ def rw_conn(integration_testing_ctx):
             short_name varchar,
             amount integer,
             extra jsonb NOT NULL DEFAULT '{{}}',
+            uuids uuid[] NOT NULL DEFAULT '{{}}',
+            uuids_nullable uuid[],
+            tags text[],
             created_at timestamp,
             updated_at timestamp)"""
     )
@@ -63,8 +80,9 @@ def rw_conn(integration_testing_ctx):
 def fetch_all(conn):
     rows = conn.execute(
         psycopg.sql.SQL(
-            "SELECT number, name, short_name, amount, extra, created_at, "
-            "updated_at FROM {} ORDER BY number"
+            "SELECT number, name, short_name, amount, extra, uuids, "
+            "uuids_nullable, tags, created_at, updated_at "
+            "FROM {} ORDER BY number"
         ).format(psycopg.sql.Identifier(SCRATCH_TABLE))
     ).fetchall()
     return {
@@ -73,8 +91,11 @@ def fetch_all(conn):
             "short_name": r[2],
             "amount": r[3],
             "extra": r[4],
-            "created_at": r[5],
-            "updated_at": r[6],
+            "uuids": r[5],
+            "uuids_nullable": r[6],
+            "tags": r[7],
+            "created_at": r[8],
+            "updated_at": r[9],
         }
         for r in rows
     }
@@ -739,6 +760,304 @@ class Test_SingleTableUpsertPlan_list_columns:
                 "number",
                 [{"number": "1", "extra": [SpecialValue.DELETE]}],
             )
+
+
+class Test_SingleTableUpsertPlan_array_columns:
+    """A PgArray value is a NATIVE PostgreSQL ARRAY column: REPLACE diffs and
+    writes the whole array, APPEND writes only the elements the stored array
+    does not carry yet. A bare list stays a JSONB array (see
+    Test_SingleTableUpsertPlan_list_columns)."""
+
+    def test_replace_insert_rerun_untouched_then_reordered_update(self, rw_conn):
+        values = [{"number": "1", "uuids": PgArray([U1, U2], UUID_T)}]
+        _, inserted, _ = run_cycle(rw_conn, values)
+        assert inserted == ["1"]
+        assert fetch_all(rw_conn)["1"]["uuids"] == [U1, U2]
+
+        # Same array again -> untouched, no write at all.
+        planned, _, _ = run_cycle(rw_conn, values, now=LATER)
+        assert planned.untouched_keys == ["1"]
+        assert fetch_all(rw_conn)["1"]["updated_at"] is None
+
+        # REPLACE compares IN ORDER: the same elements reordered are a change,
+        # and the update carries the WHOLE array.
+        reordered = PgArray([U2, U1], UUID_T)
+        planned, _, updated = run_cycle(
+            rw_conn, [{"number": "1", "uuids": reordered}], now=LATER
+        )
+        assert updated == ["1"]
+        assert planned.updates == [{"uuids": reordered, "number": "1"}]
+        assert fetch_all(rw_conn)["1"]["uuids"] == [U2, U1]
+
+    def test_str_and_uuid_elements_compare_equal(self, rw_conn):
+        run_cycle(rw_conn, [{"number": "1", "uuids": PgArray([U1, U2], UUID_T)}])
+        # The marker normalizes str elements to uuid.UUID at construction, so
+        # they compare equal against the uuid[] the database returns.
+        planned, _, _ = run_cycle(
+            rw_conn,
+            [{"number": "1", "uuids": PgArray([str(U1), str(U2)], UUID_T)}],
+            now=LATER,
+        )
+        assert planned.untouched_keys == ["1"]
+        assert fetch_all(rw_conn)["1"]["uuids"] == [U1, U2]
+
+    def test_replace_empty_over_stored_null_writes_braces_once(self, rw_conn):
+        run_cycle(rw_conn, [{"number": "1", "name": "x"}])
+        assert fetch_all(rw_conn)["1"]["uuids_nullable"] is None
+        empty = PgArray([], UUID_T)
+        # A stored NULL is never equal, not even to an empty incoming array.
+        planned, _, updated = run_cycle(
+            rw_conn, [{"number": "1", "uuids_nullable": empty}], now=LATER
+        )
+        assert updated == ["1"]
+        assert planned.updates == [{"uuids_nullable": empty, "number": "1"}]
+        assert fetch_all(rw_conn)["1"]["uuids_nullable"] == []
+
+        # ... and from then on it is idempotent.
+        planned, _, _ = run_cycle(
+            rw_conn, [{"number": "1", "uuids_nullable": empty}], now=LATER
+        )
+        assert planned.untouched_keys == ["1"]
+
+    def test_replace_empty_over_stored_empty_is_untouched(self, rw_conn):
+        run_cycle(rw_conn, [{"number": "1", "name": "x"}])
+        assert fetch_all(rw_conn)["1"]["uuids"] == []  # NOT NULL DEFAULT '{}'
+        planned, _, _ = run_cycle(
+            rw_conn, [{"number": "1", "uuids": PgArray([], UUID_T)}], now=LATER
+        )
+        assert planned.untouched_keys == ["1"]
+        assert fetch_all(rw_conn)["1"]["updated_at"] is None
+
+    def test_append_writes_only_the_missing_elements_in_order(self, rw_conn):
+        run_cycle(rw_conn, [{"number": "1", "uuids": PgArray([U1, U2], UUID_T)}])
+        appending = [
+            {"number": "1", "uuids": PgArray([U2, U3, U1, U4], UUID_T, APPEND)}
+        ]
+        planned, _, updated = run_cycle(rw_conn, appending, now=LATER)
+        assert updated == ["1"]
+        # Only the DELTA reaches the statement: U1/U2 are already stored.
+        assert planned.updates == [
+            {"uuids": PgArray((U3, U4), UUID_T, APPEND), "number": "1"}
+        ]
+        assert fetch_all(rw_conn)["1"]["uuids"] == [U1, U2, U3, U4]
+
+        # Nothing missing any more -> untouched (that is what makes the
+        # re-import idempotent; the statement itself would append verbatim).
+        planned, _, _ = run_cycle(rw_conn, appending, now=LATER)
+        assert planned.untouched_keys == ["1"]
+        assert fetch_all(rw_conn)["1"]["uuids"] == [U1, U2, U3, U4]
+
+    def test_append_onto_a_stored_null_and_empty_delta(self, rw_conn):
+        run_cycle(rw_conn, [{"number": "1", "name": "x"}])
+        assert fetch_all(rw_conn)["1"]["uuids_nullable"] is None
+        # Empty delta -> no row is written at all, so the NULL survives
+        # (unlike REPLACE, an APPEND never claims the column).
+        planned, _, updated = run_cycle(
+            rw_conn,
+            [{"number": "1", "uuids_nullable": PgArray([], UUID_T, APPEND)}],
+            now=LATER,
+        )
+        assert (updated, planned.updates, planned.untouched_keys) == ([], [], ["1"])
+        state = fetch_all(rw_conn)["1"]
+        assert state["uuids_nullable"] is None
+        assert state["updated_at"] is None
+
+        # A non-empty delta appends onto the NULL (COALESCE to '{}').
+        planned, _, updated = run_cycle(
+            rw_conn,
+            [{"number": "1", "uuids_nullable": PgArray([U1, U2], UUID_T, APPEND)}],
+            now=LATER,
+        )
+        assert updated == ["1"]
+        assert fetch_all(rw_conn)["1"]["uuids_nullable"] == [U1, U2]
+
+    def test_append_on_insert_writes_the_deduplicated_array(self, rw_conn):
+        planned, inserted, _ = run_cycle(
+            rw_conn, [{"number": "1", "uuids": PgArray([U1, U2, U1], UUID_T, APPEND)}]
+        )
+        assert inserted == ["1"]
+        # On INSERT the mode makes no difference; the duplicate was already
+        # collapsed by the marker's constructor (first occurrence wins).
+        assert planned.inserts == [
+            {"number": "1", "uuids": PgArray((U1, U2), UUID_T, APPEND)}
+        ]
+        assert fetch_all(rw_conn)["1"]["uuids"] == [U1, U2]
+
+    def test_two_append_cycles_are_idempotent(self, rw_conn):
+        values = [
+            {"number": "1", "uuids": PgArray([U1, U2], UUID_T, APPEND)},
+            {"number": "2", "uuids": PgArray([U3], UUID_T, APPEND)},
+        ]
+        builder = SingleTableUpsertPlanBuilder(SCRATCH_TABLE, "number", values)
+        builder.load_existing(rw_conn)
+        planned = builder.plan()
+        assert planned.operation_counts() == {
+            SCRATCH_TABLE: OperationCounts(inserts=2, updates=0, deletes=0)
+        }
+        planned.apply(rw_conn, now=NOW)
+
+        builder = SingleTableUpsertPlanBuilder(SCRATCH_TABLE, "number", values)
+        builder.load_existing(rw_conn)
+        planned = builder.plan()
+        assert planned.operation_counts() == {
+            SCRATCH_TABLE: OperationCounts(inserts=0, updates=0, deletes=0)
+        }
+        assert planned.apply(rw_conn, now=LATER) == ([], [])
+        state = fetch_all(rw_conn)
+        assert (state["1"]["uuids"], state["2"]["uuids"]) == ([U1, U2], [U3])
+        assert state["1"]["updated_at"] is None
+
+    def test_text_array_cp1252_transliteration_is_no_change(self, rw_conn):
+        run_cycle(
+            rw_conn, [{"number": "1", "tags": PgArray(["Gdańsk", "Łódź"], TEXT_T)}]
+        )
+        # Incoming DATEV transliterations of the stored elements: REPLACE
+        # compares them element-wise as equal...
+        planned, _, _ = run_cycle(
+            rw_conn,
+            [{"number": "1", "tags": PgArray(["Gdansk", "Lódz"], TEXT_T)}],
+            cp1252=True,
+            now=LATER,
+        )
+        assert planned.untouched_keys == ["1"]
+        assert fetch_all(rw_conn)["1"]["tags"] == ["Gdańsk", "Łódź"]
+
+        # ... and APPEND finds them present, so nothing is appended.
+        planned, _, _ = run_cycle(
+            rw_conn,
+            [{"number": "1", "tags": PgArray(["Gdansk", "Lódz"], TEXT_T, APPEND)}],
+            cp1252=True,
+            now=LATER,
+        )
+        assert planned.untouched_keys == ["1"]
+        assert fetch_all(rw_conn)["1"]["tags"] == ["Gdańsk", "Łódź"]
+
+        # Without the transliteration-aware compare they ARE missing elements.
+        planned, _, updated = run_cycle(
+            rw_conn,
+            [{"number": "1", "tags": PgArray(["Gdansk", "Lódz"], TEXT_T, APPEND)}],
+            now=LATER,
+        )
+        assert updated == ["1"]
+        assert fetch_all(rw_conn)["1"]["tags"] == [
+            "Gdańsk",
+            "Łódź",
+            "Gdansk",
+            "Lódz",
+        ]
+
+    def test_merge_values_append_is_the_ordered_union(self, rw_conn):
+        builder = SingleTableUpsertPlanBuilder(
+            SCRATCH_TABLE,
+            "number",
+            [{"number": "1", "uuids": PgArray([U1, U2], UUID_T, APPEND)}],
+        )
+        builder.merge_values(
+            [{"number": "1", "uuids": PgArray([U2, U3], UUID_T, APPEND)}]
+        )
+        builder.load_existing(rw_conn)
+        planned = builder.plan()
+        assert planned.inserts == [
+            {"number": "1", "uuids": PgArray((U1, U2, U3), UUID_T, APPEND)}
+        ]
+        planned.apply(rw_conn, now=NOW)
+        assert fetch_all(rw_conn)["1"]["uuids"] == [U1, U2, U3]
+
+    def test_merge_values_replace_last_wins(self, rw_conn):
+        builder = SingleTableUpsertPlanBuilder(
+            SCRATCH_TABLE, "number", [{"number": "1", "uuids": PgArray([U1], UUID_T)}]
+        )
+        builder.merge_values([{"number": "1", "uuids": PgArray([U2, U3], UUID_T)}])
+        builder.load_existing(rw_conn)
+        planned = builder.plan()
+        assert planned.inserts == [{"number": "1", "uuids": PgArray((U2, U3), UUID_T)}]
+
+    def test_merge_values_rejects_mixed_arrays(self, rw_conn):
+        def builder_with(value):
+            return SingleTableUpsertPlanBuilder(
+                SCRATCH_TABLE, "number", [{"number": "1", "uuids": value}]
+            )
+
+        # Different mode: an accumulating column must not silently become a
+        # snapshot column (or the other way round).
+        with pytest.raises(ValueError, match="different mode or element type"):
+            builder_with(PgArray([U1], UUID_T, APPEND)).merge_values(
+                [{"number": "1", "uuids": PgArray([U2], UUID_T)}]
+            )
+        # Different element type.
+        with pytest.raises(ValueError, match="different mode or element type"):
+            builder_with(PgArray([U1], UUID_T)).merge_values(
+                [{"number": "1", "uuids": PgArray(["a"], TEXT_T)}]
+            )
+        # A bare list is JSONB, a PgArray is a native ARRAY column: never
+        # silently switch a column between the two.
+        with pytest.raises(ValueError, match="non-PgArray"):
+            builder_with(PgArray([U1], UUID_T)).merge_values(
+                [{"number": "1", "uuids": [str(U2)]}]
+            )
+        with pytest.raises(ValueError, match="non-PgArray"):
+            builder_with([str(U1)]).merge_values(
+                [{"number": "1", "uuids": PgArray([U2], UUID_T)}]
+            )
+
+    def test_merge_values_explicit_none_sets_null(self, rw_conn):
+        run_cycle(rw_conn, [{"number": "1", "uuids_nullable": PgArray([U1], UUID_T)}])
+        builder = SingleTableUpsertPlanBuilder(
+            SCRATCH_TABLE,
+            "number",
+            [{"number": "1", "uuids_nullable": PgArray([U2], UUID_T)}],
+        )
+        # The documented scalar rule: an explicit None over a PgArray wins.
+        builder.merge_values([{"number": "1", "uuids_nullable": None}])
+        builder.load_existing(rw_conn)
+        planned = builder.plan()
+        assert planned.updates == [{"uuids_nullable": None, "number": "1"}]
+        planned.apply(rw_conn, now=LATER)
+        assert fetch_all(rw_conn)["1"]["uuids_nullable"] is None
+
+    def test_pg_array_in_key_column_or_nested_raises_at_construction(self, rw_conn):
+        with pytest.raises(ValueError, match="key column"):
+            SingleTableUpsertPlanBuilder(
+                SCRATCH_TABLE, "number", [{"number": PgArray([U1], UUID_T)}]
+            )
+        with pytest.raises(ValueError, match="TOP-LEVEL"):
+            SingleTableUpsertPlanBuilder(
+                SCRATCH_TABLE,
+                "number",
+                [{"number": "1", "extra": {"u": PgArray([U1], UUID_T)}}],
+            )
+        with pytest.raises(ValueError, match="TOP-LEVEL"):
+            SingleTableUpsertPlanBuilder(
+                SCRATCH_TABLE,
+                "number",
+                [{"number": "1", "extra": [PgArray([U1], UUID_T)]}],
+            )
+
+    def test_jsonb_list_and_native_array_in_the_same_row(self, rw_conn):
+        values = [
+            {
+                "number": "1",
+                "extra": [1, "a"],  # bare list -> JSONB array
+                "uuids": PgArray([U1], UUID_T),  # PgArray -> uuid[]
+            }
+        ]
+        run_cycle(rw_conn, values)
+        state = fetch_all(rw_conn)["1"]
+        assert state["extra"] == [1, "a"]
+        assert state["uuids"] == [U1]
+        # Both stay idempotent side by side.
+        planned, _, _ = run_cycle(rw_conn, values, now=LATER)
+        assert planned.untouched_keys == ["1"]
+
+    def test_sql_as_table_name_raises_in_load_existing(self, rw_conn):
+        # Defence in depth: a bare SQL() would reach the statement unquoted.
+        builder = SingleTableUpsertPlanBuilder(
+            psycopg.sql.SQL(SCRATCH_TABLE),  # ty: ignore[invalid-argument-type]
+            "number",
+            [{"number": "1", "name": "x"}],
+        )
+        with pytest.raises(TypeError, match="str or psycopg.sql.Identifier"):
+            builder.load_existing(rw_conn)
 
 
 class Test_SingleTableUpsertPlan_read_only_columns:

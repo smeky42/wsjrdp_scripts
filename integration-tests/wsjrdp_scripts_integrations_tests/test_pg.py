@@ -15,11 +15,13 @@ the integration-testing database.
 from __future__ import annotations
 
 import datetime
+import uuid
 
 import psycopg
 import psycopg.sql
 import pytest
 import wsjrdp2027
+from wsjrdp2027 import _pg
 
 
 EXPECTED_DATABASE = "hitobito_wsjrdp_scripts_integration_testing"
@@ -60,6 +62,13 @@ def conn(ctx):
                 " extra jsonb DEFAULT '{{}}',"
                 " ts timestamptz,"
                 " d date,"
+                # Native ARRAY columns, all NULLABLE and without a default, so
+                # the seeded rows start as SQL NULL (PgArray APPEND has to
+                # cope with that).
+                " tags text[],"
+                " uuids uuid[],"
+                " nums integer[],"
+                " days date[],"
                 " created_at timestamp,"
                 " updated_at timestamp)"
             ).format(table)
@@ -96,6 +105,18 @@ def fetch_all(conn):
         }
         for r in rows
     }
+
+
+def fetch_column(conn, column, row_id):
+    """The stored value of ONE column of one row (used for the columns
+    `fetch_all` does not carry, e.g. the native ARRAY columns)."""
+    return conn.execute(
+        psycopg.sql.SQL("SELECT {col} FROM {table} WHERE id = %s").format(
+            col=psycopg.sql.Identifier(column),
+            table=psycopg.sql.Identifier(TABLE),
+        ),
+        (row_id,),
+    ).fetchone()[0]
 
 
 def seed_state():
@@ -762,3 +783,238 @@ class Test_touch:
         ).fetchone()
         assert ts == datetime.datetime(2027, 8, 1, 21, 30, tzinfo=datetime.UTC)
         assert d == datetime.date(2027, 8, 1)
+
+
+U1 = uuid.UUID("11111111-1111-4111-8111-111111111111")
+U2 = uuid.UUID("22222222-2222-4222-8222-222222222222")
+U3 = uuid.UUID("33333333-3333-4333-8333-333333333333")
+U4 = uuid.UUID("44444444-4444-4444-8444-444444444444")
+
+UUID_T = _pg.ArrayElementType.UUID
+TEXT_T = _pg.ArrayElementType.TEXT
+INT_T = _pg.ArrayElementType.INTEGER
+DATE_T = _pg.ArrayElementType.DATE
+APPEND = _pg.ArrayMode.APPEND
+
+# Text elements a hand-built array literal would mangle: the element
+# separator, both quote characters, a backslash, the array braces, the word
+# NULL, the empty string, significant surrounding spaces and a psycopg
+# placeholder. They travel as ONE bound parameter, so the driver quotes them.
+HOSTILE_TAGS = ["a,b", 'c"d', "e\\f", "{g}", "NULL", "", " x ", "O'Reilly %s"]
+
+
+class Test_pg_table_array_columns:
+    """Native PostgreSQL ARRAY columns via the ``PgArray`` value marker:
+    ``REPLACE`` (the given elements are the target state) and ``APPEND`` (they
+    are concatenated onto the stored ones). The names are reached through
+    ``wsjrdp2027._pg`` -- they are not re-exported (yet)."""
+
+    def test_insert_writes_the_full_array_in_both_modes(self, conn):
+        result = wsjrdp2027.pg_table_insertmany(
+            conn,
+            TABLE,
+            [
+                # Mixed str/UUID elements: the marker normalizes them.
+                {"name": "replace", "uuids": _pg.PgArray([str(U1), U2], UUID_T)},
+                {"name": "append", "uuids": _pg.PgArray([U3, str(U1)], UUID_T, APPEND)},
+            ],
+        )
+        conn.commit()
+        replaced, appended = result.inserted_ids
+        # On INSERT the mode makes no difference -- both write the array.
+        stored = fetch_column(conn, "uuids", replaced)
+        assert stored == [U1, U2]
+        assert [type(x) for x in stored] == [uuid.UUID, uuid.UUID]
+        assert fetch_column(conn, "uuids", appended) == [U3, U1]
+
+    def test_insert_empty_array_writes_braces_not_null(self, conn):
+        result = wsjrdp2027.pg_table_insertmany(
+            conn,
+            TABLE,
+            [
+                {"name": "leer", "uuids": _pg.PgArray([], UUID_T)},
+                {"name": "leer-append", "uuids": _pg.PgArray([], UUID_T, APPEND)},
+                {"name": "null", "uuids": None},
+                {"name": "gar nicht"},
+            ],
+        )
+        conn.commit()
+        empty, empty_append, explicit_null, absent = result.inserted_ids
+        assert fetch_column(conn, "uuids", empty) == []
+        assert fetch_column(conn, "uuids", empty_append) == []
+        # None stays the ordinary "set this column to SQL NULL".
+        assert fetch_column(conn, "uuids", explicit_null) is None
+        assert fetch_column(conn, "uuids", absent) is None
+
+    def test_replace_update_overwrites_the_whole_array_and_can_empty_it(self, conn):
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 1, "uuids": _pg.PgArray([U1, U2], UUID_T)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "uuids", 1) == [U1, U2]
+
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 1, "uuids": _pg.PgArray([U3], UUID_T)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "uuids", 1) == [U3]  # not appended
+
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 1, "uuids": _pg.PgArray([], UUID_T)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "uuids", 1) == []
+
+    def test_append_update_concatenates_in_order(self, conn):
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 2, "uuids": _pg.PgArray([U1], UUID_T)}]
+        )
+        conn.commit()
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 2, "uuids": _pg.PgArray([U2, U3], UUID_T, APPEND)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "uuids", 2) == [U1, U2, U3]
+
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 2, "uuids": _pg.PgArray([U4], UUID_T, APPEND)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "uuids", 2) == [U1, U2, U3, U4]
+
+    def test_append_does_not_deduplicate_against_the_stored_array(self, conn):
+        # The statement appends VERBATIM: whoever calls it owns the delta (the
+        # plan builder computes it, which is what keeps a re-import idempotent).
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 2, "uuids": _pg.PgArray([U1, U2], UUID_T)}]
+        )
+        conn.commit()
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 2, "uuids": _pg.PgArray([U2, U3], UUID_T, APPEND)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "uuids", 2) == [U1, U2, U2, U3]
+
+    def test_append_onto_a_stored_null_treats_it_as_empty(self, conn):
+        assert fetch_column(conn, "uuids", 3) is None
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 3, "uuids": _pg.PgArray([U1, U2], UUID_T, APPEND)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "uuids", 3) == [U1, U2]
+
+    def test_append_with_an_empty_delta_leaves_the_array_unchanged(self, conn):
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 4, "uuids": _pg.PgArray([U1, U2], UUID_T)}]
+        )
+        conn.commit()
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 4, "uuids": _pg.PgArray([], UUID_T, APPEND)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "uuids", 4) == [U1, U2]
+
+    def test_hostile_text_elements_round_trip_exactly(self, conn):
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 1, "tags": _pg.PgArray(HOSTILE_TAGS, TEXT_T)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "tags", 1) == HOSTILE_TAGS
+        # ... and through the APPEND template, and through an INSERT.
+        wsjrdp2027.pg_table_updatemany(
+            conn, TABLE, [{"id": 1, "tags": _pg.PgArray(["nach,her"], TEXT_T, APPEND)}]
+        )
+        result = wsjrdp2027.pg_table_insertmany(
+            conn, TABLE, [{"name": "tags", "tags": _pg.PgArray(HOSTILE_TAGS, TEXT_T)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "tags", 1) == [*HOSTILE_TAGS, "nach,her"]
+        assert fetch_column(conn, "tags", result.inserted_ids[0]) == HOSTILE_TAGS
+
+    def test_integer_and_date_round_trip(self, conn):
+        wsjrdp2027.pg_table_updatemany(
+            conn,
+            TABLE,
+            [
+                {
+                    "id": 1,
+                    "nums": _pg.PgArray([3, 1, -2, 0], INT_T),
+                    # A date and an ISO string are the same element type.
+                    "days": _pg.PgArray(
+                        [datetime.date(2027, 8, 1), "2027-08-03"], DATE_T
+                    ),
+                }
+            ],
+        )
+        conn.commit()
+        assert fetch_column(conn, "nums", 1) == [3, 1, -2, 0]
+        assert fetch_column(conn, "days", 1) == [
+            datetime.date(2027, 8, 1),
+            datetime.date(2027, 8, 3),
+        ]
+
+        wsjrdp2027.pg_table_updatemany(
+            conn,
+            TABLE,
+            [
+                {
+                    "id": 1,
+                    "nums": _pg.PgArray([7], INT_T, APPEND),
+                    "days": _pg.PgArray(["2027-08-04"], DATE_T, APPEND),
+                }
+            ],
+        )
+        conn.commit()
+        assert fetch_column(conn, "nums", 1) == [3, 1, -2, 0, 7]
+        assert fetch_column(conn, "days", 1)[-1] == datetime.date(2027, 8, 4)
+
+    def test_pg_array_inside_a_dict_raises_before_writing(self, conn):
+        with pytest.raises(ValueError, match="TOP-LEVEL"):
+            wsjrdp2027.pg_table_updatemany(
+                conn,
+                TABLE,
+                [
+                    {"id": 1, "name": "would-be-written-first"},
+                    {"id": 2, "extra": {"u": _pg.PgArray([U1], UUID_T)}},
+                ],
+            )
+        conn.rollback()
+        assert fetch_all(conn) == seed_state()
+
+        with pytest.raises(ValueError, match="TOP-LEVEL"):
+            wsjrdp2027.pg_table_insertmany(
+                conn,
+                TABLE,
+                [{"name": "nested", "extra": {"n": [_pg.PgArray([U1], UUID_T)]}}],
+            )
+        conn.rollback()
+        assert fetch_all(conn) == seed_state()
+
+    def test_sql_as_table_name_raises_while_an_identifier_works(self, conn):
+        # Defence in depth: a bare SQL() would reach the statement unquoted.
+        hostile = psycopg.sql.SQL(TABLE)
+        with pytest.raises(TypeError, match="str or psycopg.sql.Identifier"):
+            wsjrdp2027.pg_table_updatemany(
+                conn,
+                hostile,  # ty: ignore[invalid-argument-type]
+                [{"id": 1, "amount": 1}],
+            )
+        with pytest.raises(TypeError, match="str or psycopg.sql.Identifier"):
+            wsjrdp2027.pg_table_insertmany(
+                conn,
+                hostile,  # ty: ignore[invalid-argument-type]
+                [{"name": "x"}],
+            )
+        conn.rollback()
+        assert fetch_all(conn) == seed_state()
+
+        table = psycopg.sql.Identifier(TABLE)
+        wsjrdp2027.pg_table_updatemany(
+            conn, table, [{"id": 1, "uuids": _pg.PgArray([U1], UUID_T)}]
+        )
+        inserted = wsjrdp2027.pg_table_insertmany(
+            conn, table, [{"name": "ident", "uuids": _pg.PgArray([U2], UUID_T, APPEND)}]
+        )
+        conn.commit()
+        assert fetch_column(conn, "uuids", 1) == [U1]
+        assert fetch_column(conn, "uuids", inserted.inserted_ids[0]) == [U2]

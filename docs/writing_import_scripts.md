@@ -135,6 +135,22 @@ transliteration); `plan(skip_update_for_cp1252_equality=…)` for the same
 comparison against the database; `plan(replace_dict_columns=…)` for
 snapshot-style JSONB columns.
 
+**Native ARRAY columns.** `PgArray(elements, ArrayElementType.UUID,
+mode=ArrayMode.APPEND)` as a column value selects a native PostgreSQL ARRAY
+column -- the shape for an accumulating column such as
+`moss_transactions.all_moss_transaction_uuids`, which collects every id that
+ever addressed the row. `ArrayMode.REPLACE` (the default) is for snapshot
+arrays: the given elements are the whole target state. A bare `list` stays a
+JSONB array, so the marker is what distinguishes the two. In APPEND mode the
+plan computes the delta against the state `load_existing()` read and writes
+only the elements the stored array is missing -- an empty delta produces no
+UPDATE at all, which is what makes a re-run idempotent. Elements are
+normalised per element type before the diff, so a `str` and a `uuid.UUID` of
+the same id compare equal; the `::uuid[]` cast comes from the
+`ArrayElementType` member, a code constant, never from a caller string. A
+`PgArray` is valid only as a top-level column value: not in a key column and
+not inside a `dict`.
+
 ### 6. Show the plan before asking for approval
 
 `_log_plan_summary()` logs `planned.operation_counts()` per table plus the

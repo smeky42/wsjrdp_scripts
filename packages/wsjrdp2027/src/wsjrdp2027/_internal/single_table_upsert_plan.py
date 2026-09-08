@@ -46,6 +46,31 @@ Column semantics (uniform for scalar columns and JSONB keys):
 * a **list** value is a JSONB array: compared and written as a WHOLE (no
   per-element merge; date/datetime elements are serialized like inside
   dicts);
+* a :class:`~wsjrdp2027._pg.PgArray` value is a NATIVE PostgreSQL ARRAY
+  column (``uuid[]``, ``text[]``, ...); a bare ``list`` stays a JSONB array.
+  On INSERT the array is written as given (an empty one writes ``{}``, not
+  ``NULL``), on UPDATE its ``ArrayMode`` decides:
+
+  - ``REPLACE``: the incoming elements ARE the target state -- compared
+    element-wise IN ORDER, and written as a whole array. A stored SQL
+    ``NULL`` is never equal, not even to an empty incoming array: that
+    writes ``{}`` exactly once and is idempotent afterwards;
+  - ``APPEND``: only the elements the LOADED array does not carry yet are
+    written (that delta is appended, order kept, so no duplicates arise); an
+    empty delta writes no row at all, hence a stored ``NULL`` stays ``NULL``.
+
+  A ``PgArray`` is only valid as a TOP-LEVEL column value (inside a
+  dict/list it raises) and never in a key column. :meth:`merge_values`
+  combines two ``PgArray`` values of the SAME mode and element type
+  (``REPLACE``: the later one wins, ``APPEND``: the ordered union); a
+  different mode or element type, or a ``PgArray`` meeting a bare
+  list/scalar, raises -- a column never silently switches between ARRAY and
+  JSONB semantics. An explicit ``None`` sets ``NULL`` as for any scalar.
+
+  Known limit: the APPEND delta is computed against the state
+  :meth:`~SingleTableUpsertPlanBuilder.load_existing` read, so a concurrent
+  appender writing between load and apply could make an element appear
+  twice (the same window every column has);
 * scalar column = ``SpecialValue.NOW`` / ``SpecialValue.TODAY`` -> resolved at
   apply time to the ``now`` timestamp resp. its date.
 
@@ -63,7 +88,7 @@ import logging as _logging
 import typing as _typing
 import zoneinfo as _zoneinfo
 
-from .._pg import SpecialValue
+from .._pg import ArrayMode, PgArray, SpecialValue, _table_identifier
 
 
 if _typing.TYPE_CHECKING:
@@ -90,7 +115,9 @@ class SingleTableUpsertPlan:
     per-row, per-column work for ONE table. ``inserts``/``updates`` contain
     the key column plus (for updates) ONLY the genuinely changed columns --
     and inside dict (JSONB) columns only the genuinely changing keys (see
-    :func:`_minimal_jsonb_delta`); ``untouched_keys`` lists the keys whose
+    :func:`_minimal_jsonb_delta`), inside an APPEND
+    :class:`~wsjrdp2027._pg.PgArray` column only the missing elements (see
+    :func:`_array_delta`); ``untouched_keys`` lists the keys whose
     target state already equals the stored state. Instances come from the
     builder, not from user code.
 
@@ -182,7 +209,10 @@ class SingleTableUpsertPlan:
             # A list value is a JSONB array column: the *many helpers would
             # bind a bare Python list as a PostgreSQL ARRAY, so wrap it here
             # (dicts go through unwrapped -- their partial-merge handling
-            # lives in the helpers). The plan rows themselves stay unwrapped.
+            # lives in the helpers, and so does the native-ARRAY handling of a
+            # PgArray, which passes through unwrapped as well: the helpers
+            # render its cast resp. its array_cat template). The plan rows
+            # themselves stay unwrapped.
             return [
                 {
                     column: Jsonb(value) if isinstance(value, list) else value
@@ -282,13 +312,34 @@ def _minimal_jsonb_delta(delta: dict, stored: dict, *, translit: bool) -> dict:
     return minimal
 
 
+def _array_delta(value: PgArray, stored: list | None, *, translit: bool) -> tuple:
+    """The elements of an ``ArrayMode.APPEND`` :class:`PgArray` that the
+    stored array does not carry yet -- in the incoming order, which is exactly
+    what has to be appended.
+
+    A stored ``NULL`` (``None``) counts as the empty array. Membership runs
+    through :func:`_values_equal`, so with ``translit`` a ``text[]`` element
+    that is merely the CP1252 transliteration of a stored element counts as
+    present (and is therefore NOT appended again)."""
+    stored_elements = stored if stored is not None else []
+    return tuple(
+        element
+        for element in value.elements
+        if not any(
+            _values_equal(element, stored_element, translit=translit)
+            for stored_element in stored_elements
+        )
+    )
+
+
 def _intake_serialize(value: object, *, tz: _zoneinfo.ZoneInfo, where: str) -> object:
     """Serialize datetime/date values inside a JSONB dict to their ISO 8601
     string form (see _pg._resolve_time_zone for the format decision) so the
     plan diff compares the written representation. NOW/TODAY markers pass
     through (they are resolved later, in write, against `now`);
     SpecialValue.DELETE is not allowed below the top level of the column
-    dict -- the caller handles that level."""
+    dict -- the caller handles that level. A PgArray is a whole COLUMN value
+    (a native ARRAY column), never a JSONB element, and raises here."""
     if isinstance(value, SpecialValue):
         if value is SpecialValue.DELETE:
             raise ValueError(
@@ -296,6 +347,14 @@ def _intake_serialize(value: object, *, tz: _zoneinfo.ZoneInfo, where: str) -> o
                 "TOP-LEVEL value of a dict (JSONB) column"
             )
         return value
+    if isinstance(value, PgArray):
+        # Same wording as _pg._serialize_jsonb_value: a PgArray selects a
+        # native ARRAY column, it has no meaning inside JSONB. ValueError,
+        # not TypeError: like the DELETE marker above it is a well-typed
+        # object used in the wrong place.
+        raise ValueError(  # noqa: TRY004
+            f"{where}: PgArray is only allowed as a TOP-LEVEL column value"
+        )
     if isinstance(value, _datetime.datetime):
         if value.tzinfo is None:
             value = value.replace(tzinfo=tz)
@@ -414,6 +473,19 @@ class SingleTableUpsertPlanBuilder:
                     # right away (plan/diff and write then need no marker
                     # handling; NULL-idempotency falls out for free).
                     row[column] = None
+                elif isinstance(column_value, PgArray):
+                    # A native ARRAY column value: already canonical (its
+                    # constructor normalized the elements per element type,
+                    # dropped duplicates and froze the result), so it passes
+                    # through UNCHANGED -- no ISO serialization, which is for
+                    # JSONB. The explicit branch also keeps the `list` branch
+                    # below from ever seeing a PgArray.
+                    if column in self._key_names:
+                        raise ValueError(
+                            f"values[{index}][{column!r}]: a PgArray is not a "
+                            "valid value for the key column "
+                            f"{self._key_desc} -- key values are scalars"
+                        )
                 elif isinstance(column_value, dict):
                     # Serialize date/time values to their ISO 8601 JSONB form
                     # right away, so plan()'s diff compares what would be
@@ -458,7 +530,11 @@ class SingleTableUpsertPlanBuilder:
         Per key: an unknown key appends a new row; for a known key the
         incoming columns are merged into the existing set (an incoming column
         wins; ``dict`` values merge per top-level key, ``SpecialValue.DELETE`` markers
-        included). With ``keep_existing_for_cp1252_equality`` (``True`` = all
+        included; two :class:`~wsjrdp2027._pg.PgArray` values of the same mode
+        and element type combine -- ``REPLACE``: the incoming one wins,
+        ``APPEND``: the ordered union -- while a different mode or element
+        type, or a ``PgArray`` meeting a bare list/scalar, raises
+        ``ValueError``). With ``keep_existing_for_cp1252_equality`` (``True`` = all
         columns, sequence = exactly those) an incoming string that is merely
         the CP1252 transliteration of the existing value KEEPS the existing
         value -- e.g. a DATEV file merged over Moss Unicode data."""
@@ -508,6 +584,38 @@ class SingleTableUpsertPlanBuilder:
 
             return new != old and win1252_matches_stored(new, old)
 
+        if isinstance(existing, PgArray) and isinstance(incoming, PgArray):
+            if (
+                existing.mode is not incoming.mode
+                or existing.element_type is not incoming.element_type
+            ):
+                raise ValueError(
+                    "cannot merge PgArray values with a different mode or "
+                    f"element type: {existing.mode.name}/"
+                    f"{existing.element_type.name} vs {incoming.mode.name}/"
+                    f"{incoming.element_type.name}"
+                )
+            if existing.mode is ArrayMode.APPEND:
+                # An accumulating column: the ordered union of both sources
+                # (the PgArray constructor drops duplicates, first occurrence
+                # winning).
+                return _dataclasses.replace(
+                    existing,
+                    elements=(*existing.elements, *incoming.elements),
+                )
+            # REPLACE: the later source IS the target state, like a scalar.
+            return incoming
+        if isinstance(existing, PgArray) or isinstance(incoming, PgArray):
+            # Exactly one side is a native ARRAY value. Only an explicit None
+            # (SQL NULL, the scalar rule) and an absent counterpart may meet
+            # it -- a bare list or a scalar would silently switch the column
+            # between ARRAY and JSONB semantics.
+            if existing is None or incoming is None:
+                return incoming
+            raise ValueError(
+                "cannot merge a PgArray (a native ARRAY column) with a "
+                f"non-PgArray value: {existing!r} vs {incoming!r}"
+            )
         if isinstance(existing, dict) and isinstance(incoming, dict):
             merged = dict(existing)
             for key, value in incoming.items():
@@ -547,11 +655,9 @@ class SingleTableUpsertPlanBuilder:
         from .._pg import to_connection
 
         connection = to_connection(conn, read_only=False)
-        table = (
-            psycopg.sql.Identifier(self.table_name)
-            if isinstance(self.table_name, str)
-            else self.table_name
-        )
+        # Defence in depth: a bare psycopg.sql.SQL would otherwise reach the
+        # statement unquoted (the write path hardens the name the same way).
+        table = _table_identifier(self.table_name)
         keys = list(self._rows)
         # Value-set columns first, then any read-only extras not already covered
         # by the value set or the key (deduplicated, order preserved).
@@ -632,8 +738,9 @@ class SingleTableUpsertPlanBuilder:
 
         ``skip_update_for_cp1252_equality``: ``True`` applies the
         CP1252-transliteration-aware string comparison to every column
-        (recursively inside dicts), ``False`` to none, a sequence of column
-        names to exactly those columns.
+        (recursively inside dicts, and per element of a ``text[]``
+        :class:`~wsjrdp2027._pg.PgArray`), ``False`` to none, a sequence of
+        column names to exactly those columns.
 
         ``replace_dict_columns``: dict (JSONB) columns whose incoming dict is
         the FULL target state (snapshot semantics) instead of a partial
@@ -673,6 +780,9 @@ class SingleTableUpsertPlanBuilder:
             if current is None:
                 insert_row = self._key_columns_dict(key_value)
                 for column, value in row.items():
+                    # A PgArray passes through as given: on INSERT both modes
+                    # write the whole array (there is no stored state to
+                    # append to).
                     insert_row[column] = (
                         _strip_delete_keys(value) if isinstance(value, dict) else value
                     )
@@ -682,6 +792,36 @@ class SingleTableUpsertPlanBuilder:
             for column, value in row.items():
                 stored_value = current.get(column)
                 translit = column in translit_columns
+                if isinstance(value, PgArray):
+                    # Native ARRAY column; the value carries the semantics.
+                    stored_list = (
+                        stored_value if isinstance(stored_value, list) else None
+                    )
+                    if value.mode is ArrayMode.APPEND:
+                        # Only what the stored array is missing is written --
+                        # that delta is what makes a re-import idempotent
+                        # (the statement itself appends verbatim). An empty
+                        # delta writes NO row for this column, so a stored
+                        # NULL stays NULL: an APPEND never claims the column.
+                        delta = _array_delta(value, stored_list, translit=translit)
+                        if delta:
+                            changed[column] = _dataclasses.replace(
+                                value, elements=delta
+                            )
+                        continue
+                    # REPLACE: the incoming elements are the target state,
+                    # compared IN ORDER. A stored NULL is never equal, not
+                    # even to an empty incoming array -- that writes `{}` once
+                    # and is untouched from then on.
+                    incoming_elements = list(value.elements)
+                    if stored_list is not None and _values_equal(
+                        incoming_elements, stored_list, translit=translit
+                    ):
+                        if translit and incoming_elements != stored_list:
+                            translit_kept += 1
+                        continue
+                    changed[column] = value
+                    continue
                 if isinstance(value, dict):
                     stored_dict = stored_value if isinstance(stored_value, dict) else {}
                     if column in replace_columns:
