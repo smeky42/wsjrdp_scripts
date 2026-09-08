@@ -32,6 +32,9 @@ from ._people import (
 )
 from ._people_query import PeopleQuery as PeopleQuery, PeopleWhere as PeopleWhere
 from ._pg import (
+    ArrayElementType as ArrayElementType,
+    ArrayMode as ArrayMode,
+    PgArray as PgArray,
     PgConnectionLike as PgConnectionLike,
     SpecialValue as SpecialValue,
     UpsertResult as UpsertResult,
@@ -229,6 +232,9 @@ __all__ = [
     "pg_insert_payment_initiation",
     "pg_select_camt_tx_unique_db_key2row",
     "pg_select_dataframe",
+    "ArrayElementType",
+    "ArrayMode",
+    "PgArray",
     "SpecialValue",
     "UpsertResult",
     "as_identifier_str",
