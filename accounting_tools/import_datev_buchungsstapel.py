@@ -18,7 +18,8 @@ writes them to two tables:
     INSERTs a new row. The booking<->entry and booking<->camt links live on the
     OTHER side (accounting_entries.datev_booking_id /
     wsjrdp_camt_transactions.datev_booking_id) and are (re)established by the
-    auto-linking below, not by the upsert.
+    auto-linking below -- one set-based candidate query plus one batched UPDATE
+    per rule and file -- not by the upsert.
 
 Like the master-data importers (import_cost_centers.py & co) this is a
 plan/apply CLI on SingleTableUpsertPlanBuilder: the stored rows are loaded
@@ -773,25 +774,122 @@ def _log_plan_summary(planned, *, key_of) -> None:
 
 
 # Person number embedded in a fee Buchungstext, e.g. "CMT 11" / "YP 4711".
-_PERSON_IN_TEXT_RE = _re.compile(r"\b(?:CMT|YP|UL|IST)\s+(\d+)\b")
+_PERSON_IN_TEXT_RE = _re.compile(r"\b(?:BMT|CMT|IST|TN|UL|YP)\s+(\d+)\b")
 
 # Regular fee Belegfeld 1, e.g. "Einzug-2026-01-RCUR-4-1717"; the trailing block
 # is the wsjrdp_direct_debit_pre_notifications id.
 _RE_EINZUG_PRENOTIF = _re.compile(r"^Einzug-\d{4}-\d{2}-[A-Z]{4}-\d+-(\d+)$")
 
 
-def _link_entry(cur, *, booking_id, entry_id, link_type, now) -> None:
-    """Link a booking to its accounting entry -- the link lives ON THE ENTRY now
-    (accounting_entries.datev_booking_id + the datev_booking_link_meta JSON).
-    A booking has no own person column any more (its person is the entry's
-    subject). The importer's two rules are its deterministic import-equivalent
-    cases, so the meta is: automatic_manual = 'automatic', score = 1.0 (100 %),
-    author_id = 1 (system person), classification_string = link_type. ``now`` is
-    the AWARE ctx.start_time; created_at stores its ISO 8601 form (and the UTC
-    session writes updated_at Rails-conventionally as UTC-naive). The entry IS
-    modified, so its updated_at is bumped."""
+def _parse_person_id(text: str | None) -> int | None:
+    """The person id embedded in a fee Buchungstext, or None when the text
+    carries none.
+
+    >>> _parse_person_id("Beitrag YP 4711 Rate 3")
+    4711
+    >>> _parse_person_id("Beitrag TN 4711 Rate 3")
+    4711
+    >>> _parse_person_id("Sammelbuchung Beitraege")
+    >>> _parse_person_id(None)
+    """
+    match = _PERSON_IN_TEXT_RE.search(text or "")
+    return int(match.group(1)) if match else None
+
+
+def _parse_pre_notification_id(document_field_1: str | None) -> int | None:
+    """The wsjrdp_direct_debit_pre_notifications id in a regular fee Belegfeld 1
+    ('Einzug-YYYY-MM-<SEQ>-<n>-<prenotif_id>'), or None for a Belegfeld 1 of any
+    other shape -- which is what marks a booking as NOT a pre-notification fee
+    booking.
+
+    >>> _parse_pre_notification_id("Einzug-2026-01-RCUR-4-1717")
+    1717
+    >>> _parse_pre_notification_id("Einzug-2026-01-RCUR-4")
+    >>> _parse_pre_notification_id("Rechnung 4711")
+    >>> _parse_pre_notification_id(None)
+    """
+    match = _RE_EINZUG_PRENOTIF.match(document_field_1 or "")
+    return int(match.group(1)) if match else None
+
+
+def _amount_to_cents(amount: _decimal.Decimal) -> int:
+    """A DATEV base amount (signed EUR Decimal) as integer cents -- the unit of
+    accounting_entries.amount_cents.
+
+    >>> _amount_to_cents(_decimal.Decimal("-123.45"))
+    -12345
+    >>> _amount_to_cents(_decimal.Decimal("57"))
+    5700
+    """
+    return int(round(amount * 100))
+
+
+def _select_unique_pairs(cur, candidates, *, join) -> list[tuple[int, int]]:
+    """Match a whole candidate batch against accounting_entries in ONE query and
+    return the UNAMBIGUOUS (entry_id, booking_id) pairs.
+
+    ``candidates`` is an ordered ``{column: (pg_type, values)}`` mapping of the
+    equally long candidate arrays, one of them named ``booking_id``. They are
+    handed to the database as ``unnest(%s::<type>[], ...)``, aliased ``c``, and
+    joined against accounting_entries by the rule's own ``join`` condition. Both
+    rules additionally require a free entry: ``datev_booking_id IS NULL`` and no
+    ``excluded_from_fee_reconciliation`` in additional_info.
+
+    Uniqueness is SYMMETRIC: a pair survives only when its booking hits exactly
+    one entry AND its entry is hit by exactly one booking of the batch, so two
+    bookings competing for one entry leave BOTH unlinked instead of awarding the
+    entry to whichever booking a sequential first-wins match happened to reach
+    first. On the real data no such competition occurs, so both readings select
+    the same pairs.
+
+    Issues no statement (and returns no pair) for an empty batch."""
+    columns = list(candidates)
+    arrays = [values for _pg_type, values in candidates.values()]
+    if not arrays or not arrays[0]:
+        return []
+    unnest = ", ".join(f"%s::{candidates[name][0]}[]" for name in columns)
+    cur.execute(
+        f"WITH cand ({', '.join(columns)}) AS (SELECT * FROM unnest({unnest}))"
+        ", hit AS ("
+        " SELECT c.booking_id, ae.id AS entry_id FROM cand c"
+        f" JOIN accounting_entries ae ON {join}"
+        " WHERE ae.datev_booking_id IS NULL"
+        " AND COALESCE((ae.additional_info ->>"
+        " 'excluded_from_fee_reconciliation')::boolean, false) = false)"
+        ", counted AS ("
+        " SELECT booking_id, entry_id,"
+        " count(*) OVER (PARTITION BY booking_id) AS per_booking,"
+        " count(*) OVER (PARTITION BY entry_id) AS per_entry"
+        " FROM hit)"
+        " SELECT entry_id, booking_id FROM counted"
+        " WHERE per_booking = 1 AND per_entry = 1",
+        arrays,
+    )
+    return cur.fetchall()
+
+
+def _link_entries(cur, pairs, *, link_type, now) -> None:
+    """Write a whole batch of booking<->entry links in ONE UPDATE.
+
+    The link lives ON THE ENTRY (accounting_entries.datev_booking_id + the
+    datev_booking_link_meta JSON); a booking has no own person column (its
+    person is the entry's subject). The importer's two rules are its
+    deterministic import-equivalent cases, so every pair gets the same meta:
+    automatic_manual = 'automatic', score = 1.0 (100 %), author_id = 1 (system
+    person), classification_string = link_type. ``now`` is the AWARE
+    ctx.start_time; created_at stores its ISO 8601 form (and the UTC session
+    writes updated_at Rails-conventionally as UTC-naive). The entries ARE
+    modified, so their updated_at is bumped.
+
+    ``pairs`` is a sequence of (entry_id, booking_id); it travels as two arrays
+    joined via ``unnest``. The UPDATE re-checks ``datev_booking_id IS NULL``, so
+    an entry that got a link between the match query and here keeps it -- a
+    rowcount below the number of pairs is logged as a warning. An empty batch
+    issues no statement."""
     from psycopg.types.json import Jsonb
 
+    if not pairs:
+        return
     meta = {
         "created_at": now.isoformat(),
         "author_id": 1,
@@ -800,10 +898,24 @@ def _link_entry(cur, *, booking_id, entry_id, link_type, now) -> None:
         "classification_string": link_type,
     }
     cur.execute(
-        "UPDATE accounting_entries SET datev_booking_id = %s,"
-        " datev_booking_link_meta = %s, updated_at = %s WHERE id = %s",
-        (booking_id, Jsonb(meta), now, entry_id),
+        "UPDATE accounting_entries ae SET datev_booking_id = v.booking_id,"
+        " datev_booking_link_meta = %s, updated_at = %s"
+        " FROM unnest(%s::bigint[], %s::bigint[]) AS v(entry_id, booking_id)"
+        " WHERE ae.id = v.entry_id AND ae.datev_booking_id IS NULL",
+        (
+            Jsonb(meta),
+            now,
+            [entry_id for entry_id, _ in pairs],
+            [booking_id for _, booking_id in pairs],
+        ),
     )
+    if cur.rowcount != len(pairs):
+        _LOGGER.warning(
+            "%s: %d Verknuepfung(en) geplant, aber %d Zeile(n) geschrieben.",
+            link_type,
+            len(pairs),
+            cur.rowcount,
+        )
 
 
 def _match_2025_fee_entries(cur, bookings, ctx) -> None:
@@ -815,10 +927,13 @@ def _match_2025_fee_entries(cur, bookings, ctx) -> None:
     on the real data): the person id from the Buchungstext, the same amount
     INCLUDING THE SIGN (the fee-side signed_offsetting_base_amount equals the entry's
     amount_cents on every historical pair) and the EXACT booking date
-    (accounting_entries.value_date = datev_bookings.booking_date). Only
-    unambiguous hits against not-yet-linked entries are connected; sets the
-    entry's datev_booking_id + link_meta (classification_string =
-    '2025_fee_booking') -- the link lives on the entry now. Idempotent."""
+    (accounting_entries.value_date = datev_bookings.booking_date).
+
+    The batch is matched set-based in one query (see :func:`_select_unique_pairs`
+    for the symmetric uniqueness) and written in one UPDATE (see
+    :func:`_link_entries`), which sets the entry's datev_booking_id + link_meta
+    (classification_string = '2025_fee_booking') -- the link lives on the entry.
+    Idempotent: a linked booking is out of scope, a linked entry out of reach."""
     now = ctx.start_time
     guids = [b["buchungs_guid"] for b in bookings]
     cur.execute(
@@ -835,65 +950,72 @@ def _match_2025_fee_entries(cur, bookings, ctx) -> None:
         (guids,),
     )
     rows = cur.fetchall()
-    linked = 0
-    skipped = 0
+    booking_ids: list[int] = []
+    person_ids: list[int] = []
+    amounts_cents: list[int] = []
+    value_dates: list[_datetime.date] = []
     for booking_id, text, amount, booking_date in rows:
-        match = _PERSON_IN_TEXT_RE.search(text or "")
-        if match is None or booking_date is None:
-            skipped += 1
+        person_id = _parse_person_id(text)
+        if person_id is None or booking_date is None:
             continue
-        person_id = int(match.group(1))
-        cents = int(round(amount * 100))
-        cur.execute(
-            "SELECT ae.id FROM accounting_entries ae"
-            " WHERE ae.subject_type = 'Person' AND ae.subject_id = %s"
-            " AND ae.amount_cents = %s AND ae.value_date = %s"
-            " AND ae.datev_booking_id IS NULL"
-            " AND COALESCE((ae.additional_info ->>"
-            " 'excluded_from_fee_reconciliation')::boolean, false) = false",
-            (person_id, cents, booking_date),
-        )
-        hits = cur.fetchall()
-        if len(hits) != 1:
-            skipped += 1
-            continue
-        _link_entry(
-            cur,
-            booking_id=booking_id,
-            entry_id=hits[0][0],
-            link_type="2025_fee_booking",
-            now=now,
-        )
-        linked += 1
+        booking_ids.append(booking_id)
+        person_ids.append(person_id)
+        amounts_cents.append(_amount_to_cents(amount))
+        value_dates.append(booking_date)
+    pairs = _select_unique_pairs(
+        cur,
+        {
+            "booking_id": ("bigint", booking_ids),
+            "person_id": ("integer", person_ids),
+            "amount_cents": ("integer", amounts_cents),
+            "value_date": ("date", value_dates),
+        },
+        join="ae.subject_type = 'Person' AND ae.subject_id = c.person_id"
+        " AND ae.amount_cents = c.amount_cents"
+        " AND ae.value_date = c.value_date",
+    )
+    _link_entries(cur, pairs, link_type="2025_fee_booking", now=now)
     if rows:
         _LOGGER.info(
             "2025 TN-Beitraege: %d von %d unverknuepften Buchungen mit ihrer "
             "Beitragsbuchung verknuepft (%d ohne eindeutigen Treffer).",
-            linked,
+            len(pairs),
             len(rows),
-            skipped,
+            len(rows) - len(pairs),
         )
+    _LOGGER.debug(
+        "2025 TN-Beitraege: %d Statement(s) fuer %d Kandidat(en).",
+        1 + bool(booking_ids) + bool(pairs),
+        len(rows),
+    )
 
 
 def _match_pre_notification_fee_entries(cur, bookings, ctx) -> None:
     """Link regular fee bookings (of the batch just imported) to their accounting
     entry via the pre-notification id in Belegfeld 1.
 
-    Scope: the passed-in bookings with Gegenkonto 41030, KOST 9500 and a
+    Scope: the passed-in bookings of a 2026-or-later Stapel (financial year
+    after 2025 -- the 2025 fee bookings are the 2025 rule's, see
+    :func:`_match_2025_fee_entries`) with Gegenkonto 41030, KOST 9500 and a
     Belegfeld 1 of the form 'Einzug-YYYY-MM-<SEQ>-<n>-<prenotif_id>' that are not
     yet linked. The trailing block is the wsjrdp_direct_debit_pre_notifications id;
     the accounting entry to link points at it via
     accounting_entries.direct_debit_pre_notification_id. The person id parsed from
-    the Buchungstext must match the entry's subject (verification). Only
-    unambiguous hits against not-yet-linked entries are connected; sets the
-    entry's datev_booking_id + link_meta (classification_string =
-    'document_field_1_pre_notification'). Idempotent."""
+    the Buchungstext must match the entry's subject (verification).
+
+    The batch is matched set-based in one query (see :func:`_select_unique_pairs`
+    for the symmetric uniqueness) and written in one UPDATE (see
+    :func:`_link_entries`), which sets the entry's datev_booking_id + link_meta
+    (classification_string = 'document_field_1_pre_notification'). Idempotent: a
+    linked booking is out of scope, a linked entry out of reach."""
     now = ctx.start_time
     guids = [b["buchungs_guid"] for b in bookings]
     cur.execute(
         "SELECT db.id, db.document_field_1, db.original_posting_text"
         f" FROM {_BOOKINGS_TABLE} db"
-        " WHERE db.offsetting_account_number = '41030'"
+        f" JOIN {_BATCHES_TABLE} b ON b.id = db.datev_booking_batch_id"
+        " WHERE EXTRACT(YEAR FROM b.financial_year_start) > 2025"
+        " AND db.offsetting_account_number = '41030'"
         " AND db.cost_center_number = '9500'"
         " AND NOT EXISTS (SELECT 1 FROM accounting_entries ae"
         "                 WHERE ae.datev_booking_id = db.id)"
@@ -901,48 +1023,44 @@ def _match_pre_notification_fee_entries(cur, bookings, ctx) -> None:
         (guids,),
     )
     considered = 0
-    linked = 0
-    skipped = 0
+    booking_ids: list[int] = []
+    pre_notification_ids: list[int] = []
+    person_ids: list[int] = []
     for booking_id, document_field_1, text in cur.fetchall():
-        m = _RE_EINZUG_PRENOTIF.match(document_field_1 or "")
-        if m is None:
+        pre_notification_id = _parse_pre_notification_id(document_field_1)
+        if pre_notification_id is None:
             continue  # not a pre-notification fee booking
         considered += 1
-        pre_notification_id = int(m.group(1))
-        person_match = _PERSON_IN_TEXT_RE.search(text or "")
-        if person_match is None:
-            skipped += 1
+        person_id = _parse_person_id(text)
+        if person_id is None:
             continue
-        person_id = int(person_match.group(1))
-        cur.execute(
-            "SELECT ae.id FROM accounting_entries ae"
-            " WHERE ae.direct_debit_pre_notification_id = %s"
-            " AND ae.subject_type = 'Person' AND ae.subject_id = %s"
-            " AND ae.datev_booking_id IS NULL"
-            " AND COALESCE((ae.additional_info ->>"
-            " 'excluded_from_fee_reconciliation')::boolean, false) = false",
-            (pre_notification_id, person_id),
-        )
-        hits = cur.fetchall()
-        if len(hits) != 1:
-            skipped += 1
-            continue
-        _link_entry(
-            cur,
-            booking_id=booking_id,
-            entry_id=hits[0][0],
-            link_type="document_field_1_pre_notification",
-            now=now,
-        )
-        linked += 1
+        booking_ids.append(booking_id)
+        pre_notification_ids.append(pre_notification_id)
+        person_ids.append(person_id)
+    pairs = _select_unique_pairs(
+        cur,
+        {
+            "booking_id": ("bigint", booking_ids),
+            "pre_notification_id": ("bigint", pre_notification_ids),
+            "person_id": ("integer", person_ids),
+        },
+        join="ae.direct_debit_pre_notification_id = c.pre_notification_id"
+        " AND ae.subject_type = 'Person' AND ae.subject_id = c.person_id",
+    )
+    _link_entries(cur, pairs, link_type="document_field_1_pre_notification", now=now)
     if considered:
         _LOGGER.info(
             "Pre-Notification-Beitraege: %d von %d Einzug-Buchungen mit ihrer "
             "Beitragsbuchung verknuepft (%d ohne eindeutigen Treffer).",
-            linked,
+            len(pairs),
             considered,
-            skipped,
+            considered - len(pairs),
         )
+    _LOGGER.debug(
+        "Pre-Notification-Beitraege: %d Statement(s) fuer %d Einzug-Buchung(en).",
+        1 + bool(booking_ids) + bool(pairs),
+        considered,
+    )
 
 
 def _mirror_camt_links(cur, bookings) -> None:
