@@ -104,6 +104,7 @@ if _typing.TYPE_CHECKING:
         _datev as datev,
         _pg as pg,
         bank_accounts as bank_accounts,
+        datev_fee_links as datev_fee_links,
         keycloak as keycloak,
         mailbox as mailbox,
         moss as moss,
@@ -263,6 +264,7 @@ __all__ = [
     #
     "bank_accounts",
     "datev",
+    "datev_fee_links",
     "keycloak",
     "mailbox",
     "moss",
@@ -375,6 +377,7 @@ __ALIASES__ = {
     "bank_accounts": (".bank_accounts", ""),
     "build_report_tree_widget": ("._report_tree", "build_report_tree_widget"),
     "datev": ("._datev", ""),
+    "datev_fee_links": (".datev_fee_links", ""),
     "dedup": ("._util", "dedup"),
     "iter_people_dataframe": ("._models.person", "iter_people_dataframe"),
     "keycloak": (".keycloak", ""),
