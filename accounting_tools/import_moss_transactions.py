@@ -41,17 +41,78 @@ The app owns `comment`, `additional_info`, `contribution_subject_*`, `status`,
 the DATEV / camt / recipient links with their `*_link_meta`, and
 `manually_paid` / `manually_booked`. None of them appears in a diffed value set,
 so a re-import cannot touch them (the plan is column-granular). `fin_account_id`
-is written on INSERT only, `source_file` only on rows that change anyway.
+is written on INSERT only, `source_file` only on rows that change anyway. What
+an export profile may leave empty is protected on top of that, see the next
+section.
+
+PROFILE-DEPENDENT COLUMNS
+-------------------------
+Moss export profiles disagree about what a balance movement carries: the payout
+account (`Recipient Account Number`, `Recipient Bank Code`), the finance user
+who released it (`Cardholder`), that user's team (`Team Name`) and a `Payment
+Date` of its own are filled by one profile and empty -- or a copy of `Booking
+Date` -- in the next. A balance export whose payout rows carry none of them is
+recognised as such and logged once when it is read. Hence:
+  * `recipient_iban`, `recipient_bic` and `recipient_name` come from the
+    balance export, and a BLANK cell never overwrites a stored value: every
+    plan of moss_transactions protects the profile-dependent columns the
+    planned records carry and reports per column what it kept. There is no
+    fallback source: a `User IBAN` / `Supplier IBAN` is master data, not the
+    account that was paid.
+  * `payout_user_name` and `payout_team_name` are never written; the raw
+    `Cardholder` and `Team Name` of a balance row go to the transaction's
+    other_moss_columns wherever the cell has a value.
+  * `payment_date` is written for card payments and top-ups; a reimbursement
+    and an invoice carry none at all, so the column is not compared either.
+  * `top_up_sender` is the organisation that funded the wallet -- the text
+    before the first " - " or ";" -- and the raw line stays in
+    other_moss_columns["Reason for Purchase"].
 
 KEYS
 ----
-  L1 moss_transaction_uuid
-  L2 (moss_transaction_uuid, expense_number)
-  L3 booking_unique_item_number -- CONSTRUCTED, never the CSV "Unique Item
-     Number", whose suffix is a file-position counter and therefore unstable:
-     card/invoice/top-up "<transaction uuid>_<Sub-row Number>",
-     reimbursement "<Unique Expense ID>_<Sub-row Number>". The raw Moss value is
-     kept in other_moss_columns["Unique Item Number"].
+  L1 moss_object_uuid -- the object the payment settles. The database GENERATES
+     it as COALESCE(moss_reimbursement_uuid, moss_invoice_uuid,
+     moss_transaction_uuid) and the importer computes the same expression, so a
+     card payment and a top-up are identified by their Transaction ID, a
+     reimbursement by its Linked Reimbursement ID and an invoice by its Linked
+     Invoice ID.
+  L2 moss_expense_uuid -- a reimbursement expense carries the CSV "Unique
+     Expense ID"; the SHELL expense of a card, invoice or top-up carries its
+     transaction's moss_object_uuid. `expense_number` stays an attribute
+     (unique per transaction), not a key.
+  L3 (moss_expense_id, sub_row_number) -- the split's own "Sub-row Number"
+     inside its expense, read from the export that carries the split (the card
+     and reimbursement exports, the invoice line, the balance row of a top-up).
+     Never the CSV "Unique Item Number", whose suffix is a file-position
+     counter and therefore unstable; that raw value is kept in
+     other_moss_columns["Unique Item Number"].
+
+TRANSACTION ID CHANGES
+----------------------
+Moss export profiles do not agree on the `Transaction ID` of a balance
+movement: the same payout arrives under a different id in another profile.
+`moss_transaction_uuid` is therefore the FIRST id a row was ever seen under and
+is never overwritten; EVERY id it has been seen under is collected in
+`all_moss_transaction_uuids`, so a lookup by any of them still finds the row.
+Before anything is planned, every transaction of the files is resolved against
+the stored rows:
+
+  card / reimbursement / invoice  by moss_object_uuid; the stored row under it
+     must carry the matching type.
+  top-up  by its Transaction ID in `all_moss_transaction_uuids`; failing that
+     by the HEURISTIC (booking_date, signed_total_base_amount), which survives
+     a profile change. Every heuristic match is logged, several candidates are
+     a conflict, none means a new transaction.
+
+Anything ambiguous -- a stored row of the wrong type, an id already claimed by
+another row, two records resolving to one row -- is a conflict: each one is
+logged and the run stops with exit code 1 before the first plan. An id that
+merely changed needs no confirmation; it is appended to the array.
+
+After the write the run verifies that no id is in two rows' arrays, that every
+row's `moss_transaction_uuid` is in its own array, that every non-reimbursement
+expense carries its transaction's `moss_object_uuid`, and that the sum
+invariant holds for every transaction the run touched.
 
 Moss CSV format: ";" separated, "." as the decimal point, UTF-8 with a BOM --
 the exact opposite of the DATEV Buchungsstapel (cp1252, German decimals). The
@@ -72,6 +133,7 @@ from __future__ import annotations
 
 import collections as _collections
 import csv as _csv
+import dataclasses as _dataclasses
 import datetime as _datetime
 import decimal as _decimal
 import logging as _logging
@@ -295,10 +357,6 @@ BALANCE_TX_COLUMN_MAP: dict[str, str] = {
     "Recipient Bank Code": "recipient_bic",
     "Moss Balance Account": "moss_balance_account_number",
     "Cash in Transit Account": "cash_in_transit_account_number",
-    # the finance user who released the payout and that user's team; empty
-    # on a top-up
-    "Team Name": "payout_team_name",
-    "Cardholder": "payout_user_name",
     # Both text columns are re-set from _payment_reference() afterwards: the
     # raw value carries our own organisation name as a suffix.
     "Payment Reference": "payment_reference",
@@ -306,10 +364,16 @@ BALANCE_TX_COLUMN_MAP: dict[str, str] = {
     "Linked Reimbursement ID": "moss_reimbursement_uuid",
     "Linked Invoice ID": "moss_invoice_uuid",
 }
-#: Constant per transaction.
+#: Constant per transaction. `Cardholder` is the finance user who released a
+#: payout, `Team Name` that user's team in one profile and the invoice's own
+#: team in another -- which of the two a cell means depends on the export, so
+#: both are kept RAW only, under their CSV header and only where filled (a
+#: top-up has neither).
 BALANCE_OTHER_TX: tuple[str, ...] = (
     "Reason for Purchase",
     "Moss Attachment URL",
+    "Cardholder",
+    "Team Name",
 )
 #: Per balance ROW -- per expense of a reimbursement, per line of an invoice --
 #: so it lands on that row's level: the expense of a reimbursement, the booking
@@ -438,6 +502,8 @@ IGNORED_REIMBURSEMENT = {
     "Name of Expense Account",  # the ledger account's name; the number is a column
     "Submitted By",  # read directly for the L1 submitted_by column
     "Reimbursement Name",  # read directly: the L1 transaction_name (+ kept as a key)
+    # read directly for the L1 transaction_posting_text (the Buchungstext)
+    "Reimbursement Description",
     # read directly for L1 other_moss_columns (constant per reimbursement)
     "Reimbursement Payment Status",
     "User IBAN",
@@ -594,12 +660,13 @@ _DECIMAL_COLS = frozenset(
         "conversion_rate_including_fees",
     }
 )
-_INT_COLS = frozenset({"expense_number"})
+_INT_COLS = frozenset({"expense_number", "sub_row_number"})
 #: Postgres `uuid` columns. They must travel as uuid.UUID, not as text: the
 #: comparison in the plan's key lookup is typed, and `uuid = text` has no
 #: operator in Postgres.
 _UUID_COLS = frozenset(
     {
+        "moss_object_uuid",
         "moss_transaction_uuid",
         "moss_expense_uuid",
         "moss_reimbursement_uuid",
@@ -733,6 +800,48 @@ def _transaction_posting_text(kind: str, head: dict, detail) -> str:
     if header and detail:
         return _text(_detail_head(kind, detail), header) or ""
     return _payment_reference(head) or ""
+
+
+def _top_up_sender(reason_for_purchase: str | None) -> str | None:
+    """The organisation that funded the wallet: Moss appends the account it
+    came from -- an IBAN behind " - " in one export profile, a short code
+    behind ";" in the next, and cut off at 60 characters either way -- so only
+    the text before that separator is a fact of the top-up.
+
+    >>> _top_up_sender("Some Organisation e.V. - DE00 0000 0000 0000 0000 00")
+    'Some Organisation e.V.'
+    >>> _top_up_sender("Some Organisation; X1234")
+    'Some Organisation'
+    >>> _top_up_sender("") is None
+    True
+    """
+    if not reason_for_purchase:
+        return None
+    text = reason_for_purchase
+    for separator in (" - ", ";"):
+        text = text.split(separator)[0]
+    return text.strip() or None
+
+
+#: The kinds the balance export pays OUT (a card payment and a top-up are the
+#: other two).
+_PAYOUT_KINDS = frozenset({"MossReimbursement", "MossInvoice"})
+
+
+def _drop_payout_payment_date(kind: str, transaction: dict) -> dict:
+    """A reimbursement and an invoice carry NO payment_date: the column is
+    neither written nor compared for them, because the balance export reports
+    the booking date there in some profiles and the real payout day in others.
+    A card payment and a top-up keep theirs.
+
+    >>> _drop_payout_payment_date("MossInvoice", {"payment_date": 1, "x": 2})
+    {'x': 2}
+    >>> _drop_payout_payment_date("MossTopUp", {"payment_date": 1})
+    {'payment_date': 1}
+    """
+    if kind in _PAYOUT_KINDS:
+        transaction.pop("payment_date", None)
+    return transaction
 
 
 def _payee_name(reason_for_purchase: str | None) -> str | None:
@@ -870,6 +979,44 @@ def _report_unknown_columns(kind: str, headers: list[str], name: str) -> None:
         )
 
 
+def _without_payout_details(rows: list[dict]) -> bool:
+    """Whether a balance export leaves the payout details empty: no payout row
+    -- a reimbursement or an invoice -- carries a recipient account or a
+    cardholder, and every one of them repeats its `Booking Date` as the
+    `Payment Date`. All three conditions describe the payouts, so a top-up's
+    own payment day never decides this (see PROFILE-DEPENDENT COLUMNS).
+
+    >>> _without_payout_details([{"Linked Invoice ID": "i",
+    ...     "Payment Date": "2026-05-01", "Booking Date": "2026-05-01"}])
+    True
+    >>> _without_payout_details([{"Linked Invoice ID": "i",
+    ...     "Cardholder": "Some One", "Payment Date": "2026-05-01",
+    ...     "Booking Date": "2026-05-01"}])
+    False
+    >>> _without_payout_details([{"Booking Date": "2026-05-01"}])
+    False
+
+    A top-up settling on another day than it books is a fact of that payment,
+    not a profile trait:
+
+    >>> _without_payout_details([{"Linked Invoice ID": "i",
+    ...     "Payment Date": "2026-05-01", "Booking Date": "2026-05-01"},
+    ...     {"Payment Date": "2026-05-02", "Booking Date": "2026-05-04"}])
+    True
+    """
+    payouts = [row for row in rows if _balance_kind(row) in _PAYOUT_KINDS]
+    if not payouts:
+        return False
+    if any(
+        _text(row, "Recipient Account Number") or _text(row, "Cardholder")
+        for row in payouts
+    ):
+        return False
+    return all(
+        _text(row, "Payment Date") == _text(row, "Booking Date") for row in payouts
+    )
+
+
 def _read_all(paths: list[str]) -> dict[str, list[dict]]:
     by_kind: dict[str, list[dict]] = {}
     for raw_path in paths:
@@ -880,6 +1027,14 @@ def _read_all(paths: list[str]) -> dict[str, list[dict]]:
             continue
         kind = _detect_kind(list(rows[0]), source=str(path))
         _report_unknown_columns(kind, list(rows[0]), path.name)
+        if kind == _KIND_BALANCE and _without_payout_details(rows):
+            _LOGGER.info(
+                "%s: balance export without payout details: no recipient account, "
+                "no cardholder, payout day equal to the booking day; "
+                "recipient_iban/recipient_bic keep their stored values, "
+                "payment_date is not imported for reimbursements and invoices.",
+                path.name,
+            )
         for row in rows:
             row["__source_file__"] = path.name
         by_kind.setdefault(kind, []).extend(rows)
@@ -888,9 +1043,11 @@ def _read_all(paths: list[str]) -> dict[str, list[dict]]:
 
 
 # ========================================================== record building
-# Each builder appends to (transactions, expenses, bookings). A booking carries
-# the private key "_expense_number" naming its parent expense; it is stripped
-# again before planning.
+# Each builder appends to (transactions, expenses, bookings). Every record
+# carries the private key "_transaction_ref" naming its transaction and every
+# booking additionally "_expense_ref" naming its expense; both start out as the
+# CSV values, are rewritten to the resolved identity (see _apply_resolution)
+# and are stripped again before planning.
 
 
 def _card_records(rows: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
@@ -920,11 +1077,12 @@ def _card_records(rows: list[dict]) -> tuple[list[dict], list[dict], list[dict]]
             ),
             other_moss_columns=_verbatim(head, CARD_OTHER_TX)
             | _mirror(head, CARD_MIRROR_TX),
+            _transaction_ref=key,
         )
         transactions.append(transaction)
         expenses.append(
             {
-                "moss_transaction_uuid": uuid,
+                "_transaction_ref": key,
                 "expense_number": 1,
                 "type": "MossCardTransactionExpense",
                 # The card export has no expense id of its own.
@@ -940,9 +1098,9 @@ def _card_records(rows: list[dict]) -> tuple[list[dict], list[dict], list[dict]]
         for split in split_rows:
             booking = _mapped(split, CARD_BOOKING_COLUMN_MAP)
             booking.update(
-                booking_unique_item_number=f"{uuid}_{_text(split, 'Sub-row Number')}",
-                moss_transaction_uuid=uuid,
-                _expense_number=1,
+                sub_row_number=_int_or_zero(split.get("Sub-row Number")),
+                _transaction_ref=key,
+                _expense_ref=uuid,
                 account_kind=_account_kind(booking["account_number"]),
                 sphere_number=_sphere(booking["sphere_number"]),
                 other_moss_columns=_verbatim(split, CARD_OTHER_BOOKING)
@@ -983,7 +1141,9 @@ def _balance_records(
                 skipped.append(f"{uuid} ({kind}): {reason}")
                 continue
 
-        transaction = _mapped(head, BALANCE_TX_COLUMN_MAP)
+        transaction = _drop_payout_payment_date(
+            kind, _mapped(head, BALANCE_TX_COLUMN_MAP)
+        )
         transaction.update(
             type=kind,
             # The balance export has no transaction-total column. `Amount` is
@@ -1013,10 +1173,13 @@ def _balance_records(
                 if kind in ("MossReimbursement", "MossInvoice")
                 else None
             ),
-            # "<organisation> - <IBAN>", cut off by Moss after 60 characters;
-            # kept verbatim.
+            # Only the funding organisation; the account behind it is spelled
+            # differently per export profile, and the raw line stays in
+            # other_moss_columns["Reason for Purchase"].
             top_up_sender=(
-                _text(head, "Reason for Purchase") if kind == "MossTopUp" else None
+                _top_up_sender(_text(head, "Reason for Purchase"))
+                if kind == "MossTopUp"
+                else None
             ),
             approver_name=_text(_detail_head(kind, detail), "Approver Name"),
             approval_date=_parse_date(_detail_head(kind, detail).get("Approval Date")),
@@ -1038,6 +1201,7 @@ def _balance_records(
             # reimbursement / invoice), kept here rather than on each expense
             | _verbatim(_detail_head(kind, detail), DETAIL_TX_OTHER)
             | _verbatim(_detail_head(kind, detail), INVOICE_OTHER_TX),
+            _transaction_ref=key,
         )
         # The detail export's header facts of the kind (dates, texts); the
         # other kinds' columns stay NULL, so the update touches nothing there.
@@ -1052,11 +1216,11 @@ def _balance_records(
         transactions.append(transaction)
 
         if kind == "MossReimbursement":
-            _reimbursement_levels(uuid, balance_rows, detail, expenses, bookings)
+            _reimbursement_levels(key, balance_rows, detail, expenses, bookings)
         elif kind == "MossInvoice":
-            _invoice_levels(uuid, balance_rows, detail, expenses, bookings)
+            _invoice_levels(key, balance_rows, detail, expenses, bookings)
         else:
-            _top_up_levels(uuid, balance_rows, expenses, bookings)
+            _top_up_levels(key, uuid, balance_rows, expenses, bookings)
     return transactions, expenses, bookings, skipped
 
 
@@ -1101,7 +1265,7 @@ def _detail_gate(kind, balance_rows, detail, detail_uuid) -> str | None:
     return None
 
 
-def _reimbursement_levels(uuid, balance_rows, detail, expenses, bookings) -> None:
+def _reimbursement_levels(ref, balance_rows, detail, expenses, bookings) -> None:
     """One expense per balance row, its bookings being the reimbursement's
     splits. The two sides correspond 1:1 IN ORDER -- the
     balance row carries no expense id to join on."""
@@ -1111,12 +1275,13 @@ def _reimbursement_levels(uuid, balance_rows, detail, expenses, bookings) -> Non
         # The balance row's sign is authoritative: the detail export reports
         # unsigned split amounts.
         sign = -1 if (_decimal_or_none(balance.get("Amount")) or 0) < 0 else 1
+        expense_uuid = _as_uuid(expense["uuid"])
         record = _mapped(head, REIMBURSEMENT_EXPENSE_COLUMN_MAP)
         record.update(
-            moss_transaction_uuid=uuid,
+            _transaction_ref=ref,
             expense_number=expense_number,
             type="MossReimbursementExpense",
-            moss_expense_uuid=_as_uuid(expense["uuid"]),
+            moss_expense_uuid=expense_uuid,
             signed_expense_base_amount=_coerce(
                 "signed_expense_base_amount", balance.get("Amount")
             ),
@@ -1132,11 +1297,9 @@ def _reimbursement_levels(uuid, balance_rows, detail, expenses, bookings) -> Non
             amount = _decimal_or_none(split.get("Amount"))
             original = _decimal_or_none(split.get("Amount in Original Currency"))
             booking.update(
-                booking_unique_item_number=(
-                    f"{expense['uuid']}_{_text(split, 'Sub-row Number')}"
-                ),
-                moss_transaction_uuid=uuid,
-                _expense_number=expense_number,
+                sub_row_number=_int_or_zero(split.get("Sub-row Number")),
+                _transaction_ref=ref,
+                _expense_ref=expense_uuid,
                 signed_base_amount=None if amount is None else sign * abs(amount),
                 signed_transaction_amount=(
                     None if original is None else sign * abs(original)
@@ -1151,20 +1314,21 @@ def _reimbursement_levels(uuid, balance_rows, detail, expenses, bookings) -> Non
             bookings.append(booking)
 
 
-def _invoice_levels(uuid, balance_rows, detail, expenses, bookings) -> None:
+def _invoice_levels(ref, balance_rows, detail, expenses, bookings) -> None:
     """The invoice IS the expense: ONE shell expense, one booking per line. Balance
     rows and invoice lines correspond 1:1 in order, which is
     what gives an invoice line its cost center -- balance-movements has no
     cost-center column at all."""
     head = detail[0]
+    invoice_uuid = _as_uuid(_text(head, "Invoice ID"))
     # A shell: the invoice's dates, texts and terms are transaction columns /
     # keys, as in Moss's invoice header.
     expenses.append(
         {
-            "moss_transaction_uuid": uuid,
+            "_transaction_ref": ref,
             "expense_number": 1,
             "type": "MossInvoiceExpense",
-            "moss_expense_uuid": _as_uuid(_text(head, "Invoice ID")),
+            "moss_expense_uuid": invoice_uuid,
             "signed_expense_base_amount": _sum(balance_rows, "Amount"),
             "signed_expense_transaction_amount": _sum(balance_rows, "Original Amount"),
         }
@@ -1172,11 +1336,10 @@ def _invoice_levels(uuid, balance_rows, detail, expenses, bookings) -> None:
     for balance, line in zip(balance_rows, detail):
         booking = _mapped(line, INVOICE_BOOKING_COLUMN_MAP)
         booking.update(
-            # The key follows the balance row (design doc, section 5); that row's raw
-            # Unique Item Number is kept in other_moss_columns.
-            booking_unique_item_number=f"{uuid}_{_text(balance, 'Sub-row Number')}",
-            moss_transaction_uuid=uuid,
-            _expense_number=1,
+            # The line's own split number; it equals the paired balance row's.
+            sub_row_number=_int_or_zero(line.get("Sub-row Number")),
+            _transaction_ref=ref,
+            _expense_ref=invoice_uuid,
             # The paid EUR comes from the balance row, the foreign amount from
             # the invoice: on a PLN invoice each side computes its own EUR.
             signed_base_amount=_coerce("signed_base_amount", balance.get("Amount")),
@@ -1194,12 +1357,12 @@ def _invoice_levels(uuid, balance_rows, detail, expenses, bookings) -> None:
         bookings.append(booking)
 
 
-def _top_up_levels(uuid, balance_rows, expenses, bookings) -> None:
+def _top_up_levels(ref, uuid, balance_rows, expenses, bookings) -> None:
     """A wallet top-up has no expense and no expense account, but still gets one
     expense and one booking, so the sum invariant holds for every kind."""
     expenses.append(
         {
-            "moss_transaction_uuid": uuid,
+            "_transaction_ref": ref,
             "expense_number": 1,
             "type": "MossTopUpExpense",
             "moss_expense_uuid": uuid,
@@ -1210,9 +1373,9 @@ def _top_up_levels(uuid, balance_rows, expenses, bookings) -> None:
     for row in balance_rows:
         bookings.append(
             {
-                "booking_unique_item_number": f"{uuid}_{_text(row, 'Sub-row Number')}",
-                "moss_transaction_uuid": uuid,
-                "_expense_number": 1,
+                "sub_row_number": _int_or_zero(row.get("Sub-row Number")),
+                "_transaction_ref": ref,
+                "_expense_ref": uuid,
                 # Money INTO the wallet: positive, and touching only the wallet
                 # (36100) and transit (13720) accounts.
                 "signed_base_amount": _coerce("signed_base_amount", row.get("Amount")),
@@ -1327,24 +1490,22 @@ def _verify_sum_invariant(transactions, expenses, bookings) -> None:
         _decimal.Decimal
     )
     for row in expenses:
-        expense_sums[row["moss_transaction_uuid"]] += (
-            row["signed_expense_base_amount"] or 0
-        )
+        expense_sums[row["_transaction_ref"]] += row["signed_expense_base_amount"] or 0
     booking_sums: dict[str, _decimal.Decimal] = _collections.defaultdict(
         _decimal.Decimal
     )
     for row in bookings:
-        booking_sums[row["moss_transaction_uuid"]] += row["signed_base_amount"] or 0
+        booking_sums[row["_transaction_ref"]] += row["signed_base_amount"] or 0
 
     broken = [
         row
         for row in transactions
-        if row["signed_total_base_amount"] != expense_sums[row["moss_transaction_uuid"]]
-        or row["signed_total_base_amount"] != booking_sums[row["moss_transaction_uuid"]]
+        if row["signed_total_base_amount"] != expense_sums[row["_transaction_ref"]]
+        or row["signed_total_base_amount"] != booking_sums[row["_transaction_ref"]]
     ]
     if broken:
         for row in broken[:10]:
-            uuid = row["moss_transaction_uuid"]
+            uuid = row["_transaction_ref"]
             _LOGGER.error(
                 "sum invariant: %s total=%s expenses=%s bookings=%s",
                 uuid,
@@ -1363,34 +1524,372 @@ def _verify_sum_invariant(transactions, expenses, bookings) -> None:
     )
 
 
+# =================================================================== identity
+# WHICH stored row a CSV transaction is. The CSV `Transaction ID` is not stable
+# across Moss export profiles, so every transaction is resolved to its identity
+# -- moss_object_uuid -- before anything is planned.
+
+_STATUS_MATCHED = "matched"
+_STATUS_VIA_ARRAY = "matched via array"
+_STATUS_HEURISTIC = "matched by heuristic"
+_STATUS_NEW = "new"
+_STATUSES: tuple[str, ...] = (
+    _STATUS_MATCHED,
+    _STATUS_VIA_ARRAY,
+    _STATUS_HEURISTIC,
+    _STATUS_NEW,
+)
+
+
+@_dataclasses.dataclass(frozen=True, kw_only=True)
+class _StoredTransaction:
+    """A stored moss_transactions row, reduced to what identity needs."""
+
+    id: int
+    type: str
+    object_uuid: _uuid.UUID
+    all_transaction_uuids: tuple[_uuid.UUID, ...]
+    booking_date: _datetime.date | None
+    signed_total_base_amount: _decimal.Decimal | None
+
+
+@_dataclasses.dataclass(frozen=True, kw_only=True)
+class _StoredIndex:
+    """The stored transactions, indexed the three ways a resolution needs:
+    by identity, by EVERY Transaction ID a row has been seen under, and -- for
+    top-ups, whose id is all the export gives them -- by booking date and
+    amount."""
+
+    by_object: dict[str, _StoredTransaction]
+    by_any_id: dict[str, _StoredTransaction]
+    top_ups: dict[tuple, list[_StoredTransaction]]
+
+
+@_dataclasses.dataclass(frozen=True, kw_only=True)
+class _Resolved:
+    """What one CSV transaction turned out to be."""
+
+    object_uuid: _uuid.UUID
+    stored_id: int | None
+    status: str
+    kind: str
+    appends_id: bool
+
+
+def _require_object_uuid_column(connection) -> None:
+    """The generated identity column is the contract with the wagon schema; an
+    older database would silently key the plan on a column that is not there."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = %s AND column_name = %s",
+            (_TABLE_TRANSACTIONS, "moss_object_uuid"),
+        )
+        if cursor.fetchone() is not None:
+            return
+    _LOGGER.error(
+        "%s has no column moss_object_uuid: the wagon migration 20260910100000 "
+        "is not applied to this database.",
+        _TABLE_TRANSACTIONS,
+    )
+    raise SystemExit(1)
+
+
+def _load_stored_transactions(connection) -> list[_StoredTransaction]:
+    """The whole transaction table, identity columns only -- it is small, and a
+    lookup per record would be one round trip each."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT id, type, moss_object_uuid, moss_transaction_uuid, "
+            "all_moss_transaction_uuids, booking_date, signed_total_base_amount "
+            "FROM moss_transactions"
+        )
+        return [
+            _StoredTransaction(
+                id=row[0],
+                type=row[1],
+                object_uuid=row[2],
+                all_transaction_uuids=(row[3], *(row[4] or ())),
+                booking_date=row[5],
+                signed_total_base_amount=row[6],
+            )
+            for row in cursor.fetchall()
+        ]
+
+
+def _top_up_match_key(booking_date, amount) -> tuple:
+    """The heuristic identity of a wallet top-up: the two facts that survive a
+    change of the export profile, while its Transaction ID does not.
+
+    >>> import datetime, decimal
+    >>> _top_up_match_key(datetime.date(2026, 5, 1), decimal.Decimal("2.500"))
+    (datetime.date(2026, 5, 1), Decimal('2.5'))
+    >>> _top_up_match_key(None, None)
+    (None, None)
+    """
+    return (
+        booking_date,
+        None if amount is None else _decimal.Decimal(amount).normalize(),
+    )
+
+
+def _index_stored(
+    stored: list[_StoredTransaction], conflicts: list[str]
+) -> _StoredIndex:
+    by_object: dict[str, _StoredTransaction] = {}
+    by_any_id: dict[str, _StoredTransaction] = {}
+    top_ups: dict[tuple, list[_StoredTransaction]] = _collections.defaultdict(list)
+    for row in stored:
+        by_object[str(row.object_uuid)] = row
+        for seen in row.all_transaction_uuids:
+            other = by_any_id.setdefault(str(seen), row)
+            if other.id != row.id:
+                conflicts.append(
+                    f"the Transaction ID {seen} is stored on two transactions "
+                    f"({other.object_uuid} and {row.object_uuid})"
+                )
+        if row.type == "MossTopUp":
+            key = _top_up_match_key(row.booking_date, row.signed_total_base_amount)
+            top_ups[key].append(row)
+    return _StoredIndex(by_object=by_object, by_any_id=by_any_id, top_ups=top_ups)
+
+
+def _resolve_top_up(
+    record: dict, csv_id: str, index: _StoredIndex, conflicts: list[str]
+):
+    """A top-up has no second id at all, so its own Transaction ID is tried
+    first and booking date plus amount are the fallback."""
+    row = index.by_any_id.get(csv_id)
+    if row is not None:
+        if row.type != "MossTopUp":
+            conflicts.append(
+                f"MossTopUp {csv_id}: the transaction stored under that id is a "
+                f"{row.type}"
+            )
+        return row.object_uuid, row, _STATUS_VIA_ARRAY
+    key = _top_up_match_key(record["booking_date"], record["signed_total_base_amount"])
+    candidates = index.top_ups.get(key, [])
+    if len(candidates) > 1:
+        conflicts.append(
+            f"MossTopUp {csv_id}: {len(candidates)} stored top-ups share its "
+            "booking date and amount -- the heuristic cannot decide"
+        )
+        return _as_uuid(csv_id), None, _STATUS_NEW
+    if candidates:
+        row = candidates[0]
+        _LOGGER.warning(
+            "top-up matched by booking date and amount: Transaction ID %s is new, "
+            "the stored transaction is %s (booking date %s).",
+            csv_id,
+            row.object_uuid,
+            row.booking_date,
+        )
+        return row.object_uuid, row, _STATUS_HEURISTIC
+    return _as_uuid(csv_id), None, _STATUS_NEW
+
+
+def _resolve_one(record: dict, index: _StoredIndex, conflicts: list[str]):
+    """(identity, the stored row or None, status) of one L1 record."""
+    csv_id = record["_transaction_ref"]
+    kind = record["type"]
+    if kind == "MossTopUp":
+        return _resolve_top_up(record, csv_id, index, conflicts)
+    if kind == "MossCardTransaction":
+        object_uuid = _as_uuid(csv_id)
+    else:
+        column = (
+            "moss_reimbursement_uuid"
+            if kind == "MossReimbursement"
+            else "moss_invoice_uuid"
+        )
+        object_uuid = record[column]
+        # The paid object identifies the transaction, so a Transaction ID that
+        # belongs to a DIFFERENT transaction is a contradiction, not a change.
+        claimed = index.by_any_id.get(csv_id)
+        if claimed is not None and str(claimed.object_uuid) != str(object_uuid):
+            conflicts.append(
+                f"{kind} {object_uuid}: its Transaction ID {csv_id} is stored on "
+                f"the transaction {claimed.object_uuid}"
+            )
+    row = index.by_object.get(str(object_uuid))
+    if row is None:
+        return object_uuid, None, _STATUS_NEW
+    if row.type != kind:
+        conflicts.append(
+            f"{kind} {object_uuid}: the stored transaction is a {row.type}"
+        )
+    return object_uuid, row, _STATUS_MATCHED
+
+
+def _resolve_transactions(
+    transactions: list[dict], stored: list[_StoredTransaction]
+) -> dict[str, _Resolved]:
+    """CSV Transaction ID -> identity, for every L1 record. Every conflict is
+    logged and the run then stops: an ambiguous identity is never guessed at,
+    and at this point nothing has been planned."""
+    conflicts: list[str] = []
+    index = _index_stored(stored, conflicts)
+    resolved: dict[str, _Resolved] = {}
+    claimed_rows: dict[int, str] = {}
+    claimed_new: dict[str, str] = {}
+    for record in transactions:
+        csv_id = record["_transaction_ref"]
+        if csv_id in resolved:
+            conflicts.append(
+                f"the Transaction ID {csv_id} occurs in two of the given exports"
+            )
+            continue
+        object_uuid, row, status = _resolve_one(record, index, conflicts)
+        if row is None:
+            first = claimed_new.setdefault(str(object_uuid), csv_id)
+            if first != csv_id:
+                conflicts.append(
+                    f"two new transactions share the identity {object_uuid} "
+                    f"(Transaction IDs {first} and {csv_id})"
+                )
+        else:
+            first = claimed_rows.setdefault(row.id, csv_id)
+            if first != csv_id:
+                conflicts.append(
+                    f"the stored transaction {object_uuid} is claimed by two "
+                    f"Transaction IDs ({first} and {csv_id})"
+                )
+        resolved[csv_id] = _Resolved(
+            object_uuid=object_uuid,
+            stored_id=None if row is None else row.id,
+            status=status,
+            kind=record["type"],
+            appends_id=row is not None
+            and _as_uuid(csv_id) not in row.all_transaction_uuids,
+        )
+    if conflicts:
+        for line in dict.fromkeys(conflicts):
+            _LOGGER.error("identity conflict -- %s", line)
+        _LOGGER.error(
+            "%d identity conflict(s); nothing planned, nothing written.",
+            len(conflicts),
+        )
+        raise SystemExit(1)
+    _log_resolution_summary(resolved)
+    return resolved
+
+
+def _log_resolution_summary(resolved: dict[str, _Resolved]) -> None:
+    per_kind: dict[str, _collections.Counter] = _collections.defaultdict(
+        _collections.Counter
+    )
+    for entry in resolved.values():
+        per_kind[entry.kind][entry.status] += 1
+    for kind in sorted(per_kind):
+        counts = per_kind[kind]
+        _LOGGER.info(
+            "identity %-20s %s",
+            kind,
+            ", ".join(f"{status} {counts[status]}" for status in _STATUSES),
+        )
+    _LOGGER.info(
+        "%d transaction(s) resolved; %d Transaction ID(s) not yet in the stored "
+        "array (they are appended).",
+        len(resolved),
+        sum(1 for entry in resolved.values() if entry.appends_id),
+    )
+
+
+def _apply_resolution(
+    resolved: dict[str, _Resolved],
+    transactions: list[dict],
+    expenses: list[dict],
+    bookings: list[dict],
+    source_files: dict[str, str | None],
+) -> dict[str, str | None]:
+    """Rewrite the records with the resolved identity and return the provenance
+    keyed by it.
+
+    L1 gets its key `moss_object_uuid` and, on an EXISTING row, loses
+    `moss_transaction_uuid`: the first id a row was seen under stays what it
+    is. Every record collects its CSV id in `all_moss_transaction_uuids`, where
+    an already stored id produces no delta at all. The shell expense of a card,
+    invoice or top-up follows the identity, and every cross-level reference is
+    re-pointed from the CSV id to it."""
+    origin: dict[str, str | None] = {}
+    expense_refs: dict[str, _uuid.UUID] = {}
+    for row in transactions:
+        csv_id = row["_transaction_ref"]
+        entry = resolved[csv_id]
+        row["moss_object_uuid"] = entry.object_uuid
+        if entry.stored_id is not None:
+            row.pop("moss_transaction_uuid", None)
+        row["all_moss_transaction_uuids"] = wsjrdp2027.PgArray(
+            [csv_id],
+            wsjrdp2027.ArrayElementType.UUID,
+            mode=wsjrdp2027.ArrayMode.APPEND,
+        )
+        row["_transaction_ref"] = str(entry.object_uuid)
+        origin[str(entry.object_uuid)] = source_files.get(csv_id)
+    for row in expenses:
+        object_uuid = resolved[row["_transaction_ref"]].object_uuid
+        if row["type"] != "MossReimbursementExpense":
+            expense_refs[str(row["moss_expense_uuid"])] = object_uuid
+            row["moss_expense_uuid"] = object_uuid
+        row["_transaction_ref"] = str(object_uuid)
+    for row in bookings:
+        row["_transaction_ref"] = str(resolved[row["_transaction_ref"]].object_uuid)
+        row["_expense_ref"] = expense_refs.get(
+            str(row["_expense_ref"]), row["_expense_ref"]
+        )
+    return origin
+
+
+# ===================================================== planning & applying
+
+
 def _natural_key(row: dict, table: str) -> tuple:
     if table == _TABLE_TRANSACTIONS:
-        return (str(row["moss_transaction_uuid"]),)
+        return (str(row["moss_object_uuid"]),)
     if table == _TABLE_EXPENSES:
-        return (str(row["moss_transaction_uuid"]), int(row["expense_number"]))
-    return (str(row["booking_unique_item_number"]),)
+        return (str(row["moss_expense_uuid"]),)
+    return (str(row["moss_expense_id"]), int(row["sub_row_number"]))
 
 
-def _remember_source_files(by_kind, transactions, expenses, bookings) -> None:
-    """Which export each row came from -- the card/balance file that carried its
-    transaction (the detail files only refine rows that file already produced)."""
-    origin = {
+def _source_file_by_transaction(
+    by_kind: dict[str, list[dict]],
+) -> dict[str, str | None]:
+    """CSV Transaction ID -> the export file that carried it (the card/balance
+    file; the detail files only refine rows that file already produced)."""
+    return {
         (row.get("Transaction ID") or "").strip(): row["__source_file__"]
         for rows in (by_kind.get(_KIND_CARD, []), by_kind.get(_KIND_BALANCE, []))
         for row in rows
     }
-    for table, records in (
-        (_TABLE_TRANSACTIONS, transactions),
-        (_TABLE_EXPENSES, expenses),
-        (_TABLE_BOOKINGS, bookings),
-    ):
-        for row in records:
-            _SOURCE_FILES[_natural_key(row, table)] = origin.get(
-                str(row["moss_transaction_uuid"])
-            )
 
 
-def _log_plan_summary(table: str, planned) -> None:
+def _remember_source_files(origin: dict, table: str, records: list[dict]) -> None:
+    """Provenance for one level, keyed by the natural key the plan uses. Called
+    once the key columns of the level are final -- for L3 that is after
+    `moss_expense_id` is known."""
+    for row in records:
+        _SOURCE_FILES[_natural_key(row, table)] = origin.get(
+            str(row["_transaction_ref"])
+        )
+
+
+def _column_update_counts(rows: list[dict], key_names: tuple[str, ...]) -> list[tuple]:
+    """How many of the planned UPDATE rows carry each non-key column,
+    most-written column first. A profile switch that rewrites one column on
+    hundreds of rows is visible in the preview as exactly that.
+
+    >>> _column_update_counts([{"k": 1, "a": 1, "b": 2}, {"k": 2, "b": 3}], ("k",))
+    [('b', 2), ('a', 1)]
+    >>> _column_update_counts([], ("k",))
+    []
+    """
+    counted = _collections.Counter(
+        column for row in rows for column in row if column not in key_names
+    )
+    return sorted(counted.items(), key=lambda item: (-item[1], item[0]))
+
+
+def _log_plan_summary(table: str, planned, key) -> None:
     """What an approval would apply -- logged BEFORE the approval is asked for."""
     for counts in planned.operation_counts().values():
         _LOGGER.info(
@@ -1408,16 +1907,77 @@ def _log_plan_summary(table: str, planned) -> None:
         _LOGGER.info(
             "  %s %d row(s); columns: %s", label, len(rows), ", ".join(columns)
         )
+    key_names = (key,) if isinstance(key, str) else tuple(key)
+    per_column = _column_update_counts(planned.updates, key_names)
+    if per_column:
+        _LOGGER.info(
+            "  UPDATE columns: %s",
+            ", ".join(f"{column} ({count})" for column, count in per_column),
+        )
+    kept = sorted(
+        planned.kept_blank_counts.items(), key=lambda item: (-item[1], item[0])
+    )
+    if kept:
+        _LOGGER.info(
+            "  kept stored values for blank input: %s",
+            ", ".join(f"{column} ({count})" for column, count in kept),
+        )
 
 
-def _plan_for(connection, ctx, table: str, key, values):
+def _keep_stored_when_blank(records: list[dict]) -> tuple[str, ...]:
+    """The blank-protected transaction columns the given L1 records carry. The
+    plan builder rejects a column no value set mentions, and which of them a
+    run carries depends on its files -- this importer never writes the wallet
+    statement's sender_* columns at all.
+
+    >>> _keep_stored_when_blank([{"recipient_bic": ""}, {"recipient_iban": None}])
+    ('recipient_iban', 'recipient_bic')
+    >>> _keep_stored_when_blank([{"booking_date": None}])
+    ()
+    """
+    columns = {column for record in records for column in record}
+    return tuple(
+        column
+        for column in wsjrdp2027.moss.MOSS_TRANSACTION_KEEP_STORED_WHEN_BLANK
+        if column in columns
+    )
+
+
+def _plan_for(
+    connection,
+    ctx,
+    table: str,
+    key,
+    values,
+    *,
+    generated_key_columns=(),
+):
+    """Plan one table against its stored state and log the preview.
+
+    The blank protection belongs to the TABLE, not to the caller: every plan of
+    moss_transactions protects the profile-dependent columns the given records
+    carry, so no caller can forget it. The other two levels have none."""
     builder = SingleTableUpsertPlanBuilder(
-        table, key, values, time_zone=ctx.hitobito_time_zone
+        table,
+        key,
+        values,
+        time_zone=ctx.hitobito_time_zone,
+        generated_key_columns=generated_key_columns,
     )
     builder.load_existing(connection)
-    planned = builder.plan()
-    _log_plan_summary(table, planned)
+    keep = _keep_stored_when_blank(values) if table == _TABLE_TRANSACTIONS else ()
+    planned = builder.plan(keep_stored_when_blank=keep)
+    _log_plan_summary(table, planned, key)
     return planned
+
+
+def _plannable(records: list[dict], *private: str) -> list[dict]:
+    """The records without their private cross-level references -- they name no
+    database column and would otherwise be planned as one."""
+    for row in records:
+        for name in private:
+            row.pop(name, None)
+    return records
 
 
 def _apply(
@@ -1470,15 +2030,116 @@ def _wallet_fin_account_id(connection) -> int | None:
 
 
 def _transaction_key(row: dict) -> tuple[str]:
-    """The L1 lookup key of a row -- an _id_map key, hence stringified."""
-    return (str(row["moss_transaction_uuid"]),)
+    """The L1 lookup key of a record -- an _id_map key, hence stringified."""
+    return (str(row["_transaction_ref"]),)
 
 
-def _expense_key(row: dict, parents: dict) -> tuple[str, str]:
+def _expense_key(row: dict) -> tuple[str]:
     """The L2 lookup key of a booking: the expense it belongs to."""
-    return (
-        str(row["moss_transaction_uuid"]),
-        str(parents[row["booking_unique_item_number"]]),
+    return (str(row["_expense_ref"]),)
+
+
+def _owner_ids(records: list[dict], table: str) -> dict[tuple, int]:
+    """{natural key -> moss_transaction_id} of one level, built while the
+    records still carry both -- a plan row carries only its key.
+
+    >>> _owner_ids([{"moss_expense_uuid": "u", "moss_transaction_id": 7}],
+    ...            _TABLE_EXPENSES)
+    {('u',): 7}
+    """
+    return {_natural_key(row, table): row["moss_transaction_id"] for row in records}
+
+
+def _touched_transaction_ids(*levels) -> set[int]:
+    """Every transaction this run wrote something on -- its own row or one of
+    its expenses / bookings. `levels` are (plan, owner ids, table) triples."""
+    touched: set[int] = set()
+    for planned, owners, table in levels:
+        for row in (*planned.inserts, *planned.updates):
+            owner = owners.get(_natural_key(row, table))
+            if owner is not None:
+                touched.add(owner)
+    return touched
+
+
+def _post_run_checks(connection, touched: set[int]) -> None:
+    """What no single plan can see, verified before the run is committed: the
+    identity columns across all three levels and the sum invariant on every
+    transaction the run touched. A violation stops the run, so leaving
+    `with ctx:` rolls the whole import back."""
+    failures: list[str] = []
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM (SELECT u FROM (SELECT "
+            "unnest(all_moss_transaction_uuids) AS u FROM moss_transactions) e "
+            "GROUP BY u HAVING count(*) > 1) s"
+        )
+        shared = cursor.fetchone()[0]
+        if shared:
+            failures.append(f"{shared} Transaction ID(s) belong to more than one row")
+
+        cursor.execute(
+            "SELECT count(*), COALESCE(sum(cardinality(all_moss_transaction_uuids)), 0) "
+            "FROM moss_transactions"
+        )
+        rows, elements = cursor.fetchone()
+
+        cursor.execute(
+            "SELECT count(*) FROM moss_transactions "
+            "WHERE NOT (moss_transaction_uuid = ANY (all_moss_transaction_uuids))"
+        )
+        unlisted = cursor.fetchone()[0]
+        if unlisted:
+            failures.append(
+                f"{unlisted} row(s) whose moss_transaction_uuid is not in their "
+                "all_moss_transaction_uuids"
+            )
+
+        cursor.execute(
+            "SELECT count(*), count(*) FILTER (WHERE e.moss_expense_uuid "
+            "<> t.moss_object_uuid) FROM moss_expenses e "
+            "JOIN moss_transactions t ON t.id = e.moss_transaction_id "
+            "WHERE e.type <> 'MossReimbursementExpense'"
+        )
+        shells, wrong_shells = cursor.fetchone()
+        if wrong_shells:
+            failures.append(
+                f"{wrong_shells} shell expense(s) do not carry their "
+                "transaction's moss_object_uuid"
+            )
+
+        cursor.execute(
+            "SELECT t.id, t.signed_total_base_amount,"
+            " COALESCE((SELECT sum(e.signed_expense_base_amount) FROM moss_expenses e"
+            "  WHERE e.moss_transaction_id = t.id), 0),"
+            " COALESCE((SELECT sum(b.signed_base_amount) FROM moss_bookings b"
+            "  WHERE b.moss_transaction_id = t.id), 0)"
+            " FROM moss_transactions t WHERE t.id = ANY(%s)",
+            (sorted(touched),),
+        )
+        broken = [
+            row for row in cursor.fetchall() if row[1] != row[2] or row[1] != row[3]
+        ]
+    if broken:
+        for row in broken[:10]:
+            _LOGGER.error(
+                "post-run sum invariant: transaction #%s total=%s expenses=%s bookings=%s",
+                *row,
+            )
+        failures.append(
+            f"the sum invariant is broken on {len(broken)} touched transaction(s)"
+        )
+    if failures:
+        for line in failures:
+            _LOGGER.error("post-run check FAILED -- %s", line)
+        raise SystemExit(1)
+    _LOGGER.info(
+        "Post-run checks passed: %d transaction(s) with %d Transaction ID(s), "
+        "%d shell expense(s), sum invariant on %d touched transaction(s).",
+        rows,
+        elements,
+        shells,
+        len(touched),
     )
 
 
@@ -1505,7 +2166,7 @@ def create_argument_parser():
     return parser
 
 
-def _dry_run_lower_levels(connection, ctx, known, expenses, bookings, parents) -> None:
+def _dry_run_lower_levels(connection, ctx, known, expenses, bookings) -> None:
     """Plan L2/L3 for the transactions that already exist, and report how much
     is deferred because its transaction would have to be inserted first."""
     ready_expenses = [row for row in expenses if _transaction_key(row) in known]
@@ -1516,16 +2177,14 @@ def _dry_run_lower_levels(connection, ctx, known, expenses, bookings, parents) -
             connection,
             ctx,
             _TABLE_EXPENSES,
-            ["moss_transaction_uuid", "expense_number"],
-            ready_expenses,
+            "moss_expense_uuid",
+            _plannable(ready_expenses, "_transaction_ref"),
         )
-    expense_ids = _id_map(
-        connection, _TABLE_EXPENSES, ["moss_transaction_uuid", "expense_number"]
-    )
+    expense_ids = _id_map(connection, _TABLE_EXPENSES, ["moss_expense_uuid"])
     ready_bookings = []
     for row in bookings:
-        key = _expense_key(row, parents)
-        if key not in expense_ids:
+        key = _expense_key(row)
+        if key not in expense_ids or _transaction_key(row) not in known:
             continue
         row["moss_expense_id"] = expense_ids[key]
         row["moss_transaction_id"] = known[_transaction_key(row)]
@@ -1535,8 +2194,8 @@ def _dry_run_lower_levels(connection, ctx, known, expenses, bookings, parents) -
             connection,
             ctx,
             _TABLE_BOOKINGS,
-            "booking_unique_item_number",
-            ready_bookings,
+            ["moss_expense_id", "sub_row_number"],
+            _plannable(ready_bookings, "_transaction_ref", "_expense_ref"),
         )
     deferred = (
         len(expenses) - len(ready_expenses),
@@ -1565,16 +2224,30 @@ def main(argv=None):
         _LOGGER.warning("No Moss transactions in the given files; nothing to do.")
         return 0
     _verify_sum_invariant(transactions, expenses, bookings)
-    _remember_source_files(by_kind, transactions, expenses, bookings)
-    parents = {
-        row["booking_unique_item_number"]: row.pop("_expense_number")
-        for row in bookings
-    }
+    source_files = _source_file_by_transaction(by_kind)
 
     with ctx:
         ro_conn = ctx.hitobito_psycopg_connection(read_only=True)
+        _require_object_uuid_column(ro_conn)
+
+        # WHICH stored row each transaction is -- before any plan, because a
+        # Transaction ID that changed would otherwise look like a new row.
+        resolved = _resolve_transactions(
+            transactions, _load_stored_transactions(ro_conn)
+        )
+        origin = _apply_resolution(
+            resolved, transactions, expenses, bookings, source_files
+        )
+        _remember_source_files(origin, _TABLE_TRANSACTIONS, transactions)
+        _remember_source_files(origin, _TABLE_EXPENSES, expenses)
+
         transaction_plan = _plan_for(
-            ro_conn, ctx, _TABLE_TRANSACTIONS, "moss_transaction_uuid", transactions
+            ro_conn,
+            ctx,
+            _TABLE_TRANSACTIONS,
+            "moss_object_uuid",
+            _plannable(transactions, "_transaction_ref"),
+            generated_key_columns=("moss_object_uuid",),
         )
 
         # L2/L3 are keyed on their own natural keys but need the surrogate
@@ -1582,8 +2255,8 @@ def main(argv=None):
         # up front is therefore possible only for already-known transactions --
         # enough to make --dry-run informative.
         if ctx.dry_run:
-            known = _id_map(ro_conn, _TABLE_TRANSACTIONS, ["moss_transaction_uuid"])
-            _dry_run_lower_levels(ro_conn, ctx, known, expenses, bookings, parents)
+            known = _id_map(ro_conn, _TABLE_TRANSACTIONS, ["moss_object_uuid"])
+            _dry_run_lower_levels(ro_conn, ctx, known, expenses, bookings)
             _LOGGER.warning("[--dry-run] Nothing applied.")
             return 0
 
@@ -1603,30 +2276,42 @@ def main(argv=None):
             insert_only={"fin_account_id": wallet_id} if wallet_id else None,
         )
 
-        transaction_ids = _id_map(
-            rw_conn, _TABLE_TRANSACTIONS, ["moss_transaction_uuid"]
-        )
+        transaction_ids = _id_map(rw_conn, _TABLE_TRANSACTIONS, ["moss_object_uuid"])
         for row in expenses:
             row["moss_transaction_id"] = transaction_ids[_transaction_key(row)]
+        expense_owners = _owner_ids(expenses, _TABLE_EXPENSES)
         expense_plan = _plan_for(
             rw_conn,
             ctx,
             _TABLE_EXPENSES,
-            ["moss_transaction_uuid", "expense_number"],
-            expenses,
+            "moss_expense_uuid",
+            _plannable(expenses, "_transaction_ref"),
         )
         _apply(expense_plan, rw_conn, _TABLE_EXPENSES, ctx.start_time)
 
-        expense_ids = _id_map(
-            rw_conn, _TABLE_EXPENSES, ["moss_transaction_uuid", "expense_number"]
-        )
+        expense_ids = _id_map(rw_conn, _TABLE_EXPENSES, ["moss_expense_uuid"])
         for row in bookings:
-            row["moss_expense_id"] = expense_ids[_expense_key(row, parents)]
+            row["moss_expense_id"] = expense_ids[_expense_key(row)]
             row["moss_transaction_id"] = transaction_ids[_transaction_key(row)]
+        _remember_source_files(origin, _TABLE_BOOKINGS, bookings)
+        booking_owners = _owner_ids(bookings, _TABLE_BOOKINGS)
         booking_plan = _plan_for(
-            rw_conn, ctx, _TABLE_BOOKINGS, "booking_unique_item_number", bookings
+            rw_conn,
+            ctx,
+            _TABLE_BOOKINGS,
+            ["moss_expense_id", "sub_row_number"],
+            _plannable(bookings, "_transaction_ref", "_expense_ref"),
         )
         _apply(booking_plan, rw_conn, _TABLE_BOOKINGS, ctx.start_time)
+
+        _post_run_checks(
+            rw_conn,
+            _touched_transaction_ids(
+                (transaction_plan, transaction_ids, _TABLE_TRANSACTIONS),
+                (expense_plan, expense_owners, _TABLE_EXPENSES),
+                (booking_plan, booking_owners, _TABLE_BOOKINGS),
+            ),
+        )
 
         if ctx.parsed_args.rollback_for_testing:
             _LOGGER.warning(
