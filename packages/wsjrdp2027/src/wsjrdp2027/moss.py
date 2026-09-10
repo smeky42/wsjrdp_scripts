@@ -21,6 +21,23 @@ if _typing.TYPE_CHECKING:
 _LOGGER = _logging.getLogger(__name__)
 
 
+#: Columns of ``moss_transactions`` whose BLANK input never overwrites a stored
+#: value: an empty cell there means "this export does not carry the column", not
+#: "the value was cleared". Moss export profiles differ in which of them they
+#: fill, so every importer that writes the table passes these columns to
+#: ``SingleTableUpsertPlanBuilder.plan(keep_stored_when_blank=...)`` -- the
+#: ``recipient_*`` columns come from the balance-movements export, the
+#: ``sender_*`` columns from the wallet statement.
+MOSS_TRANSACTION_KEEP_STORED_WHEN_BLANK: tuple[str, ...] = (
+    "recipient_iban",
+    "recipient_bic",
+    "recipient_name",
+    "sender_iban",
+    "sender_bic",
+    "sender_name",
+)
+
+
 def ensure_moss_email_mailbox_or_alias(
     ctx: _context.WsjRdpContext, *, people: _collections_abc.Iterable[_person.Person]
 ) -> None:
