@@ -151,6 +151,19 @@ the same id compare equal; the `::uuid[]` cast comes from the
 `PgArray` is valid only as a top-level column value: not in a key column and
 not inside a `dict`.
 
+**Generated key columns.** `generated_key_columns=("moss_object_uuid",)`
+declares key columns the *database* computes (`GENERATED … STORED`) -- the
+shape for keying a plan on `moss_transactions.moss_object_uuid`. The rows
+still carry the value: the caller computes the same expression client-side,
+so loading, diffing and matching work as for any key. Only `apply()` knows
+the difference and leaves such a column out of the INSERT column list, which
+PostgreSQL rejects there; the insert rows must therefore carry the source
+columns the expression reads. For the first key column the derived value
+comes back via `RETURNING` and is compared with the planned one, so the two
+expressions drifting apart raises `RuntimeError` before anything is
+committed. Every declared name must be a key column. UPDATEs need nothing
+special -- a key column is only ever a `WHERE` condition there.
+
 ### 6. Show the plan before asking for approval
 
 `_log_plan_summary()` logs `planned.operation_counts()` per table plus the
