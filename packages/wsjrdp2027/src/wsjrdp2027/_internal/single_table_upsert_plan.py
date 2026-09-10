@@ -72,7 +72,17 @@ Column semantics (uniform for scalar columns and JSONB keys):
   appender writing between load and apply could make an element appear
   twice (the same window every column has);
 * scalar column = ``SpecialValue.NOW`` / ``SpecialValue.TODAY`` -> resolved at
-  apply time to the ``now`` timestamp resp. its date.
+  apply time to the ``now`` timestamp resp. its date;
+* a **generated key column** (a key column named in
+  ``generated_key_columns``, e.g. a PostgreSQL ``GENERATED ... STORED``
+  column) -> loaded, diffed and matched like any key -- the value sets carry
+  it, computed client-side -- but NEVER written:
+  :meth:`~SingleTableUpsertPlan.apply` leaves it out of the INSERT column
+  list (PostgreSQL rejects a generated column there), so an insert row must
+  carry the source columns the database derives it from. When it is the
+  FIRST key column, the value the INSERT returns is compared with the
+  planned key and a mismatch raises ``RuntimeError`` -- nothing is
+  committed, so the caller's rollback undoes the insert.
 
 Identifiers are composed with ``psycopg.sql``, values travel as bound
 parameters, dicts through ``psycopg.types.json.Jsonb`` (per
@@ -133,10 +143,12 @@ class SingleTableUpsertPlan:
         inserts: list[dict],
         updates: list[dict],
         untouched_keys: list,
+        generated_key_columns: tuple[str, ...] = (),
     ) -> None:
         self._table_name = table_name
         self._key_names = key_names
         self._composite_key = composite_key
+        self._generated_key_columns = generated_key_columns
         self._tz = time_zone
         self.inserts = inserts
         self.updates = updates
@@ -189,6 +201,16 @@ class SingleTableUpsertPlan:
         turns that off, an explicit value in a row always wins over the
         stamp.
 
+        Key columns declared as ``generated_key_columns`` are left out of the
+        INSERT column list -- the database derives them from the other
+        columns of the row. For the FIRST key column the derived value comes
+        back through ``RETURNING`` and is compared with the planned key; a
+        mismatch raises ``RuntimeError`` (the comparison is TEXTUAL, ``str``
+        against ``str``, so a value and its string form count as equal).
+        Nothing is committed here, so a caller reacting to that error rolls
+        the insert back. UPDATEs need no special handling: a key column is
+        only ever a ``WHERE`` condition there.
+
         Returns ``(inserted_keys, updated_keys)`` in input order. Never
         commits. A plan can be applied at most once -- afterwards it is
         stale; for another round, build a fresh plan via
@@ -205,18 +227,22 @@ class SingleTableUpsertPlan:
 
         connection = to_connection(conn, read_only=False)
 
-        def rows_for_write(rows: list[dict]) -> list[dict]:
+        def rows_for_write(
+            rows: list[dict], *, drop: tuple[str, ...] = ()
+        ) -> list[dict]:
             # A list value is a JSONB array column: the *many helpers would
             # bind a bare Python list as a PostgreSQL ARRAY, so wrap it here
             # (dicts go through unwrapped -- their partial-merge handling
             # lives in the helpers, and so does the native-ARRAY handling of a
             # PgArray, which passes through unwrapped as well: the helpers
-            # render its cast resp. its array_cat template). The plan rows
-            # themselves stay unwrapped.
+            # render its cast resp. its array_cat template). ``drop`` removes
+            # the generated key columns from the INSERT column list. The plan
+            # rows themselves stay unwrapped and complete.
             return [
                 {
                     column: Jsonb(value) if isinstance(value, list) else value
                     for column, value in row.items()
+                    if column not in drop
                 }
                 for row in rows
             ]
@@ -224,15 +250,17 @@ class SingleTableUpsertPlan:
         # id_col is only used for RETURNING; any present column works, so the
         # first key column serves both the single and the composite case.
         first_key = self._key_names[0]
-        pg_table_insertmany(
+        insert_result = pg_table_insertmany(
             connection,
             self._table_name,
-            rows_for_write(self.inserts),
+            rows_for_write(self.inserts, drop=self._generated_key_columns),
             id_col=first_key,
             now=now,
             time_zone=self._tz,
             touch=touch,
         )
+        if self.inserts and first_key in self._generated_key_columns:
+            self._check_generated_first_key(insert_result.inserted_ids)
         inserted_keys = [self._row_key(row) for row in self.inserts]
 
         pg_table_updatemany(
@@ -251,6 +279,33 @@ class SingleTableUpsertPlan:
 
         self._applied = True
         return inserted_keys, updated_keys
+
+    def _check_generated_first_key(self, returned_ids: list) -> None:
+        """Compare the first key column's values the INSERT returned with the
+        ones the plan carries -- the check that the client-side expression for
+        a generated key column agrees with the database's.
+
+        The comparison is TEXTUAL (``str(a) != str(b)``): the value comes back
+        in the column's own type, while the plan holds whatever the caller
+        computed, and a ``uuid.UUID`` and its string form mean the same key
+        here."""
+        first_key = self._key_names[0]
+        planned = [row[first_key] for row in self.inserts]
+        mismatches = [
+            (planned_value, returned_value)
+            for planned_value, returned_value in zip(planned, returned_ids)
+            if str(planned_value) != str(returned_value)
+        ]
+        if not mismatches:
+            return
+        (table,) = self.affected_tables
+        shown = ", ".join(f"({p!r}, {r!r})" for p, r in mismatches[:10])
+        raise RuntimeError(
+            f"{table}: the generated key column {first_key!r} was derived "
+            f"differently by the database than the plan computed it "
+            f"({len(mismatches)} of {len(planned)} inserted row(s) differ); "
+            f"(planned, returned): {shown}"
+        )
 
 
 def merge_jsonb(stored_value: dict | None, incoming: dict | None) -> dict:
@@ -403,7 +458,18 @@ class SingleTableUpsertPlanBuilder:
         values: _typing.Iterable[_UpdatesType],
         *,
         time_zone: str | _zoneinfo.ZoneInfo | None = None,
+        generated_key_columns: _typing.Sequence[str] = (),
     ) -> None:
+        """Bind the incoming value sets; see the class and module docstrings
+        for the shape and the lifecycle.
+
+        ``generated_key_columns`` names key columns the DATABASE computes (a
+        PostgreSQL ``GENERATED ... STORED`` column). The value sets still
+        carry such a column -- the caller computes the same expression
+        client-side -- so binding, :meth:`load_existing` and :meth:`plan`
+        treat it like any key; only :meth:`SingleTableUpsertPlan.apply` knows
+        the difference and never writes it. Every name must be one of
+        ``key_col``'s columns, and no name twice (``ValueError`` otherwise)."""
         from .._pg import _resolve_time_zone
 
         self.table_name = table_name
@@ -439,6 +505,20 @@ class SingleTableUpsertPlanBuilder:
         self._key_desc = (
             "(" + ", ".join(key_names) + ")" if self._composite_key else key_names[0]
         )
+        # Key columns the database derives itself: everything but apply()
+        # treats them like any key, so only the names are kept here.
+        generated = tuple(generated_key_columns)
+        for name in generated:
+            if name not in key_names:
+                raise ValueError(
+                    f"generated_key_columns names {name!r}, which is not a "
+                    f"key column (key_col = {self._key_desc})"
+                )
+        if len(set(generated)) != len(generated):
+            raise ValueError(
+                f"generated_key_columns contains duplicate columns: {generated!r}"
+            )
+        self._generated_key_columns = generated
         # {key value: {column: value}} -- insertion-ordered, mirroring the
         # shape of the loaded state (self._existing).
         self._rows: dict = {}
@@ -874,4 +954,5 @@ class SingleTableUpsertPlanBuilder:
             inserts=inserts,
             updates=updates,
             untouched_keys=untouched_keys,
+            generated_key_columns=self._generated_key_columns,
         )

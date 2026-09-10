@@ -32,6 +32,7 @@ from wsjrdp2027._pg import ArrayElementType, ArrayMode, PgArray
 
 EXPECTED_DATABASE = "hitobito_wsjrdp_scripts_integration_testing"
 SCRATCH_TABLE = "test_single_table_upsert_plan_scratch"
+SCRATCH_OBJECT_KEY_INDEX = SCRATCH_TABLE + "_object_key_idx"
 
 U1 = uuid.UUID("11111111-1111-4111-8111-111111111111")
 U2 = uuid.UUID("22222222-2222-4222-8222-222222222222")
@@ -67,8 +68,16 @@ def rw_conn(integration_testing_ctx):
             uuids uuid[] NOT NULL DEFAULT '{{}}',
             uuids_nullable uuid[],
             tags text[],
+            object_key text GENERATED ALWAYS AS
+                (COALESCE(short_name, number)) STORED,
             created_at timestamp,
             updated_at timestamp)"""
+    )
+    # The generated column is a key in Test_SingleTableUpsertPlan_generated_key
+    # -- like every key of a real import table it is unique.
+    new_rw_conn.execute(
+        t"CREATE UNIQUE INDEX {SCRATCH_OBJECT_KEY_INDEX:i} "
+        t"ON {SCRATCH_TABLE:i} (object_key)"
     )
     new_rw_conn.commit()
     try:
@@ -81,7 +90,7 @@ def fetch_all(conn):
     rows = conn.execute(
         psycopg.sql.SQL(
             "SELECT number, name, short_name, amount, extra, uuids, "
-            "uuids_nullable, tags, created_at, updated_at "
+            "uuids_nullable, tags, object_key, created_at, updated_at "
             "FROM {} ORDER BY number"
         ).format(psycopg.sql.Identifier(SCRATCH_TABLE))
     ).fetchall()
@@ -94,8 +103,9 @@ def fetch_all(conn):
             "uuids": r[5],
             "uuids_nullable": r[6],
             "tags": r[7],
-            "created_at": r[8],
-            "updated_at": r[9],
+            "object_key": r[8],
+            "created_at": r[9],
+            "updated_at": r[10],
         }
         for r in rows
     }
@@ -1141,3 +1151,171 @@ class Test_SingleTableUpsertPlan_replace_dict_columns:
         builder.load_existing(rw_conn)
         with pytest.raises(ValueError, match="replace_dict_columns.*unknown"):
             builder.plan(replace_dict_columns=["nope"])
+
+
+def generated_record(number, *, short_name=None, **columns):
+    """A value set for the generated-key tests: it carries ``object_key``
+    computed CLIENT-side -- exactly the ``COALESCE(short_name, number)`` the
+    database's generated column computes."""
+    values = {"number": number, "object_key": short_name or number, **columns}
+    if short_name is not None:
+        values["short_name"] = short_name
+    return values
+
+
+def generated_plan(conn, values, *, key="object_key", generated=("object_key",)):
+    """Load + plan keyed on the GENERATED column (declared as such)."""
+    builder = SingleTableUpsertPlanBuilder(
+        SCRATCH_TABLE, key, values, generated_key_columns=generated
+    )
+    builder.load_existing(conn)
+    return builder.plan()
+
+
+def run_generated_cycle(
+    conn, values, *, now=NOW, key="object_key", generated=("object_key",)
+):
+    planned = generated_plan(conn, values, key=key, generated=generated)
+    inserted, updated = planned.apply(conn, now=now)
+    return planned, inserted, updated
+
+
+class Test_SingleTableUpsertPlan_generated_key:
+    """A key column the DATABASE computes (``object_key`` =
+    ``COALESCE(short_name, number)``, GENERATED ... STORED). The value sets
+    carry the same value, computed client-side, so loading, diffing and
+    matching are unchanged -- only the INSERT column list leaves the column
+    out, because PostgreSQL rejects a generated column there."""
+
+    def test_insert_is_keyed_on_the_generated_column(self, rw_conn):
+        planned, inserted, updated = run_generated_cycle(
+            rw_conn,
+            [
+                generated_record("1", short_name="S", name="Alpha"),
+                generated_record("2", name="Beta"),
+            ],
+        )
+        # The INSERT went through at all: had object_key stayed in the column
+        # list, PostgreSQL would have refused the statement ("cannot insert a
+        # non-DEFAULT value into column").
+        assert (inserted, updated) == (["S", "2"], [])
+        # The plan row itself keeps the key -- only the statement drops it.
+        assert planned.inserts[0] == {
+            "object_key": "S",
+            "number": "1",
+            "short_name": "S",
+            "name": "Alpha",
+        }
+        state = fetch_all(rw_conn)
+        # ... and the stored value is the one the database derived.
+        assert state["1"]["object_key"] == "S"
+        assert state["2"]["object_key"] == "2"
+        assert state["1"]["name"] == "Alpha"
+
+    def test_rerun_is_untouched(self, rw_conn):
+        values = [
+            generated_record("1", short_name="S", name="Alpha"),
+            generated_record("2", name="Beta"),
+        ]
+        run_generated_cycle(rw_conn, values)
+        planned, inserted, updated = run_generated_cycle(rw_conn, values, now=LATER)
+        assert (inserted, updated) == ([], [])
+        assert planned.untouched_keys == ["S", "2"]
+        assert fetch_all(rw_conn)["1"]["updated_at"] is None
+
+    def test_update_via_the_generated_key(self, rw_conn):
+        run_generated_cycle(
+            rw_conn, [generated_record("1", short_name="S", name="Alt")]
+        )
+        planned, _, updated = run_generated_cycle(
+            rw_conn,
+            [generated_record("1", short_name="S", name="Neu")],
+            now=LATER,
+        )
+        assert updated == ["S"]
+        # The key is a WHERE condition only: it is never in the SET list.
+        assert planned.updates == [{"name": "Neu", "object_key": "S"}]
+        state = fetch_all(rw_conn)["1"]
+        assert (state["name"], state["object_key"]) == ("Neu", "S")
+        assert state["updated_at"] == LATER - datetime.timedelta(hours=2)
+
+    def test_claimed_key_differing_from_the_derived_one_raises(self, rw_conn):
+        # The client-side expression and the database's disagree: the INSERT
+        # returns "S" where the plan claims "falsch".
+        planned = generated_plan(
+            rw_conn,
+            [{"number": "1", "short_name": "S", "object_key": "falsch"}],
+        )
+        with pytest.raises(RuntimeError, match=r"object_key.*\('falsch', 'S'\)"):
+            planned.apply(rw_conn, now=NOW)
+        # Nothing was committed, so the caller's rollback undoes the insert.
+        rw_conn.rollback()
+        assert fetch_all(rw_conn) == {}
+
+    def test_append_array_column_next_to_a_generated_key(self, rw_conn):
+        planned, inserted, _ = run_generated_cycle(
+            rw_conn,
+            [generated_record("1", uuids=PgArray([U1, U2], UUID_T, APPEND))],
+        )
+        assert inserted == ["1"]
+        assert fetch_all(rw_conn)["1"]["uuids"] == [U1, U2]
+
+        planned, _, updated = run_generated_cycle(
+            rw_conn,
+            [generated_record("1", uuids=PgArray([U2, U3], UUID_T, APPEND))],
+            now=LATER,
+        )
+        assert updated == ["1"]
+        # Only the missing element is written -- the key comes along for the
+        # WHERE, the unchanged `number` stays out.
+        assert planned.updates == [
+            {"uuids": PgArray((U3,), UUID_T, APPEND), "object_key": "1"}
+        ]
+        assert fetch_all(rw_conn)["1"]["uuids"] == [U1, U2, U3]
+
+    def test_composite_key_with_a_generated_first_column(self, rw_conn):
+        key = ("object_key", "number")
+        planned, inserted, updated = run_generated_cycle(
+            rw_conn,
+            [generated_record("1", short_name="S", name="a")],
+            key=key,
+        )
+        assert (inserted, updated) == ([("S", "1")], [])
+        assert fetch_all(rw_conn)["1"]["object_key"] == "S"
+
+        planned, _, _ = run_generated_cycle(
+            rw_conn,
+            [generated_record("1", short_name="S", name="a")],
+            key=key,
+            now=LATER,
+        )
+        assert planned.untouched_keys == [("S", "1")]
+
+        planned, _, updated = run_generated_cycle(
+            rw_conn,
+            [generated_record("1", short_name="S", name="b")],
+            key=key,
+            now=LATER,
+        )
+        assert updated == [("S", "1")]
+        assert planned.updates == [{"name": "b", "object_key": "S", "number": "1"}]
+        assert fetch_all(rw_conn)["1"]["name"] == "b"
+
+    def test_non_key_column_raises_at_construction(self, rw_conn):
+        with pytest.raises(ValueError, match=r"'object_key'.*not a key column"):
+            SingleTableUpsertPlanBuilder(
+                SCRATCH_TABLE,
+                "number",
+                [generated_record("1")],
+                generated_key_columns=["object_key"],
+            )
+
+    def test_without_the_declaration_postgres_rejects_the_insert(self, rw_conn):
+        # What the option is for: an undeclared generated key lands in the
+        # INSERT column list, and PostgreSQL refuses the statement (428C9).
+        planned = generated_plan(
+            rw_conn, [generated_record("1", short_name="S")], generated=()
+        )
+        with pytest.raises(psycopg.errors.GeneratedAlways):
+            planned.apply(rw_conn, now=NOW)
+        rw_conn.rollback()
