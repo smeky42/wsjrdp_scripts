@@ -14,6 +14,7 @@ touched. Every test runs inside a transaction that is rolled back.
 from __future__ import annotations
 
 import datetime
+import logging
 import uuid
 
 import psycopg
@@ -33,6 +34,8 @@ from wsjrdp2027._pg import ArrayElementType, ArrayMode, PgArray
 EXPECTED_DATABASE = "hitobito_wsjrdp_scripts_integration_testing"
 SCRATCH_TABLE = "test_single_table_upsert_plan_scratch"
 SCRATCH_OBJECT_KEY_INDEX = SCRATCH_TABLE + "_object_key_idx"
+# The logger plan() reports through (CP1252 / blank-kept lines).
+PLAN_LOGGER = "wsjrdp2027._internal.single_table_upsert_plan"
 
 U1 = uuid.UUID("11111111-1111-4111-8111-111111111111")
 U2 = uuid.UUID("22222222-2222-4222-8222-222222222222")
@@ -1319,3 +1322,161 @@ class Test_SingleTableUpsertPlan_generated_key:
         with pytest.raises(psycopg.errors.GeneratedAlways):
             planned.apply(rw_conn, now=NOW)
         rw_conn.rollback()
+
+
+class Test_SingleTableUpsertPlan_keep_stored_when_blank:
+    """plan(keep_stored_when_blank=...): for the named columns a BLANK
+    incoming value (None, "" or whitespace only) means "this source does not
+    carry the column" -- the stored value survives instead of being
+    overwritten with NULL."""
+
+    def run_keep_blank_cycle(
+        self, conn, values, *, keep=("short_name",), cp1252=False, now=NOW
+    ):
+        builder = SingleTableUpsertPlanBuilder(SCRATCH_TABLE, "number", values)
+        builder.load_existing(conn)
+        planned = builder.plan(
+            keep_stored_when_blank=keep, skip_update_for_cp1252_equality=cp1252
+        )
+        inserted, updated = planned.apply(conn, now=now)
+        return planned, inserted, updated
+
+    def test_empty_string_keeps_the_stored_value_and_logs(self, rw_conn, caplog):
+        run_cycle(rw_conn, [{"number": "1", "name": "N", "short_name": "S"}])
+        with caplog.at_level(logging.INFO, logger=PLAN_LOGGER):
+            planned, _, updated = self.run_keep_blank_cycle(
+                rw_conn, [{"number": "1", "name": "N", "short_name": ""}], now=LATER
+            )
+        assert (updated, planned.untouched_keys) == ([], ["1"])
+        assert planned.kept_blank_counts == {"short_name": 1}
+        assert "Blank input kept the stored value: short_name (1)." in caplog.text
+        state = fetch_all(rw_conn)["1"]
+        assert state["short_name"] == "S"
+        assert state["updated_at"] is None  # no UPDATE at all
+
+    @pytest.mark.parametrize("blank", [None, "   "])
+    def test_none_and_whitespace_keep_the_stored_value(self, rw_conn, blank):
+        run_cycle(rw_conn, [{"number": "1", "short_name": "S"}])
+        planned, _, updated = self.run_keep_blank_cycle(
+            rw_conn, [{"number": "1", "short_name": blank}], now=LATER
+        )
+        assert (updated, planned.untouched_keys) == ([], ["1"])
+        assert planned.kept_blank_counts == {"short_name": 1}
+        assert fetch_all(rw_conn)["1"]["short_name"] == "S"
+
+    def test_without_the_option_the_blank_overwrites(self, rw_conn):
+        # The same input without the declaration: the option is what keeps
+        # the stored value.
+        run_cycle(rw_conn, [{"number": "1", "short_name": "S"}])
+        planned, _, updated = run_cycle(
+            rw_conn, [{"number": "1", "short_name": ""}], now=LATER
+        )
+        assert updated == ["1"]
+        assert planned.updates == [{"short_name": "", "number": "1"}]
+        assert planned.kept_blank_counts == {}
+        assert fetch_all(rw_conn)["1"]["short_name"] == ""
+
+        planned, _, updated = run_cycle(
+            rw_conn, [{"number": "1", "short_name": None}], now=LATER
+        )
+        assert updated == ["1"]
+        assert fetch_all(rw_conn)["1"]["short_name"] is None
+
+    def test_stored_blank_is_untouched_and_not_counted(self, rw_conn):
+        # Nothing worth keeping: the row stays untouched, and the count only
+        # reports genuinely protected values.
+        run_cycle(rw_conn, [{"number": "1", "name": "N"}])  # short_name NULL
+        planned, _, updated = self.run_keep_blank_cycle(
+            rw_conn, [{"number": "1", "short_name": ""}], now=LATER
+        )
+        assert (updated, planned.untouched_keys) == ([], ["1"])
+        assert planned.kept_blank_counts == {}
+        assert fetch_all(rw_conn)["1"]["short_name"] is None
+
+    def test_delete_clears_a_kept_column_and_stays_null_idempotent(self, rw_conn):
+        # SpecialValue.DELETE is the explicit way to clear such a column: it
+        # is not blank, so the declaration does not protect the stored value.
+        run_cycle(rw_conn, [{"number": "1", "short_name": "S"}])
+        planned, _, updated = self.run_keep_blank_cycle(
+            rw_conn, [{"number": "1", "short_name": SpecialValue.DELETE}], now=LATER
+        )
+        assert updated == ["1"]
+        assert planned.updates == [{"short_name": None, "number": "1"}]
+        assert planned.kept_blank_counts == {}
+        assert fetch_all(rw_conn)["1"]["short_name"] is None
+
+        # Against a stored NULL there is nothing to clear.
+        planned, _, updated = self.run_keep_blank_cycle(
+            rw_conn, [{"number": "1", "short_name": SpecialValue.DELETE}], now=LATER
+        )
+        assert (updated, planned.untouched_keys) == ([], ["1"])
+
+    def test_insert_writes_the_blank_as_given(self, rw_conn):
+        # A new row has no stored value to protect.
+        planned, inserted, _ = self.run_keep_blank_cycle(
+            rw_conn,
+            [
+                {"number": "8", "name": "A", "short_name": None},
+                {"number": "9", "name": "B", "short_name": "  "},
+            ],
+        )
+        assert inserted == ["8", "9"]
+        assert planned.kept_blank_counts == {}
+        state = fetch_all(rw_conn)
+        assert state["8"]["short_name"] is None
+        assert state["9"]["short_name"] == "  "
+
+    def test_a_real_value_after_a_kept_blank_still_wins(self, rw_conn):
+        # Fill, keep, then genuinely change: the option never blocks a value.
+        self.run_keep_blank_cycle(rw_conn, [{"number": "1", "short_name": "S"}])
+        planned, _, _ = self.run_keep_blank_cycle(
+            rw_conn, [{"number": "1", "short_name": ""}], now=LATER
+        )
+        assert planned.kept_blank_counts == {"short_name": 1}
+        planned, _, updated = self.run_keep_blank_cycle(
+            rw_conn, [{"number": "1", "short_name": "T"}], now=LATER
+        )
+        assert updated == ["1"]
+        assert planned.kept_blank_counts == {}
+        assert fetch_all(rw_conn)["1"]["short_name"] == "T"
+
+    def test_invalid_declarations_raise(self, rw_conn):
+        builder = SingleTableUpsertPlanBuilder(
+            SCRATCH_TABLE,
+            "number",
+            [
+                {
+                    "number": "1",
+                    "short_name": "S",
+                    "extra": {"a": 1},
+                    "tags": ["a"],
+                    "uuids": PgArray([U1], UUID_T),
+                }
+            ],
+        )
+        builder.load_existing(rw_conn)
+        for names, message in (
+            (["number"], "key column"),
+            (["nope"], "unknown"),
+            (["extra"], "dict value"),
+            (["tags"], "list value"),
+            (["uuids"], "PgArray value"),
+        ):
+            with pytest.raises(ValueError, match=message):
+                builder.plan(keep_stored_when_blank=names)
+        # The valid declaration still plans.
+        assert builder.plan(keep_stored_when_blank=["short_name"]).inserts
+
+    def test_next_to_the_cp1252_option(self, rw_conn):
+        run_cycle(rw_conn, [{"number": "1", "name": "Gdańsk", "short_name": "S"}])
+        planned, _, updated = self.run_keep_blank_cycle(
+            rw_conn,
+            [{"number": "1", "name": "Gdansk", "short_name": ""}],
+            cp1252=True,
+            now=LATER,
+        )
+        assert (updated, planned.untouched_keys) == ([], ["1"])
+        assert planned.kept_blank_counts == {"short_name": 1}
+        state = fetch_all(rw_conn)["1"]
+        assert state["name"] == "Gdańsk"  # transliteration kept
+        assert state["short_name"] == "S"  # blank kept

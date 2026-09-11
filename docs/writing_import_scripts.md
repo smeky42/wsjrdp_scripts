@@ -164,6 +164,17 @@ expressions drifting apart raises `RuntimeError` before anything is
 committed. Every declared name must be a key column. UPDATEs need nothing
 special -- a key column is only ever a `WHERE` condition there.
 
+**Blank input never overwrites.** `plan(keep_stored_when_blank=("recipient_iban",
+…))` names scalar columns for which an EMPTY incoming value -- `None`, `""` or
+a whitespace-only string -- means "this source does not carry the column", not
+"the value was cleared": such a column is left out of the diff, so the stored
+value survives. That is the shape for a table fed by several export profiles
+where one of them leaves columns empty that another fills. The importer passes
+the column set, so the rule holds for every source of the table; only UPDATE
+candidates are affected (an INSERT writes the blank as given), and
+`SpecialValue.DELETE` stays the way to clear such a column on purpose. What was
+protected is logged per column and carried in the plan's `kept_blank_counts`.
+
 ### 6. Show the plan before asking for approval
 
 `_log_plan_summary()` logs `planned.operation_counts()` per table plus the
