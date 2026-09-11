@@ -35,7 +35,8 @@ Column semantics (uniform for scalar columns and JSONB keys):
 * column/key **not mentioned** in a value set -> stays untouched;
 * column/key with a **value** -> is set (``dict`` values are written as JSONB);
 * scalar column = ``None`` -> is set to SQL ``NULL`` (a scalar
-  ``SpecialValue.DELETE`` is equivalent);
+  ``SpecialValue.DELETE`` is equivalent -- except for a column named in
+  ``plan(keep_stored_when_blank=...)``, see below);
 * JSONB key = ``SpecialValue.DELETE`` -> the key is
   DELETED from the stored dict. ``dict`` values are merged into the stored
   dict at the top level (see :func:`merge_jsonb`); nested dicts replace their
@@ -82,7 +83,15 @@ Column semantics (uniform for scalar columns and JSONB keys):
   carry the source columns the database derives it from. When it is the
   FIRST key column, the value the INSERT returns is compared with the
   planned key and a mismatch raises ``RuntimeError`` -- nothing is
-  committed, so the caller's rollback undoes the insert.
+  committed, so the caller's rollback undoes the insert;
+* a column named in ``plan(keep_stored_when_blank=...)`` whose incoming
+  value is BLANK (``None``, ``""`` or a whitespace-only string) is NOT
+  written at all: an empty cell there means "this export does not carry the
+  column", never "the value was cleared", so the stored value survives. A
+  scalar ``SpecialValue.DELETE`` stays the explicit way to clear such a
+  column, and an INSERT is unaffected -- a new row takes the blank as given.
+  :attr:`SingleTableUpsertPlan.kept_blank_counts` reports per column how
+  often a stored value was kept that way.
 
 Identifiers are composed with ``psycopg.sql``, values travel as bound
 parameters, dicts through ``psycopg.types.json.Jsonb`` (per
@@ -131,6 +140,11 @@ class SingleTableUpsertPlan:
     target state already equals the stored state. Instances come from the
     builder, not from user code.
 
+    ``kept_blank_counts`` reports the columns of
+    ``plan(keep_stored_when_blank=...)`` whose blank incoming value kept a
+    non-blank stored value, per column the number of rows; it is empty when
+    the option was not used or protected nothing.
+
     :meth:`apply` executes the plan; a plan can be applied at most once."""
 
     def __init__(
@@ -144,6 +158,7 @@ class SingleTableUpsertPlan:
         updates: list[dict],
         untouched_keys: list,
         generated_key_columns: tuple[str, ...] = (),
+        kept_blank_counts: dict[str, int] | None = None,
     ) -> None:
         self._table_name = table_name
         self._key_names = key_names
@@ -153,6 +168,7 @@ class SingleTableUpsertPlan:
         self.inserts = inserts
         self.updates = updates
         self.untouched_keys = untouched_keys
+        self.kept_blank_counts: dict[str, int] = dict(kept_blank_counts or {})
         self._applied = False
 
     def _row_key(self, row: dict) -> object:
@@ -343,6 +359,20 @@ def _values_equal(incoming: object, stored: object, *, translit: bool) -> bool:
             _values_equal(a, b, translit=translit) for a, b in zip(incoming, stored)
         )
     return bool(incoming == stored)
+
+
+def _is_null_scalar(value: object) -> bool:
+    """Whether a scalar value means SQL ``NULL``: ``None``, or the
+    ``SpecialValue.DELETE`` marker that says the same (see the module
+    docstring)."""
+    return value is None or value is SpecialValue.DELETE
+
+
+def _is_blank(value: object) -> bool:
+    """Whether a value carries nothing for a ``keep_stored_when_blank``
+    column: SQL ``NULL`` (``None``) or a string that is empty or whitespace
+    only. Everything else -- ``0``, ``False``, a marker -- is a value."""
+    return value is None or (isinstance(value, str) and not value.strip())
 
 
 def _strip_delete_keys(value: dict) -> dict:
@@ -549,10 +579,15 @@ class SingleTableUpsertPlanBuilder:
             for column, column_value in list(row.items()):
                 if column_value is SpecialValue.DELETE:
                     # A scalar DELETE means "set the column to SQL NULL" --
-                    # exactly what a scalar None means here, so normalize it
-                    # right away (plan/diff and write then need no marker
-                    # handling; NULL-idempotency falls out for free).
-                    row[column] = None
+                    # what a scalar None means here too. The marker is kept
+                    # all the way to plan(), which resolves it to None: only
+                    # there is the difference visible that
+                    # keep_stored_when_blank needs (a blank value is "not
+                    # provided", an explicit DELETE clears the column). In a
+                    # KEY column there is nothing to clear -- a key is
+                    # matched, never written -- so it stays normalized.
+                    if column in self._key_names:
+                        row[column] = None
                 elif isinstance(column_value, PgArray):
                     # A native ARRAY column value: already canonical (its
                     # constructor normalized the elements per element type,
@@ -687,10 +722,11 @@ class SingleTableUpsertPlanBuilder:
             return incoming
         if isinstance(existing, PgArray) or isinstance(incoming, PgArray):
             # Exactly one side is a native ARRAY value. Only an explicit None
-            # (SQL NULL, the scalar rule) and an absent counterpart may meet
-            # it -- a bare list or a scalar would silently switch the column
-            # between ARRAY and JSONB semantics.
-            if existing is None or incoming is None:
+            # (SQL NULL, the scalar rule -- a scalar DELETE says the same)
+            # and an absent counterpart may meet it -- a bare list or a
+            # scalar would silently switch the column between ARRAY and JSONB
+            # semantics.
+            if _is_null_scalar(existing) or _is_null_scalar(incoming):
                 return incoming
             raise ValueError(
                 "cannot merge a PgArray (a native ARRAY column) with a "
@@ -808,11 +844,51 @@ class SingleTableUpsertPlanBuilder:
             return dict(zip(self._key_names, _typing.cast("tuple", key_value)))
         return {self._key_names[0]: key_value}
 
+    def _keep_blank_columns(
+        self, keep_stored_when_blank: _typing.Sequence[str]
+    ) -> frozenset[str]:
+        """Validate ``plan(keep_stored_when_blank=...)`` and return its column
+        names as a set.
+
+        A key column is never eligible (it is matched, never written), every
+        other name must be one of the value-set columns, and such a column
+        must carry SCALAR values: for a ``dict`` (JSONB), a ``list`` (JSONB
+        array) or a :class:`~wsjrdp2027._pg.PgArray` (native ARRAY) value
+        "blank" has no meaning. :meth:`plan` calls this right after its
+        :meth:`load_existing` guard; the check itself needs no loaded state."""
+        columns = frozenset(keep_stored_when_blank)
+        key_columns = columns.intersection(self._key_names)
+        if key_columns:
+            raise ValueError(
+                "keep_stored_when_blank names the key column(s) "
+                f"{sorted(key_columns)} (key = {self._key_desc}): a key is "
+                "matched, never written"
+            )
+        unknown = columns.difference(self._columns)
+        if unknown:
+            raise ValueError(
+                f"keep_stored_when_blank names unknown column(s): {sorted(unknown)}"
+            )
+        for row in self._rows.values():
+            for column in columns.intersection(row):
+                value = row[column]
+                if isinstance(value, (dict, list, PgArray)):
+                    # ValueError, not TypeError (as everywhere in this
+                    # module): the value is well typed, the DECLARATION that
+                    # names its column is wrong.
+                    raise ValueError(  # noqa: TRY004
+                        f"keep_stored_when_blank names {column!r}, which "
+                        f"carries a {type(value).__name__} value (a JSONB or "
+                        "native ARRAY column): blank has no meaning there"
+                    )
+        return columns
+
     def plan(
         self,
         *,
         skip_update_for_cp1252_equality: bool | _typing.Sequence[str] = False,
         replace_dict_columns: _typing.Sequence[str] = (),
+        keep_stored_when_blank: _typing.Sequence[str] = (),
     ) -> SingleTableUpsertPlan:
         """Compute the per-row, per-column changes against the loaded state.
 
@@ -827,6 +903,18 @@ class SingleTableUpsertPlanBuilder:
         top-level merge: keys present only in the stored dict are DELETED.
         The written delta is still minimal (only genuinely changing keys,
         transliteration-aware where enabled).
+
+        ``keep_stored_when_blank``: scalar columns for which a BLANK incoming
+        value (``None``, ``""`` or whitespace only) means "this source does
+        not carry the column": it is left out of the diff entirely, so the
+        stored value survives instead of being overwritten with NULL. Only
+        UPDATE candidates are affected -- an INSERT writes the blank as
+        given -- and ``SpecialValue.DELETE`` remains the explicit way to
+        clear such a column. How often a stored value was kept that way is
+        reported per column in
+        :attr:`SingleTableUpsertPlan.kept_blank_counts` and logged. Naming a
+        key column, an unknown column or a column carrying dict/list/PgArray
+        values raises ``ValueError``.
 
         Raises if :meth:`load_existing` has not run. Returns a
         :class:`SingleTableUpsertPlan`, writes nothing."""
@@ -850,11 +938,13 @@ class SingleTableUpsertPlanBuilder:
             raise ValueError(
                 f"replace_dict_columns names unknown column(s): {sorted(unknown)}"
             )
+        keep_blank_columns = self._keep_blank_columns(keep_stored_when_blank)
 
         inserts: list[dict] = []
         updates: list[dict] = []
         untouched_keys: list = []
         translit_kept = 0
+        kept_blank_counts: dict[str, int] = {}
         for key_value, row in self._rows.items():
             current = self._existing.get(key_value)
             if current is None:
@@ -862,10 +952,15 @@ class SingleTableUpsertPlanBuilder:
                 for column, value in row.items():
                     # A PgArray passes through as given: on INSERT both modes
                     # write the whole array (there is no stored state to
-                    # append to).
-                    insert_row[column] = (
-                        _strip_delete_keys(value) if isinstance(value, dict) else value
-                    )
+                    # append to). A blank value is written as given too --
+                    # keep_stored_when_blank protects a STORED value, and a
+                    # new row has none.
+                    if isinstance(value, dict):
+                        insert_row[column] = _strip_delete_keys(value)
+                    else:
+                        insert_row[column] = (
+                            None if value is SpecialValue.DELETE else value
+                        )
                 inserts.append(insert_row)
                 continue
             changed: dict = {}
@@ -930,11 +1025,27 @@ class SingleTableUpsertPlanBuilder:
                         continue
                     changed[column] = minimal
                     continue
-                if _values_equal(value, stored_value, translit=translit):
-                    if translit and value != stored_value:
+                if value is SpecialValue.DELETE:
+                    # The explicit "clear this column": it compares as NULL
+                    # (so a stored NULL stays untouched), is written as None
+                    # like any other NULL -- and is never kept by
+                    # keep_stored_when_blank, which is what makes it the way
+                    # to clear such a column on purpose.
+                    scalar: object = None
+                elif column in keep_blank_columns and _is_blank(value):
+                    # "Not carried by this source": the column is dropped
+                    # from the diff, so whatever is stored survives. Only a
+                    # genuinely protected (non-blank) stored value counts.
+                    if not _is_blank(stored_value):
+                        kept_blank_counts[column] = kept_blank_counts.get(column, 0) + 1
+                    continue
+                else:
+                    scalar = value
+                if _values_equal(scalar, stored_value, translit=translit):
+                    if translit and scalar != stored_value:
                         translit_kept += 1
                     continue
-                changed[column] = value
+                changed[column] = scalar
             if changed:
                 changed.update(self._key_columns_dict(key_value))
                 updates.append(changed)
@@ -946,6 +1057,16 @@ class SingleTableUpsertPlanBuilder:
                 "transliteration and stay untouched.",
                 translit_kept,
             )
+        if kept_blank_counts:
+            _LOGGER.info(
+                "Blank input kept the stored value: %s.",
+                ", ".join(
+                    f"{column} ({count})"
+                    for column, count in sorted(
+                        kept_blank_counts.items(), key=lambda item: (-item[1], item[0])
+                    )
+                ),
+            )
         return SingleTableUpsertPlan(
             table_name=self.table_name,
             key_names=self._key_names,
@@ -955,4 +1076,5 @@ class SingleTableUpsertPlanBuilder:
             updates=updates,
             untouched_keys=untouched_keys,
             generated_key_columns=self._generated_key_columns,
+            kept_blank_counts=kept_blank_counts,
         )
