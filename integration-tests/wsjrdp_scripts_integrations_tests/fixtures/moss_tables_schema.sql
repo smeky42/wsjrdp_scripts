@@ -2,10 +2,12 @@
 -- test_import_moss_transactions.py creates in the integration-testing DB.
 -- Generated with: docker exec development-postgres-1 pg_dump -U hitobito -d
 -- hitobito_development --schema-only --no-owner --no-privileges --no-comments
--- -t moss_transactions -t moss_expenses -t moss_bookings -- then stripped of the
--- SET / \restrict / set_config('search_path') lines and of the three FKs leaving
--- this set (-> datev_bookings, -> wsjrdp_camt_transactions); everything else,
--- internal FKs included, is verbatim. REGENERATE after a wagon migration here.
+-- -t moss_transactions -t moss_expenses -t moss_bookings -- then stripped of
+-- everything ahead of the first table (the opening banner, the SET and
+-- set_config('search_path') lines), of the \restrict / \unrestrict
+-- meta-commands and of the three FKs leaving this set (-> datev_bookings,
+-- -> wsjrdp_camt_transactions); everything else, internal FKs included, is
+-- verbatim. REGENERATE after a wagon migration here.
 
 --
 -- Name: moss_bookings; Type: TABLE; Schema: public; Owner: -
@@ -301,6 +303,22 @@ ALTER TABLE ONLY public.moss_transactions
 
 
 --
+-- Name: moss_bookings unq_moss_bookings_expense_sub_row; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.moss_bookings
+    ADD CONSTRAINT unq_moss_bookings_expense_sub_row UNIQUE (moss_expense_id, sub_row_number) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: moss_expenses unq_moss_expenses_transaction_expense_number; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.moss_expenses
+    ADD CONSTRAINT unq_moss_expenses_transaction_expense_number UNIQUE (moss_transaction_id, expense_number) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
 -- Name: index_moss_bookings_account_number; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -336,13 +354,6 @@ CREATE INDEX index_moss_bookings_expense_datev ON public.moss_bookings USING btr
 
 
 --
--- Name: index_moss_bookings_expense_sub_row; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX index_moss_bookings_expense_sub_row ON public.moss_bookings USING btree (moss_expense_id, sub_row_number);
-
-
---
 -- Name: index_moss_bookings_transaction; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -361,13 +372,6 @@ CREATE UNIQUE INDEX index_moss_expenses_expense_uuid ON public.moss_expenses USI
 --
 
 CREATE INDEX index_moss_expenses_transaction ON public.moss_expenses USING btree (moss_transaction_id);
-
-
---
--- Name: index_moss_expenses_transaction_expense_number; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX index_moss_expenses_transaction_expense_number ON public.moss_expenses USING btree (moss_transaction_id, expense_number);
 
 
 --

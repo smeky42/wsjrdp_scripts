@@ -35,6 +35,54 @@ data states, the INTERSECTION of fully covered transactions is imported and the
 rest is skipped with a log line -- a partially exported transaction is never
 guessed at, and a missing detail file never blocks the other kinds.
 
+REIMBURSEMENT EXPENSE PAIRING
+-----------------------------
+A reimbursement arrives in two exports at once: the reimbursement export
+carries the EXPENSE with its splits -- their accounts, cost centers and texts --
+and the balance export carries ONE row per expense, what was PAID for it and
+the number the expense is stored under (`expense_number`, the row's `Sub-row
+Number`). The two sides are paired by CONTENT, never by their position in the
+file: an export profile may order them differently, and a positional pairing
+then puts one expense's amount and number -- and with the amount its SIGN,
+which drives the bookings -- onto another expense's uuid.
+
+The pairing is decided per reimbursement, in this order, each step asking for a
+key that is unique on BOTH sides and for the two multisets to be equal:
+  1. (amount, text) -- the balance row's `Amount` against the sum of the
+     expense's splits' `Amount`, compared absolute, together with the balance
+     row's `Note` against the expense's `Parent Booking Text`.
+  2. the amount alone.
+  3. the text alone.
+  4. the export order, as the last resort, with a warning naming the
+     reimbursement.
+The detail gate then refuses the whole transaction when a pair of the CHOSEN
+pairing disagrees about its amount or its text -- that is a pairing the
+importer cannot vouch for, and a reimbursement is never half-guessed.
+
+INVOICE LINE PAIRING
+--------------------
+An invoice arrives in two exports at once: the invoice export carries the LINE
+-- its expense account, its cost center and its text -- and the balance export
+carries what was PAID for it, the account NAME (`Category`) and no cost center
+at all. The two sides are paired by CONTENT, never by their position in the
+file: an export profile may order them differently, and a positional pairing
+then puts one line's amount and the other line's account name on the same
+booking row, which no later run can tell from a genuine change.
+
+The pairing is decided per invoice, in this order, each step asking for a key
+that is unique on BOTH sides and for the two multisets to be equal:
+  1. (expense account, amount) -- the balance row's `Home Amount` against the
+     line's `Amount in Home Currency`; the balance row's `Amount` is
+     fee-adjusted on a foreign-currency payment and is only the fallback where
+     the export carries no home amount.
+  2. the expense account alone.
+  3. the STORED bookings of an already imported invoice: a line is the stored
+     booking with its (account, cost center) -- the cost center being exactly
+     what the balance export lacks -- and a balance row is the stored booking
+     with its amount. This one needs the database and therefore runs as a
+     second pass, once the stored state is readable.
+  4. the export order, as the last resort, with a warning naming the invoice.
+
 WHAT IS NEVER OVERWRITTEN
 -------------------------
 The app owns `comment`, `additional_info`, `contribution_subject_*`, `status`,
@@ -79,13 +127,48 @@ KEYS
   L2 moss_expense_uuid -- a reimbursement expense carries the CSV "Unique
      Expense ID"; the SHELL expense of a card, invoice or top-up carries its
      transaction's moss_object_uuid. `expense_number` stays an attribute
-     (unique per transaction), not a key.
+     (unique per transaction), not a key: the uniqueness is carried by the
+     DEFERRABLE constraint unq_moss_expenses_transaction_expense_number, so two
+     expenses of one reimbursement may exchange their numbers in a single plan.
+     The check is pulled forward to right after the level-2 apply.
   L3 (moss_expense_id, sub_row_number) -- the split's own "Sub-row Number"
      inside its expense, read from the export that carries the split (the card
      and reimbursement exports, the invoice line, the balance row of a top-up).
      Never the CSV "Unique Item Number", whose suffix is a file-position
      counter and therefore unstable; that raw value is kept in
      other_moss_columns["Unique Item Number"].
+
+SPLIT REORDER
+-------------
+The L3 key is POSITIONAL: it says WHERE a split sits in its expense, not which
+split it is. Moss reorders the splits of an expense between two exports -- a
+card payment's splits, a reimbursement expense's splits and an invoice's lines
+alike -- and the positional key alone would then rewrite the CONTENT of the
+booking rows in place: account, cost center, amount and text moving from one
+row to the next. A booking row is not anonymous: it carries the app's own links
+(`expense_datev_booking_id`, and the Beitragsbuchung in
+`accounting_entries.moss_booking_id` points at it), which would afterwards
+describe a different split.
+
+A reorder is therefore RECOGNISED instead of followed, on every kind. Inside an
+expense the triple (cost center, expense account, amount) identifies a split
+and stays with it across exports, so when the stored rows and the incoming
+records of one expense are the same splits in another order -- same count, the
+triple unique on both sides, the induced bijection not the identity -- the run
+RENUMBERS the stored rows and plans L3 again. The rows keep their content and
+their links; only their position changes. The renumbering is ONE statement:
+unq_moss_bookings_expense_sub_row, the unique CONSTRAINT carrying the L3 key,
+is DEFERRABLE, so the UPDATE may pass through a numbering that is not unique
+and only what it ends on has to be. That contract is verified at startup,
+next to the identity column of L1: a database whose L3 key is still a plain
+unique index is turned away before anything is planned. Anything short of that
+bijection -- a repeated triple, a different count, a genuine content change --
+is left to the ordinary positional plan. A top-up has a single booking, so no
+non-identity bijection exists for it at all. An invoice line takes its number
+from the invoice export and its amount from the balance row it is PAIRED with
+(see INVOICE LINE PAIRING), so a reordered invoice is recognised from the
+invoice export alone; the balance export listing its rows in another order
+changes nothing about the splits.
 
 TRANSACTION ID CHANGES
 ----------------------
@@ -126,7 +209,18 @@ USAGE
         External_Data/Moss_Exports/invoices_*.csv
     ... --dry-run              plan only, write nothing
     ... --rollback-for-testing apply, then ROLLBACK
+    ... --no-updated-at        write no updated_at: a row that changes keeps the
+                               timestamp it has (an inserted row still gets its
+                               created_at)
 Idempotent: re-importing the same files reports nothing to write.
+
+Every run PREVIEWS all three levels before it writes anything -- in production
+before the approval is asked for: moss_transactions in full, moss_expenses and
+moss_bookings for the records whose transaction is already stored, and the
+splits a reorder would renumber. What the preview cannot show is what hangs off
+a transaction the run would have to INSERT first: those expenses and bookings
+have no parent id to be keyed against yet, so they are reported as deferred and
+the two lower plans are a lower bound.
 """
 
 from __future__ import annotations
@@ -1115,7 +1209,14 @@ def _balance_records(
     rows: list[dict],
     reimbursements: dict[str, list[dict]],
     invoices: dict[str, list[dict]],
-) -> tuple[list[dict], list[dict], list[dict], list[str]]:
+) -> tuple[
+    list[dict],
+    list[dict],
+    list[dict],
+    list[str],
+    list[_InvoicePairing],
+    list[_ReimbursementPairing],
+]:
     """The balance-movements export plus its two detail exports.
 
     Applies the per-transaction detail gate: a reimbursement or invoice whose
@@ -1125,6 +1226,8 @@ def _balance_records(
     expenses: list[dict] = []
     bookings: list[dict] = []
     skipped: list[str] = []
+    pairings: list[_InvoicePairing] = []
+    reimbursement_pairings: list[_ReimbursementPairing] = []
     for key, balance_rows in _group(rows, "Transaction ID", "Sub-row Number").items():
         uuid = _as_uuid(key)
         head = balance_rows[0]
@@ -1216,12 +1319,23 @@ def _balance_records(
         transactions.append(transaction)
 
         if kind == "MossReimbursement":
-            _reimbursement_levels(key, balance_rows, detail, expenses, bookings)
+            reimbursement_pairings.append(
+                _reimbursement_levels(key, balance_rows, detail, expenses, bookings)
+            )
         elif kind == "MossInvoice":
-            _invoice_levels(key, balance_rows, detail, expenses, bookings)
+            pairings.append(
+                _invoice_levels(key, balance_rows, detail, expenses, bookings)
+            )
         else:
             _top_up_levels(key, uuid, balance_rows, expenses, bookings)
-    return transactions, expenses, bookings, skipped
+    return (
+        transactions,
+        expenses,
+        bookings,
+        skipped,
+        pairings,
+        reimbursement_pairings,
+    )
 
 
 def _balance_kind(row: dict) -> str:
@@ -1257,19 +1371,245 @@ def _detail_gate(kind, balance_rows, detail, detail_uuid) -> str | None:
         # the reimbursement side can be compared to the cent here; the invoice
         # amounts are guarded by the sum invariant instead.
         return None
-    for balance, expense in zip(balance_rows, detail):
-        if abs(_decimal_or_none(balance.get("Amount")) or 0) != abs(
-            _sum(expense["rows"], "Amount")
-        ):
+    # Checked on the pairing the import would really use, not on the file's
+    # order: a pair that disagrees about its amount or its text is a pairing
+    # the importer cannot vouch for, whichever step chose it.
+    paired, _step = _pair_reimbursement_rows(balance_rows, detail)
+    for row, expense in zip(paired, detail):
+        balance = row or {}
+        if _balance_expense_amount(balance) != _expense_amount(expense):
             return f"amounts do not line up with the balance rows in {detail_uuid}"
+        if _balance_expense_text(balance) != _expense_text(expense):
+            return f"texts do not line up with the balance rows in {detail_uuid}"
     return None
 
 
-def _reimbursement_levels(ref, balance_rows, detail, expenses, bookings) -> None:
+# ------------------------------------------------- pairing the two exports
+# A reimbursement and an invoice each arrive in two exports at once, and both
+# are paired by CONTENT rather than by position. What follows is what the two
+# pairings have in common; see the REIMBURSEMENT EXPENSE PAIRING and INVOICE
+# LINE PAIRING sections of the module docstring.
+
+#: The last resort of either pairing: the position in the file.
+_PAIR_BY_POSITION = "the export order"
+
+
+def _abs_or_none(value):
+    """The amount without its sign; NULL-safe, because an export cell may carry
+    no amount at all.
+
+    >>> _abs_or_none(_decimal.Decimal("-5.00"))
+    Decimal('5.00')
+    >>> _abs_or_none(None) is None
+    True
+    """
+    return None if value is None else abs(value)
+
+
+def _unique_pairing(balance_keys: list, line_keys: list) -> list[int] | None:
+    """[balance position of each detail row] when the key is unique on BOTH
+    sides and the two multisets are equal -- which makes the match a bijection
+    -- else None, because anything else would be a guess.
+
+    >>> _unique_pairing(["a", "b"], ["b", "a"])
+    [1, 0]
+    >>> _unique_pairing(["a", "b"], ["a", "b"])
+    [0, 1]
+    >>> _unique_pairing(["a", "a"], ["a", "a"]) is None
+    True
+    >>> _unique_pairing(["a", "b"], ["a", "c"]) is None
+    True
+    >>> _unique_pairing(["a"], ["a", "b"]) is None
+    True
+    """
+    if not line_keys or len(balance_keys) != len(line_keys):
+        return None
+    positions = {key: index for index, key in enumerate(balance_keys)}
+    if len(positions) != len(balance_keys) or len(set(line_keys)) != len(line_keys):
+        return None
+    if positions.keys() != set(line_keys):
+        return None
+    return [positions[key] for key in line_keys]
+
+
+def _is_reordered(paired, balance_rows) -> bool:
+    """Whether a pairing is NOT the order the balance export lists.
+
+    >>> first, second = {"n": 1}, {"n": 2}
+    >>> _is_reordered([second, first], [first, second])
+    True
+    >>> _is_reordered([first, second], [first, second])
+    False
+    """
+    return any(row is not other for row, other in zip(paired, balance_rows))
+
+
+# --------------------------------------------- reimbursement expense pairing
+# See the REIMBURSEMENT EXPENSE PAIRING section of the module docstring.
+
+#: What decided a reimbursement's pairing, in the order the steps are tried.
+_PAIR_BY_AMOUNT_AND_TEXT = "amount and text"
+_PAIR_BY_AMOUNT = "the amount"
+_PAIR_BY_TEXT = "the text"
+
+
+@_dataclasses.dataclass(frozen=True)
+class _ReimbursementPairing:
+    """One reimbursement and how its balance rows were paired with its
+    expenses. The pairing itself needs nothing but the two exports; the second
+    pass reports it, together with what an already stored reimbursement says
+    about the numbers its expenses come back under."""
+
+    #: How the log names the reimbursement: its Moss id, which is the only
+    #: thing both exports carry.
+    label: str
+    balance_rows: tuple[dict, ...]
+    #: The expense records built, in detail order.
+    expenses: tuple[dict, ...]
+    #: The balance row paired with each expense, in detail order.
+    paired: tuple[dict, ...]
+    step: str
+
+
+def _balance_expense_amount(row: dict):
+    """What the balance export says ONE expense cost, without its sign: the
+    row's `Amount`. The reimbursement export reports unsigned split amounts, so
+    the two sides can only be compared absolute.
+
+    >>> _balance_expense_amount({"Amount": "-9.00"})
+    Decimal('9.00')
+    >>> _balance_expense_amount({})
+    Decimal('0')
+    """
+    return abs(_decimal_or_none(row.get("Amount")) or _decimal.Decimal(0))
+
+
+def _expense_amount(expense: dict):
+    """What the reimbursement export says ONE expense cost: the sum of its
+    splits' `Amount`.
+
+    >>> _expense_amount({"rows": [{"Amount": "4.00"}, {"Amount": "5.00"}]})
+    Decimal('9.00')
+    """
+    return abs(_sum(expense["rows"], "Amount"))
+
+
+def _balance_expense_text(row: dict) -> str | None:
+    """The balance row's own text: `Note`, which repeats the expense's booking
+    text.
+
+    >>> _balance_expense_text({"Note": "Some expense"})
+    'Some expense'
+    >>> _balance_expense_text({}) is None
+    True
+    """
+    return _text(row, "Note")
+
+
+def _expense_text(expense: dict) -> str | None:
+    """The expense's own text: `Parent Booking Text`, constant over its splits.
+
+    >>> _expense_text({"rows": [{"Parent Booking Text": "Some expense"}]})
+    'Some expense'
+    >>> _expense_text({"rows": [{}]}) is None
+    True
+    """
+    return _text(expense["rows"][0], "Parent Booking Text")
+
+
+def _reimbursement_label(balance: dict) -> str:
+    """How the log names a reimbursement: its Moss id. Its name is the
+    claimant's own wording and says nothing an id does not.
+
+    >>> _reimbursement_label({"Linked Reimbursement ID": "a-reimbursement-id"})
+    'a-reimbursement-id'
+    >>> _reimbursement_label({})
+    ''
+    """
+    return _text(balance, "Linked Reimbursement ID") or ""
+
+
+def _pair_reimbursement_rows(balance_rows, detail):
+    """(the balance row of each expense, what decided it) for ONE reimbursement.
+
+    A returned row is None only where there is no balance row at that position
+    at all -- past the detail gate the two sides have the same count.
+
+    >>> balance = [{"Amount": "-4.00", "Note": "Expense one"},
+    ...            {"Amount": "-9.00", "Note": "Expense two"}]
+    >>> detail = [{"rows": [{"Amount": "9.00",
+    ...                      "Parent Booking Text": "Expense two"}]},
+    ...           {"rows": [{"Amount": "4.00",
+    ...                      "Parent Booking Text": "Expense one"}]}]
+    >>> rows, step = _pair_reimbursement_rows(balance, detail)
+    >>> [row["Amount"] for row in rows], step
+    (['-9.00', '-4.00'], 'amount and text')
+
+    The amount alone decides where the two texts contradict each other, the
+    text alone where the amounts are equal, and the export order is what is
+    left when neither key is unique on both sides:
+
+    >>> crossed = [{"Amount": "-4.00", "Note": "Expense two"},
+    ...            {"Amount": "-9.00", "Note": "Expense one"}]
+    >>> _pair_reimbursement_rows(crossed, detail)[1]
+    'the amount'
+    >>> _pair_reimbursement_rows([dict(row, Amount="-4.00") for row in balance],
+    ...                          detail)[1]
+    'the text'
+    >>> _pair_reimbursement_rows(
+    ...     [{"Amount": "-4.00", "Note": "Same"}] * 2,
+    ...     [{"rows": [{"Amount": "4.00", "Parent Booking Text": "Same"}]}] * 2)[1]
+    'the export order'
+    """
+    steps = (
+        (
+            _PAIR_BY_AMOUNT_AND_TEXT,
+            _unique_pairing(
+                [
+                    (_balance_expense_amount(row), _balance_expense_text(row))
+                    for row in balance_rows
+                ],
+                [(_expense_amount(row), _expense_text(row)) for row in detail],
+            ),
+        ),
+        (
+            _PAIR_BY_AMOUNT,
+            _unique_pairing(
+                [_balance_expense_amount(row) for row in balance_rows],
+                [_expense_amount(row) for row in detail],
+            ),
+        ),
+        (
+            _PAIR_BY_TEXT,
+            _unique_pairing(
+                [_balance_expense_text(row) for row in balance_rows],
+                [_expense_text(row) for row in detail],
+            ),
+        ),
+    )
+    for step, pairing in steps:
+        if pairing is not None:
+            return [balance_rows[index] for index in pairing], step
+    positional = [
+        balance_rows[index] if index < len(balance_rows) else None
+        for index in range(len(detail))
+    ]
+    return positional, _PAIR_BY_POSITION
+
+
+def _reimbursement_levels(ref, balance_rows, detail, expenses, bookings):
     """One expense per balance row, its bookings being the reimbursement's
-    splits. The two sides correspond 1:1 IN ORDER -- the
-    balance row carries no expense id to join on."""
-    for balance, expense in zip(balance_rows, detail):
+    splits. The expense carries its splits with their accounts, cost centers
+    and texts; the balance row it is PAIRED with (see REIMBURSEMENT EXPENSE
+    PAIRING) carries what was paid for it, the SIGN of that amount and the
+    number the expense is stored under -- the balance row has no expense id to
+    join on, so the two are paired by content.
+
+    Returns the reimbursement's pairing, which the second pass reports."""
+    paired, step = _pair_reimbursement_rows(balance_rows, detail)
+    built: list[dict] = []
+    for row, expense in zip(paired, detail):
+        balance = row or {}
         expense_number = _int_or_zero(balance.get("Sub-row Number"))
         head = expense["rows"][0]
         # The balance row's sign is authoritative: the detail export reports
@@ -1292,6 +1632,7 @@ def _reimbursement_levels(ref, balance_rows, detail, expenses, bookings) -> None
             | _verbatim(balance, BALANCE_OTHER_ROW),
         )
         expenses.append(record)
+        built.append(record)
         for split in expense["rows"]:
             booking = _mapped(split, REIMBURSEMENT_BOOKING_COLUMN_MAP)
             amount = _decimal_or_none(split.get("Amount"))
@@ -1312,13 +1653,255 @@ def _reimbursement_levels(ref, balance_rows, detail, expenses, bookings) -> None
                 | _verbatim(balance, BALANCE_OTHER_BOOKING),
             )
             bookings.append(booking)
+    return _ReimbursementPairing(
+        label=_reimbursement_label(balance_rows[0]),
+        balance_rows=tuple(balance_rows),
+        expenses=tuple(built),
+        paired=tuple(paired),
+        step=step,
+    )
 
 
-def _invoice_levels(ref, balance_rows, detail, expenses, bookings) -> None:
-    """The invoice IS the expense: ONE shell expense, one booking per line. Balance
-    rows and invoice lines correspond 1:1 in order, which is
-    what gives an invoice line its cost center -- balance-movements has no
-    cost-center column at all."""
+# ----------------------------------------------------- invoice line pairing
+# See the INVOICE LINE PAIRING section of the module docstring.
+
+#: What decided an invoice's pairing, in the order the steps are tried. The
+#: position in the file is the shared last resort, _PAIR_BY_POSITION.
+_PAIR_BY_ACCOUNT_AND_AMOUNT = "expense account and amount"
+_PAIR_BY_ACCOUNT = "expense account"
+_PAIR_BY_STORED = "the stored bookings"
+
+
+@_dataclasses.dataclass
+class _InvoicePairing:
+    """One invoice and how its balance rows were paired with its lines. The
+    record building decides what it can without the database; the second pass
+    tries the stored bookings on the rest and reports all of it."""
+
+    #: How the log names the invoice: its number where an export carries one.
+    label: str
+    expense_uuid: _uuid.UUID | None
+    balance_rows: tuple[dict, ...]
+    lines: tuple[dict, ...]
+    #: The booking records built for the lines, in line order.
+    bookings: tuple[dict, ...]
+    #: The balance row paired with each line, in line order.
+    paired: tuple[dict, ...]
+    step: str
+
+
+def _balance_pair_amount(row: dict):
+    """The balance row's amount a line is paired on: `Home Amount`, which is
+    the line's own amount in the home currency. `Amount` is fee-adjusted on a
+    foreign-currency payment and therefore serves only where the export carries
+    no home amount at all.
+
+    >>> _balance_pair_amount({"Home Amount": "-5.00", "Amount": "-5.10"})
+    Decimal('5.00')
+    >>> _balance_pair_amount({"Amount": "-5.10"})
+    Decimal('5.10')
+    >>> _balance_pair_amount({}) is None
+    True
+    """
+    amount = _decimal_or_none(row.get("Home Amount"))
+    if amount is None:
+        amount = _decimal_or_none(row.get("Amount"))
+    return _abs_or_none(amount)
+
+
+def _account_and_cost_center(row: dict) -> tuple:
+    """What tells two bookings of one invoice apart where the amount cannot:
+    the pair the balance export has only half of.
+
+    >>> _account_and_cost_center({"account_number": "61000",
+    ...                           "cost_center_number": "3100"})
+    ('61000', '3100')
+    >>> _account_and_cost_center({})
+    (None, None)
+    """
+    return (_text(row, "account_number"), _text(row, "cost_center_number"))
+
+
+def _amounts_by_account_and_cost_center(rows) -> dict | None:
+    """{(account, cost center) -> amount} of booking rows; None when that key
+    repeats among them, because it then says nothing about which row is which.
+
+    >>> _amounts_by_account_and_cost_center([{"account_number": "61000",
+    ...     "cost_center_number": "3100", "signed_base_amount": "-5.00"}])
+    {('61000', '3100'): Decimal('-5.00')}
+    >>> _amounts_by_account_and_cost_center(
+    ...     [{"account_number": "61000", "cost_center_number": "3100"}] * 2) is None
+    True
+    """
+    amounts = {
+        _account_and_cost_center(row): _decimal_or_none(row.get("signed_base_amount"))
+        for row in rows
+    }
+    return amounts if len(amounts) == len(rows) else None
+
+
+def _pairing_via_stored(balance_rows, lines, stored) -> list[int] | None:
+    """[balance position of each line] through the STORED bookings of the
+    invoice: a line is the stored booking carrying its (account, cost center)
+    -- the cost center being what the balance export has no column for -- and a
+    balance row is the stored booking carrying its amount.
+
+    >>> stored = [{"account_number": "61000", "cost_center_number": "3100",
+    ...            "signed_base_amount": _decimal.Decimal("-5.00")},
+    ...           {"account_number": "61000", "cost_center_number": "3200",
+    ...            "signed_base_amount": _decimal.Decimal("-6.00")}]
+    >>> balance = [{"Home Amount": "-6.00"}, {"Home Amount": "-5.00"}]
+    >>> lines = [{"Expense Account - Number": "61000",
+    ...           "Cost Center - Number": "3100"},
+    ...          {"Expense Account - Number": "61000",
+    ...           "Cost Center - Number": "3200"}]
+    >>> _pairing_via_stored(balance, lines, stored)
+    [1, 0]
+
+    Nothing is decided when the stored state is another shape, or when either
+    of its two keys repeats:
+
+    >>> _pairing_via_stored(balance, lines, stored[:1]) is None
+    True
+    >>> _pairing_via_stored(balance, lines,
+    ...     [stored[0], dict(stored[1], cost_center_number="3100")]) is None
+    True
+    """
+    if not stored or len(stored) != len(lines) or len(balance_rows) != len(lines):
+        return None
+    by_line_key = {
+        _account_and_cost_center(row): index for index, row in enumerate(stored)
+    }
+    by_amount = {
+        _abs_or_none(_decimal_or_none(row.get("signed_base_amount"))): index
+        for index, row in enumerate(stored)
+    }
+    if len(by_line_key) != len(stored) or len(by_amount) != len(stored):
+        return None
+    for_line = [
+        by_line_key.get(
+            (_text(row, "Expense Account - Number"), _text(row, "Cost Center - Number"))
+        )
+        for row in lines
+    ]
+    for_balance = [by_amount.get(_balance_pair_amount(row)) for row in balance_rows]
+    if None in for_line or None in for_balance:
+        return None
+    if len(set(for_line)) != len(lines) or len(set(for_balance)) != len(balance_rows):
+        return None
+    balance_of_stored = {
+        stored_index: index for index, stored_index in enumerate(for_balance)
+    }
+    return [balance_of_stored[stored_index] for stored_index in for_line]
+
+
+def _pair_invoice_rows(balance_rows, lines, stored=()):
+    """(the balance row of each line, what decided it) for ONE invoice.
+
+    A returned row is None only where there is no balance row at that position
+    at all -- the detail gate has already established that the two sides have
+    the same count. `stored` are the invoice's stored bookings, empty wherever
+    the database is not open yet: only the third step uses them.
+
+    >>> balance = [{"Account Number": "61000", "Home Amount": "-5.00"},
+    ...            {"Account Number": "62000", "Home Amount": "-6.00"}]
+    >>> lines = [{"Expense Account - Number": "62000",
+    ...           "Amount in Home Currency": "6.00"},
+    ...          {"Expense Account - Number": "61000",
+    ...           "Amount in Home Currency": "5.00"}]
+    >>> rows, step = _pair_invoice_rows(balance, lines)
+    >>> [row["Account Number"] for row in rows], step
+    (['62000', '61000'], 'expense account and amount')
+
+    The account alone decides where the amounts do not line up, and the export
+    order is what is left when nothing is unique on both sides:
+
+    >>> _pair_invoice_rows(balance, [dict(line, **{"Amount in Home Currency": ""})
+    ...                              for line in lines])[1]
+    'expense account'
+    >>> _pair_invoice_rows(balance, [{"Expense Account - Number": "61000"}] * 2)[1]
+    'the export order'
+    """
+    steps = (
+        (
+            _PAIR_BY_ACCOUNT_AND_AMOUNT,
+            _unique_pairing(
+                [
+                    (_text(row, "Account Number"), _balance_pair_amount(row))
+                    for row in balance_rows
+                ],
+                [
+                    (
+                        _text(row, "Expense Account - Number"),
+                        _abs_or_none(
+                            _decimal_or_none(row.get("Amount in Home Currency"))
+                        ),
+                    )
+                    for row in lines
+                ],
+            ),
+        ),
+        (
+            _PAIR_BY_ACCOUNT,
+            _unique_pairing(
+                [_text(row, "Account Number") for row in balance_rows],
+                [_text(row, "Expense Account - Number") for row in lines],
+            ),
+        ),
+        (_PAIR_BY_STORED, _pairing_via_stored(balance_rows, lines, stored)),
+    )
+    for step, pairing in steps:
+        if pairing is not None:
+            return [balance_rows[index] for index in pairing], step
+    positional = [
+        balance_rows[index] if index < len(balance_rows) else None
+        for index in range(len(lines))
+    ]
+    return positional, _PAIR_BY_POSITION
+
+
+def _invoice_label(line: dict, balance: dict, invoice_uuid) -> str:
+    """How the log names an invoice: its invoice number, or its Moss id where
+    neither export carries a number.
+
+    >>> _invoice_label({}, {"Invoice Number": "99.99.99"}, "an-invoice-id")
+    '99.99.99'
+    >>> _invoice_label({}, {}, "an-invoice-id")
+    'an-invoice-id'
+    """
+    return (
+        _text(balance, "Invoice Number")
+        or _text(line, "Invoice Number")
+        or str(invoice_uuid)
+    )
+
+
+def _invoice_pair_values(line: dict, balance: dict) -> dict:
+    """What pairing one invoice line with one balance row decides: the EUR that
+    was paid, the foreign amount -- on a PLN invoice each side computes its own
+    EUR -- and the per-row values of both exports, the balance row's `Category`
+    (the expense account's NAME) among them."""
+    return {
+        "signed_base_amount": _coerce("signed_base_amount", balance.get("Amount")),
+        "signed_transaction_amount": _coerce(
+            "signed_transaction_amount", balance.get("Original Amount")
+        ),
+        "other_moss_columns": _verbatim(line, INVOICE_OTHER_BOOKING)
+        | _mirror(line, INVOICE_MIRROR_BOOKING)
+        | _mirror(balance, ("Unique Item Number",))
+        | _verbatim(balance, BALANCE_OTHER_ROW)
+        | _verbatim(balance, BALANCE_OTHER_BOOKING),
+    }
+
+
+def _invoice_levels(ref, balance_rows, detail, expenses, bookings):
+    """The invoice IS the expense: ONE shell expense, one booking per line. The
+    line carries the expense account, the cost center -- which balance-movements
+    has no column for at all -- and the text; the balance row it is PAIRED with
+    (see INVOICE LINE PAIRING) carries what was paid and the account name.
+
+    Returns the invoice's pairing, which the second pass completes and
+    reports."""
     head = detail[0]
     invoice_uuid = _as_uuid(_text(head, "Invoice ID"))
     # A shell: the invoice's dates, texts and terms are transaction columns /
@@ -1333,28 +1916,32 @@ def _invoice_levels(ref, balance_rows, detail, expenses, bookings) -> None:
             "signed_expense_transaction_amount": _sum(balance_rows, "Original Amount"),
         }
     )
-    for balance, line in zip(balance_rows, detail):
+    # Without the database only the first two steps can decide; the third one
+    # runs in the second pass, on the records this loop builds.
+    paired, step = _pair_invoice_rows(balance_rows, detail)
+    built: list[dict] = []
+    for balance, line in zip(paired, detail):
         booking = _mapped(line, INVOICE_BOOKING_COLUMN_MAP)
         booking.update(
-            # The line's own split number; it equals the paired balance row's.
+            # The line's own split number; it names where the split sits.
             sub_row_number=_int_or_zero(line.get("Sub-row Number")),
             _transaction_ref=ref,
             _expense_ref=invoice_uuid,
-            # The paid EUR comes from the balance row, the foreign amount from
-            # the invoice: on a PLN invoice each side computes its own EUR.
-            signed_base_amount=_coerce("signed_base_amount", balance.get("Amount")),
-            signed_transaction_amount=_coerce(
-                "signed_transaction_amount", balance.get("Original Amount")
-            ),
             account_kind=_account_kind(booking["account_number"]),
             sphere_number=_sphere(booking["sphere_number"]),
-            other_moss_columns=_verbatim(line, INVOICE_OTHER_BOOKING)
-            | _mirror(line, INVOICE_MIRROR_BOOKING)
-            | _mirror(balance, ("Unique Item Number",))
-            | _verbatim(balance, BALANCE_OTHER_ROW)
-            | _verbatim(balance, BALANCE_OTHER_BOOKING),
+            **_invoice_pair_values(line, balance or {}),
         )
         bookings.append(booking)
+        built.append(booking)
+    return _InvoicePairing(
+        label=_invoice_label(head, balance_rows[0], invoice_uuid),
+        expense_uuid=invoice_uuid,
+        balance_rows=tuple(balance_rows),
+        lines=tuple(detail),
+        bookings=tuple(built),
+        paired=tuple(paired),
+        step=step,
+    )
 
 
 def _top_up_levels(ref, uuid, balance_rows, expenses, bookings) -> None:
@@ -1446,9 +2033,14 @@ def _detail_exchange_rate(kind: str, detail, transaction: dict):
 
 
 def _build_records(by_kind: dict[str, list[dict]]):
+    """The records of all three levels, plus one pairing per invoice and one
+    per reimbursement -- what the second pass finishes and reports once the
+    stored state is readable. Nothing here touches the database."""
     transactions: list[dict] = []
     expenses: list[dict] = []
     bookings: list[dict] = []
+    invoice_pairings: list[_InvoicePairing] = []
+    reimbursement_pairings: list[_ReimbursementPairing] = []
 
     if _KIND_CARD in by_kind:
         card = _card_records(by_kind[_KIND_CARD])
@@ -1459,7 +2051,7 @@ def _build_records(by_kind: dict[str, list[dict]]):
             target.extend(produced)
 
     if _KIND_BALANCE in by_kind:
-        *balance, skipped = _balance_records(
+        *balance, skipped, invoice_pairings, reimbursement_pairings = _balance_records(
             by_kind[_KIND_BALANCE],
             _reimbursement_expenses(by_kind.get(_KIND_REIMBURSEMENT, [])),
             _invoice_lines(by_kind.get(_KIND_INVOICE, [])),
@@ -1476,7 +2068,7 @@ def _build_records(by_kind: dict[str, list[dict]]):
                 "%d transaction(s) skipped by the detail gate; everything else is imported.",
                 len(skipped),
             )
-    return transactions, expenses, bookings
+    return transactions, expenses, bookings, invoice_pairings, reimbursement_pairings
 
 
 # ===================================================== invariant & planning
@@ -1576,23 +2168,108 @@ class _Resolved:
     appends_id: bool
 
 
-def _require_object_uuid_column(connection) -> None:
-    """The generated identity column is the contract with the wagon schema; an
-    older database would silently key the plan on a column that is not there."""
+# ------------------------------------------------------- the schema contract
+# What the wagon has to have brought before this importer may touch its tables.
+
+#: The wagon migration that made moss_object_uuid a generated column.
+_OBJECT_UUID_MIGRATION = "20260910100000"
+
+#: The unique CONSTRAINT on the L3 key -- deferrable, which is what lets the
+#: renumbering of a reordered expense exchange sub-row numbers in one
+#: statement. `_renumber_reordered_splits` names it to ask for its check.
+_SUB_ROW_CONSTRAINT = "unq_moss_bookings_expense_sub_row"
+
+#: The wagon migration that turned the plain unique index on the L3 key into
+#: that constraint.
+_SUB_ROW_CONSTRAINT_MIGRATION = "20260912100000"
+
+#: The unique CONSTRAINT on the L2 expense number -- deferrable as well, which
+#: is what lets two expenses of one reimbursement exchange their numbers in a
+#: single plan. `_check_expense_numbers_now` names it to ask for its check.
+_EXPENSE_NUMBER_CONSTRAINT = "unq_moss_expenses_transaction_expense_number"
+
+#: The columns that constraint carries.
+_EXPENSE_NUMBER_KEY = ("moss_transaction_id", "expense_number")
+
+#: The wagon migration that turned the plain unique index on the expense number
+#: into that constraint.
+_EXPENSE_NUMBER_CONSTRAINT_MIGRATION = "20260913100000"
+
+
+def _deferrable_constraints() -> tuple[tuple[str, str, tuple[str, ...], str, str], ...]:
+    """Every deferrable unique constraint the importer relies on: the table,
+    the constraint with its columns, the wagon migration that brings it and
+    what would be impossible without it."""
+    return (
+        (
+            _TABLE_EXPENSES,
+            _EXPENSE_NUMBER_CONSTRAINT,
+            _EXPENSE_NUMBER_KEY,
+            _EXPENSE_NUMBER_CONSTRAINT_MIGRATION,
+            "reordered expenses could not exchange their numbers",
+        ),
+        (
+            _TABLE_BOOKINGS,
+            _SUB_ROW_CONSTRAINT,
+            _BOOKING_KEY,
+            _SUB_ROW_CONSTRAINT_MIGRATION,
+            "reordered splits could not be renumbered",
+        ),
+    )
+
+
+def _has_deferrable_unique_constraint(cursor, table, name, columns) -> bool:
+    """Whether `table` carries `name` as a DEFERRABLE unique constraint on
+    exactly `columns`. The columns, not just the name: it has to be the
+    constraint that really carries the key."""
+    cursor.execute(
+        "SELECT 1 FROM pg_constraint c"
+        " WHERE c.conrelid = %s::regclass AND c.conname = %s"
+        " AND c.contype = 'u' AND c.condeferrable"
+        " AND (SELECT array_agg(a.attname::text ORDER BY k.ord)"
+        "        FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)"
+        "        JOIN pg_attribute a"
+        "          ON a.attrelid = c.conrelid AND a.attnum = k.attnum)"
+        "     = %s::text[]",
+        (table, name, list(columns)),
+    )
+    return cursor.fetchone() is not None
+
+
+def _require_wagon_schema(connection) -> None:
+    """The contracts this importer has with the wagon schema, checked before
+    anything is read: the generated identity column of L1 -- an older database
+    would silently key the plan on a column that is not there -- and the two
+    deferrable unique constraints, without which a reordered reimbursement
+    cannot exchange its expense numbers and a reordered expense cannot be
+    renumbered in one statement. Each one names the migration that brings it."""
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT 1 FROM information_schema.columns "
             "WHERE table_name = %s AND column_name = %s",
             (_TABLE_TRANSACTIONS, "moss_object_uuid"),
         )
-        if cursor.fetchone() is not None:
-            return
-    _LOGGER.error(
-        "%s has no column moss_object_uuid: the wagon migration 20260910100000 "
-        "is not applied to this database.",
-        _TABLE_TRANSACTIONS,
-    )
-    raise SystemExit(1)
+        if cursor.fetchone() is None:
+            _LOGGER.error(
+                "%s has no column moss_object_uuid: the wagon migration %s "
+                "is not applied to this database.",
+                _TABLE_TRANSACTIONS,
+                _OBJECT_UUID_MIGRATION,
+            )
+            raise SystemExit(1)
+        for table, name, columns, migration, consequence in _deferrable_constraints():
+            if _has_deferrable_unique_constraint(cursor, table, name, columns):
+                continue
+            _LOGGER.error(
+                "%s has no deferrable unique constraint %s on (%s): the wagon "
+                "migration %s is not applied to this database, so %s.",
+                table,
+                name,
+                ", ".join(columns),
+                migration,
+                consequence,
+            )
+            raise SystemExit(1)
 
 
 def _load_stored_transactions(connection) -> list[_StoredTransaction]:
@@ -1840,6 +2517,213 @@ def _apply_resolution(
     return origin
 
 
+# ====================================== invoice pairing, the second pass
+# The third pairing step and the consistency check both need the stored
+# bookings of the invoice, so both run here: after the identities are resolved
+# and before anything is planned, on a read-only connection.
+
+
+def _stored_invoice_bookings(connection, expense_uuids) -> dict[str, list[dict]]:
+    """The stored bookings of the given invoices, by expense uuid and in
+    sub-row order -- what their lines were last imported as."""
+    if not expense_uuids:
+        return {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT e.moss_expense_uuid, b.sub_row_number, b.account_number,"
+            " b.cost_center_number, b.signed_base_amount"
+            " FROM moss_bookings b"
+            " JOIN moss_expenses e ON e.id = b.moss_expense_id"
+            " WHERE e.type = 'MossInvoiceExpense'"
+            " AND e.moss_expense_uuid = ANY(%s)"
+            " ORDER BY e.moss_expense_uuid, b.sub_row_number",
+            (list(expense_uuids),),
+        )
+        rows = cursor.fetchall()
+    stored: dict[str, list[dict]] = _collections.defaultdict(list)
+    for expense_uuid, sub_row, account, cost_center, amount in rows:
+        stored[str(expense_uuid)].append(
+            {
+                "sub_row_number": sub_row,
+                "account_number": account,
+                "cost_center_number": cost_center,
+                "signed_base_amount": amount,
+            }
+        )
+    return dict(stored)
+
+
+def _repair_invoice_pairing(invoice: _InvoicePairing, stored: list[dict]) -> None:
+    """The third step, on an invoice the export order alone would have to
+    decide. A pairing that comes out of it replaces the amounts and the
+    per-row values on the booking records already built; where and what the
+    line itself says is untouched, and so is the transaction's total -- the
+    same balance rows are only distributed differently."""
+    paired, step = _pair_invoice_rows(invoice.balance_rows, invoice.lines, stored)
+    if step != _PAIR_BY_STORED:
+        return
+    for booking, line, balance in zip(invoice.bookings, invoice.lines, paired):
+        booking.update(_invoice_pair_values(line, balance or {}))
+    invoice.paired = tuple(paired)
+    invoice.step = step
+
+
+def _report_invoice_pairing(invoice: _InvoicePairing) -> None:
+    """One line per invoice whose two exports disagree about the order, and a
+    warning for one whose pairing nothing could decide. An invoice with a
+    single line has exactly one possible pairing and is never worth a line."""
+    if len(invoice.lines) < 2:
+        return
+    if invoice.step == _PAIR_BY_POSITION:
+        _LOGGER.warning(
+            "invoice %s: its %d lines cannot be paired with their balance rows "
+            "by content; the export order decides.",
+            invoice.label,
+            len(invoice.lines),
+        )
+    elif _is_reordered(invoice.paired, invoice.balance_rows):
+        _LOGGER.info(
+            "invoice %s: its %d balance rows arrive in another order than its "
+            "lines; paired by %s.",
+            invoice.label,
+            len(invoice.lines),
+            invoice.step,
+        )
+
+
+def _report_invoice_amount_change(invoice: _InvoicePairing, stored: list[dict]) -> None:
+    """An already stored invoice, compared line by line: how many bookings keep
+    their account and cost center but come back on another amount. That is what
+    a recombination of an invoice looks like from the outside, and it belongs
+    in the preview instead of only in a column count."""
+    incoming = _amounts_by_account_and_cost_center(invoice.bookings)
+    kept = _amounts_by_account_and_cost_center(stored)
+    if not incoming or not kept:
+        return
+    changed = sum(
+        1 for key, amount in kept.items() if key in incoming and incoming[key] != amount
+    )
+    if changed:
+        _LOGGER.info(
+            "invoice %s: %d of its stored booking(s) keep their account and cost "
+            "center but change their amount.",
+            invoice.label,
+            changed,
+        )
+
+
+def _resolve_invoice_pairings(connection, pairings: list[_InvoicePairing]) -> None:
+    """What only the stored state can answer about an invoice: the pairing the
+    two exports alone could not decide, and whether an invoice that is already
+    stored comes back with its amounts on other lines than before."""
+    if not pairings:
+        return
+    stored = _stored_invoice_bookings(
+        connection,
+        sorted(invoice.expense_uuid for invoice in pairings if invoice.expense_uuid),
+    )
+    for invoice in pairings:
+        rows = stored.get(str(invoice.expense_uuid), [])
+        if rows and invoice.step == _PAIR_BY_POSITION:
+            _repair_invoice_pairing(invoice, rows)
+        _report_invoice_pairing(invoice)
+        if rows:
+            _report_invoice_amount_change(invoice, rows)
+
+
+# ================================ reimbursement pairing, the second pass
+# The pairing itself is decided from the two exports alone; what an already
+# stored reimbursement says about the numbers its expenses come back under is
+# not, so both are reported here: after the identities are resolved and before
+# anything is planned, on a read-only connection.
+
+
+def _stored_expense_numbers(connection, expense_uuids) -> dict[str, int]:
+    """{expense uuid -> its stored expense_number} for the given reimbursement
+    expenses -- the number each of them was last imported under."""
+    if not expense_uuids:
+        return {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT moss_expense_uuid, expense_number FROM moss_expenses"
+            " WHERE type = 'MossReimbursementExpense'"
+            " AND moss_expense_uuid = ANY(%s)",
+            (list(expense_uuids),),
+        )
+        return {str(expense_uuid): number for expense_uuid, number in cursor.fetchall()}
+
+
+def _report_reimbursement_pairing(reimbursement: _ReimbursementPairing) -> None:
+    """One line per reimbursement whose two exports disagree about the order,
+    and a warning for one whose pairing nothing could decide. A reimbursement
+    with a single expense has exactly one possible pairing and is never worth a
+    line."""
+    if len(reimbursement.expenses) < 2:
+        return
+    if reimbursement.step == _PAIR_BY_POSITION:
+        _LOGGER.warning(
+            "reimbursement %s: its %d expenses cannot be paired with their "
+            "balance rows by content; the export order decides.",
+            reimbursement.label,
+            len(reimbursement.expenses),
+        )
+    elif _is_reordered(reimbursement.paired, reimbursement.balance_rows):
+        _LOGGER.info(
+            "reimbursement %s: its %d balance rows arrive in another order than "
+            "its expenses; paired by %s.",
+            reimbursement.label,
+            len(reimbursement.expenses),
+            reimbursement.step,
+        )
+
+
+def _report_expense_number_change(
+    reimbursement: _ReimbursementPairing, stored: dict[str, int]
+) -> None:
+    """An already stored reimbursement whose expenses keep their uuid and come
+    back under another expense_number: Moss reordered the expenses themselves.
+    The numbering is an ordinary column, so the plan simply writes it -- that
+    it MOVED belongs in the preview instead of only in a column count."""
+    changed = sum(
+        1
+        for record in reimbursement.expenses
+        if str(record.get("moss_expense_uuid")) in stored
+        and stored[str(record["moss_expense_uuid"])] != record["expense_number"]
+    )
+    if changed:
+        _LOGGER.info(
+            "reimbursement %s: %d of its stored expense(s) keep their uuid but "
+            "change their expense number.",
+            reimbursement.label,
+            changed,
+        )
+
+
+def _resolve_reimbursement_pairings(
+    connection, pairings: list[_ReimbursementPairing]
+) -> None:
+    """What the reimbursement pairing has to report once the stored state is
+    readable: which step decided a pairing that is not the export order, and
+    whether an already stored reimbursement comes back with its expenses under
+    other numbers."""
+    if not pairings:
+        return
+    stored = _stored_expense_numbers(
+        connection,
+        sorted(
+            {
+                record["moss_expense_uuid"]
+                for reimbursement in pairings
+                for record in reimbursement.expenses
+                if record.get("moss_expense_uuid")
+            }
+        ),
+    )
+    for reimbursement in pairings:
+        _report_reimbursement_pairing(reimbursement)
+        _report_expense_number_change(reimbursement, stored)
+
+
 # ===================================================== planning & applying
 
 
@@ -1981,14 +2865,28 @@ def _plannable(records: list[dict], *private: str) -> list[dict]:
 
 
 def _apply(
-    planned, connection, table: str, now, *, insert_only: dict | None = None
+    planned,
+    connection,
+    table: str,
+    now,
+    *,
+    insert_only: dict | None = None,
+    no_updated_at: bool = False,
 ) -> None:
     """Apply one plan, adding the provenance and insert-only columns first.
 
     `source_file` is metadata about WHERE a row came from: a renamed export must
     never turn an otherwise identical row into an UPDATE, so it stays out of the
     diff and is refreshed only on rows that are written anyway. `insert_only`
-    columns (the wallet link) are set once and then left to the app."""
+    columns (the wallet link) are set once and then left to the app.
+
+    `no_updated_at` (the CLI flag of that name) turns the plan's timestamp
+    stamping off: with `touch=False` an UPDATE gets no `updated_at` and an
+    INSERT no `created_at`. The flag is about `updated_at` alone, so every
+    inserted row is given `created_at = now` here -- a value the row carries
+    wins over the stamp, and it is the timestamp the row would have had without
+    the flag, while the column's database default would instead read the
+    database clock."""
     if not planned.inserts and not planned.updates:
         _LOGGER.info(
             "%s: nothing to write (%d untouched).", table, len(planned.untouched_keys)
@@ -1998,7 +2896,9 @@ def _apply(
         row["source_file"] = _SOURCE_FILES.get(_natural_key(row, table))
     for row in planned.inserts:
         row.update(insert_only or {})
-    inserted, updated = planned.apply(connection, now=now)
+        if no_updated_at:
+            row["created_at"] = now
+    inserted, updated = planned.apply(connection, now=now, touch=not no_updated_at)
     _LOGGER.info(
         "%s: %d inserted, %d updated, %d untouched.",
         table,
@@ -2006,6 +2906,330 @@ def _apply(
         len(updated),
         len(planned.untouched_keys),
     )
+
+
+def _check_expense_numbers_now(connection) -> None:
+    """Pull the deferred check of the L2 expense number forward to HERE, right
+    after the level-2 apply.
+
+    unq_moss_expenses_transaction_expense_number is DEFERRABLE INITIALLY
+    DEFERRED, which is what lets two expenses of a reordered reimbursement
+    exchange their numbers: the plan writes them one UPDATE at a time and the
+    numbering is ambiguous in between. Left to COMMIT the check would surface
+    at the very end of a real run -- and under --rollback-for-testing never at
+    all, because that run never commits. The deferral is restored right after,
+    so this asks for a check at a defined point instead of changing the mode
+    for whatever else the transaction still does."""
+    with connection.cursor() as cursor:
+        cursor.execute(f"SET CONSTRAINTS {_EXPENSE_NUMBER_CONSTRAINT} IMMEDIATE")
+        cursor.execute(f"SET CONSTRAINTS {_EXPENSE_NUMBER_CONSTRAINT} DEFERRED")
+
+
+# ======================================================== reordered splits
+# See the SPLIT REORDER section of the module docstring.
+
+#: The L3 key, as the plan takes it (a composite key, hence a sequence).
+_BOOKING_KEY = ("moss_expense_id", "sub_row_number")
+
+#: The columns a reorder moves between booking rows. A planned UPDATE that
+#: touches none of them cannot be one, so nothing else is even looked at.
+_REORDER_TRIGGER_COLUMNS = frozenset(
+    {"cost_center_number", "account_number", "signed_base_amount"}
+)
+
+#: What the log calls an expense, by its stored L2 type.
+_EXPENSE_KIND_NAMES: dict[str, str] = {
+    "MossCardTransactionExpense": "card payment",
+    "MossReimbursementExpense": "reimbursement",
+    "MossInvoiceExpense": "invoice",
+    "MossTopUpExpense": "top-up",
+}
+
+
+@_dataclasses.dataclass(frozen=True)
+class _SplitReorder:
+    """One expense whose splits arrived in another order: which stored booking
+    row has to move to which sub-row number."""
+
+    moss_expense_id: int
+    moss_expense_uuid: str
+    #: The kind the log names the expense by, see _EXPENSE_KIND_NAMES.
+    kind: str
+    #: (booking id, stored sub-row number, new sub-row number) of the rows that
+    #: really move, ordered by the stored number.
+    moves: tuple[tuple[int, int, int], ...]
+    #: The transactions those rows belong to -- the post-run sum invariant is
+    #: checked on them as well.
+    transaction_ids: frozenset[int]
+
+    def mapping_text(self) -> str:
+        return ", ".join(f"{old} -> {new}" for _, old, new in self.moves)
+
+
+def _expense_kind(expense_type) -> str:
+    """What the log calls an expense of this stored type; an unknown type
+    speaks for itself.
+
+    >>> _expense_kind("MossInvoiceExpense")
+    'invoice'
+    >>> _expense_kind("MossSomethingElseExpense")
+    'MossSomethingElseExpense'
+    """
+    name = str(expense_type)
+    return _EXPENSE_KIND_NAMES.get(name, name)
+
+
+def _split_identity(row) -> tuple:
+    """What identifies a split INSIDE its expense: (cost center, expense
+    account, amount). Normalised so a stored row and an incoming record compare
+    equal -- a blank text is NULL, the amount is a Decimal.
+
+    >>> _split_identity({"cost_center_number": "3100",
+    ...                  "account_number": "61000",
+    ...                  "signed_base_amount": "-4.00"})
+    ('3100', '61000', Decimal('-4.00'))
+    >>> _split_identity({"cost_center_number": "", "account_number": None,
+    ...                  "signed_base_amount": None})
+    (None, None, None)
+    """
+    return (
+        _text(row, "cost_center_number"),
+        _text(row, "account_number"),
+        _decimal_or_none(row.get("signed_base_amount")),
+    )
+
+
+def _reorder_mapping(stored, incoming) -> dict[int, int] | None:
+    """{stored sub-row number -> its new sub-row number} when the two sides are
+    the SAME splits in another order, else None.
+
+    Both sides are (sub-row number, identity) pairs of one expense. A reorder
+    is accepted only when the two sides have the same count, the identity is
+    unique on each side -- otherwise the match would be a guess -- the two
+    multisets of identities are equal, so the match is a bijection, and that
+    bijection is not the identity.
+
+    >>> _reorder_mapping([(1, "a"), (2, "b")], [(1, "b"), (2, "a")])
+    {1: 2, 2: 1}
+    >>> _reorder_mapping([(1, "a"), (2, "b"), (3, "c")],
+    ...                  [(1, "c"), (2, "b"), (3, "a")])
+    {1: 3, 2: 2, 3: 1}
+    >>> _reorder_mapping([(1, "a"), (2, "b")], [(1, "a"), (2, "b")]) is None
+    True
+    >>> _reorder_mapping([(1, "a"), (2, "a")], [(1, "a"), (2, "a")]) is None
+    True
+    >>> _reorder_mapping([(1, "a"), (2, "b")], [(1, "b"), (2, "c")]) is None
+    True
+    >>> _reorder_mapping([(1, "a")], [(1, "b"), (2, "a")]) is None
+    True
+    >>> _reorder_mapping([], []) is None
+    True
+    """
+    if not stored or len(stored) != len(incoming):
+        return None
+    stored_numbers = {identity: number for number, identity in stored}
+    incoming_numbers = {identity: number for number, identity in incoming}
+    if len(stored_numbers) != len(stored) or len(incoming_numbers) != len(incoming):
+        return None
+    if stored_numbers.keys() != incoming_numbers.keys():
+        return None
+    mapping = {number: incoming_numbers[identity] for number, identity in stored}
+    return mapping if any(old != new for old, new in mapping.items()) else None
+
+
+def _reorder_candidates(updates: list[dict]) -> set[int]:
+    """The expenses whose planned UPDATEs rewrite a column a reorder moves.
+
+    >>> sorted(_reorder_candidates([
+    ...     {"moss_expense_id": 1, "sub_row_number": 1, "account_number": "61000"},
+    ...     {"moss_expense_id": 2, "sub_row_number": 1, "booking_posting_text": "x"},
+    ... ]))
+    [1]
+    """
+    return {
+        row["moss_expense_id"]
+        for row in updates
+        if not _REORDER_TRIGGER_COLUMNS.isdisjoint(row)
+    }
+
+
+def _stored_splits(connection, expense_ids: set[int]) -> dict[int, dict]:
+    """The stored splits of the given expenses, whatever kind they are:
+    {moss_expense_id -> {"uuid": ..., "kind": ..., "rows": [{id,
+    sub_row_number, identity, transaction_id}]}}. A top-up's expense is loaded
+    like any other -- it holds a single booking, so the match below can never
+    turn it into a reorder, and filtering it out here would only hide that."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT b.moss_expense_id, e.moss_expense_uuid, e.type, b.id,"
+            " b.sub_row_number, b.cost_center_number, b.account_number,"
+            " b.signed_base_amount, b.moss_transaction_id"
+            " FROM moss_bookings b"
+            " JOIN moss_expenses e ON e.id = b.moss_expense_id"
+            " WHERE b.moss_expense_id = ANY(%s)"
+            " ORDER BY b.moss_expense_id, b.sub_row_number",
+            (sorted(expense_ids),),
+        )
+        rows = cursor.fetchall()
+    stored: dict[int, dict] = {}
+    for row in rows:
+        expense_id, expense_uuid, expense_type = row[0], row[1], row[2]
+        booking_id, sub_row = row[3], row[4]
+        group = stored.setdefault(
+            expense_id,
+            {
+                "uuid": str(expense_uuid),
+                "kind": _expense_kind(expense_type),
+                "rows": [],
+            },
+        )
+        group["rows"].append(
+            {
+                "id": booking_id,
+                "sub_row_number": sub_row,
+                "identity": _split_identity(
+                    {
+                        "cost_center_number": row[5],
+                        "account_number": row[6],
+                        "signed_base_amount": row[7],
+                    }
+                ),
+                "transaction_id": row[8],
+            }
+        )
+    return stored
+
+
+def _detect_split_reorders(connection, booking_plan, bookings) -> list[_SplitReorder]:
+    """The expenses whose splits Moss reordered. Reads only, so the dry run
+    reports exactly what a real run would renumber."""
+    candidates = _reorder_candidates(booking_plan.updates)
+    if not candidates:
+        return []
+    stored = _stored_splits(connection, candidates)
+    incoming: dict[int, list] = _collections.defaultdict(list)
+    for row in bookings:
+        expense_id = row.get("moss_expense_id")
+        if expense_id in stored:
+            incoming[expense_id].append(
+                (int(row["sub_row_number"]), _split_identity(row))
+            )
+    reorders: list[_SplitReorder] = []
+    for expense_id, group in stored.items():
+        mapping = _reorder_mapping(
+            [(row["sub_row_number"], row["identity"]) for row in group["rows"]],
+            sorted(incoming.get(expense_id, []), key=lambda pair: pair[0]),
+        )
+        if mapping is None:
+            continue
+        if any(number < 1 for number in mapping):
+            _LOGGER.warning(
+                "expense %s has a split below sub-row 1; not renumbered.",
+                group["uuid"],
+            )
+            continue
+        booking_ids = {row["sub_row_number"]: row["id"] for row in group["rows"]}
+        reorder = _SplitReorder(
+            moss_expense_id=expense_id,
+            moss_expense_uuid=group["uuid"],
+            kind=group["kind"],
+            moves=tuple(
+                (booking_ids[old], old, new)
+                for old, new in sorted(mapping.items())
+                if old != new
+            ),
+            transaction_ids=frozenset(
+                row["transaction_id"] for row in group["rows"] if row["transaction_id"]
+            ),
+        )
+        _LOGGER.info(
+            "splits reordered in Moss: %s, expense %s -- sub-row %s; "
+            "the bookings keep their content and their links",
+            reorder.kind,
+            reorder.moss_expense_uuid,
+            reorder.mapping_text(),
+        )
+        reorders.append(reorder)
+    return reorders
+
+
+def _renumber_reordered_splits(
+    connection, reorders, now, *, no_updated_at: bool = False
+) -> set[int]:
+    """Move the reordered rows to their new sub-row numbers, in ONE statement.
+
+    The L3 key is carried by the unique CONSTRAINT
+    unq_moss_bookings_expense_sub_row, DEFERRABLE INITIALLY DEFERRED: its check
+    belongs to COMMIT, not to the statement, so the UPDATE may pass through a
+    numbering that is not unique -- the row moving onto sub-row 2 takes it
+    while the row leaving it still holds it -- and only what it ends on has to
+    be. `_require_wagon_schema` has established that the key really is that
+    constraint. Everything runs in the importer's own transaction, so any
+    failure rolls the whole import back. Returns the transactions the moved
+    rows belong to.
+
+    `no_updated_at` (the CLI flag of that name) leaves the `updated_at`
+    assignment -- and its parameter -- out of the statement, so a moved row
+    keeps the timestamp it has."""
+    moves = [move for reorder in reorders for move in reorder.moves]
+    assignments = ["sub_row_number = v.sub_row_number"]
+    parameters: list = []
+    if not no_updated_at:
+        assignments.append("updated_at = %s")
+        parameters.append(now)
+    for booking_id, _old, new in moves:
+        parameters += [booking_id, new]
+    values = ", ".join(["(%s::bigint, %s::integer)"] * len(moves))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE moss_bookings AS b"  # noqa: S608 - only placeholders are built
+            f" SET {', '.join(assignments)}"
+            f" FROM (VALUES {values}) AS v(id, sub_row_number)"
+            " WHERE b.id = v.id",
+            parameters,
+        )
+        # Pull the deferred check forward to HERE: it evaluates the rows
+        # pending at this moment, so a numbering that did not come out unique
+        # fails on this statement, in this run's log. Left to COMMIT it would
+        # surface at the very end of a real run -- and under
+        # --rollback-for-testing never at all, because that run never commits.
+        # The constraint stays immediate afterwards, which is what the
+        # recomputed L3 plan below wants anyway.
+        cursor.execute(f"SET CONSTRAINTS {_SUB_ROW_CONSTRAINT} IMMEDIATE")
+    _LOGGER.info(
+        "Renumbered %d booking row(s) in %d expense(s) whose splits Moss reordered.",
+        len(moves),
+        len(reorders),
+    )
+    return {
+        transaction_id
+        for reorder in reorders
+        for transaction_id in reorder.transaction_ids
+    }
+
+
+def _apply_split_reorders(
+    connection, ctx, booking_plan, bookings, now, *, no_updated_at: bool = False
+):
+    """Recognise, renumber, plan again -- the whole answer to a reordered
+    expense, run BEFORE the L3 plan is applied. Returns the plan to apply (the
+    recomputed one where anything moved) and the transactions the renumbering
+    touched, which the post-run sum invariant then covers as well.
+
+    `bookings` no longer carries its private cross-level references here: the
+    first plan took them out, and `_plannable` is idempotent.
+
+    `no_updated_at` (the CLI flag of that name) reaches the renumbering
+    statement, which then writes no `updated_at` on the rows it moves."""
+    reorders = _detect_split_reorders(connection, booking_plan, bookings)
+    if not reorders:
+        return booking_plan, set()
+    renumbered = _renumber_reordered_splits(
+        connection, reorders, now, no_updated_at=no_updated_at
+    )
+    replanned = _plan_for(connection, ctx, _TABLE_BOOKINGS, _BOOKING_KEY, bookings)
+    _LOGGER.info("Level-3 plan recomputed against the renumbered rows.")
+    return replanned, renumbered
 
 
 def _id_map(connection, table: str, key_columns: list[str]) -> dict:
@@ -2163,15 +3387,41 @@ def create_argument_parser():
         default=False,
         help="Apply the plan, then ROLLBACK instead of committing (testing).",
     )
+    parser.add_argument(
+        "--no-updated-at",
+        action="store_true",
+        default=False,
+        help="Do not write updated_at: rows that change keep the timestamp they "
+        "have (new rows still get created_at).",
+    )
     return parser
 
 
-def _dry_run_lower_levels(connection, ctx, known, expenses, bookings) -> None:
-    """Plan L2/L3 for the transactions that already exist, and report how much
-    is deferred because its transaction would have to be inserted first."""
-    ready_expenses = [row for row in expenses if _transaction_key(row) in known]
-    for row in ready_expenses:
-        row["moss_transaction_id"] = known[_transaction_key(row)]
+def _preview_lower_levels(connection, ctx, known, expenses, bookings) -> None:
+    """Plan L2 and L3 for the transactions that already exist, report what a
+    reorder would renumber and name what is deferred.
+
+    Every run previews all three levels before it decides anything: in a dry
+    run this is the whole answer, in a real run it is what the approval covers.
+    L2 and L3 are keyed on their own natural keys but hang off the surrogate
+    parent ids, which a transaction has only once L1 is applied -- so only the
+    records whose transaction is already stored can be planned here, and the
+    rest is counted and named instead.
+
+    The plans built here are THROWN AWAY: they are computed on the read-only
+    connection and against the state before L1 was applied, while the plans the
+    run applies are built again afterwards, on the read/write connection and
+    against the parent ids that apply has just created. For the same reason the
+    records are copied -- planning strips their private cross-level references,
+    which the apply path still needs."""
+    # In a dry run nothing is applied at all; in a real run the lines below
+    # describe what is about to be decided. Neither may claim the other.
+    label = "[--dry-run] " if ctx.dry_run else "[preview] "
+    ready_expenses = [
+        dict(row, moss_transaction_id=known[_transaction_key(row)])
+        for row in expenses
+        if _transaction_key(row) in known
+    ]
     if ready_expenses:
         _plan_for(
             connection,
@@ -2186,25 +3436,42 @@ def _dry_run_lower_levels(connection, ctx, known, expenses, bookings) -> None:
         key = _expense_key(row)
         if key not in expense_ids or _transaction_key(row) not in known:
             continue
-        row["moss_expense_id"] = expense_ids[key]
-        row["moss_transaction_id"] = known[_transaction_key(row)]
-        ready_bookings.append(row)
+        ready_bookings.append(
+            dict(
+                row,
+                moss_expense_id=expense_ids[key],
+                moss_transaction_id=known[_transaction_key(row)],
+            )
+        )
     if ready_bookings:
-        _plan_for(
+        booking_plan = _plan_for(
             connection,
             ctx,
             _TABLE_BOOKINGS,
-            ["moss_expense_id", "sub_row_number"],
+            _BOOKING_KEY,
             _plannable(ready_bookings, "_transaction_ref", "_expense_ref"),
         )
+        # The same detection as the apply path, read-only: it reports what
+        # would be renumbered and re-plans nothing.
+        reorders = _detect_split_reorders(connection, booking_plan, ready_bookings)
+        if reorders:
+            _LOGGER.warning(
+                "%s%d booking row(s) in %d expense(s) would be renumbered; "
+                "the plan above is the one BEFORE that.",
+                label,
+                sum(len(reorder.moves) for reorder in reorders),
+                len(reorders),
+            )
     deferred = (
         len(expenses) - len(ready_expenses),
         len(bookings) - len(ready_bookings),
     )
     if any(deferred):
         _LOGGER.warning(
-            "[--dry-run] %d expense(s) and %d booking(s) not planned: their transaction "
-            "does not exist yet.",
+            "%s%d expense(s) and %d booking(s) belong to transactions that do not "
+            "exist yet and are not planned above: the level-2 and level-3 plans "
+            "are a lower bound.",
+            label,
             *deferred,
         )
 
@@ -2219,7 +3486,9 @@ def main(argv=None):
     # Read and check everything first: the database is not touched before the
     # whole four-file picture is consistent.
     by_kind = _read_all(ctx.parsed_args.files)
-    transactions, expenses, bookings = _build_records(by_kind)
+    transactions, expenses, bookings, invoice_pairings, reimbursement_pairings = (
+        _build_records(by_kind)
+    )
     if not transactions:
         _LOGGER.warning("No Moss transactions in the given files; nothing to do.")
         return 0
@@ -2228,7 +3497,7 @@ def main(argv=None):
 
     with ctx:
         ro_conn = ctx.hitobito_psycopg_connection(read_only=True)
-        _require_object_uuid_column(ro_conn)
+        _require_wagon_schema(ro_conn)
 
         # WHICH stored row each transaction is -- before any plan, because a
         # Transaction ID that changed would otherwise look like a new row.
@@ -2238,6 +3507,12 @@ def main(argv=None):
         origin = _apply_resolution(
             resolved, transactions, expenses, bookings, source_files
         )
+        # The pairing step that needs the stored bookings, and what an already
+        # stored invoice says about the one that was chosen.
+        _resolve_invoice_pairings(ro_conn, invoice_pairings)
+        # The same for the reimbursements: which pairing was chosen, and whose
+        # expenses come back under other numbers than they are stored with.
+        _resolve_reimbursement_pairings(ro_conn, reimbursement_pairings)
         _remember_source_files(origin, _TABLE_TRANSACTIONS, transactions)
         _remember_source_files(origin, _TABLE_EXPENSES, expenses)
 
@@ -2253,16 +3528,23 @@ def main(argv=None):
         # L2/L3 are keyed on their own natural keys but need the surrogate
         # parent ids, which exist only after L1 has been applied. Planning them
         # up front is therefore possible only for already-known transactions --
-        # enough to make --dry-run informative.
+        # which every run does here, before it decides anything.
+        known = _id_map(ro_conn, _TABLE_TRANSACTIONS, ["moss_object_uuid"])
+        _preview_lower_levels(ro_conn, ctx, known, expenses, bookings)
+
         if ctx.dry_run:
-            known = _id_map(ro_conn, _TABLE_TRANSACTIONS, ["moss_object_uuid"])
-            _dry_run_lower_levels(ro_conn, ctx, known, expenses, bookings)
             _LOGGER.warning("[--dry-run] Nothing applied.")
             return 0
 
-        # The plan summaries above show exactly what this approval applies.
+        # All three levels are previewed above: moss_transactions in full,
+        # moss_expenses and moss_bookings for the records whose transaction
+        # already exists -- the deferred counts name what hangs off a
+        # transaction this run would have to insert first.
         ctx.require_approval_to_run_in_prod()
         rw_conn = ctx.hitobito_psycopg_connection(read_only=False)
+        # Carried down to every place that writes a timestamp: the three plan
+        # applies and the renumbering of reordered splits.
+        no_updated_at = ctx.parsed_args.no_updated_at
         wallet_id = _wallet_fin_account_id(rw_conn)
         if wallet_id is None:
             _LOGGER.warning(
@@ -2274,12 +3556,16 @@ def main(argv=None):
             _TABLE_TRANSACTIONS,
             ctx.start_time,
             insert_only={"fin_account_id": wallet_id} if wallet_id else None,
+            no_updated_at=no_updated_at,
         )
 
         transaction_ids = _id_map(rw_conn, _TABLE_TRANSACTIONS, ["moss_object_uuid"])
         for row in expenses:
             row["moss_transaction_id"] = transaction_ids[_transaction_key(row)]
         expense_owners = _owner_ids(expenses, _TABLE_EXPENSES)
+        # Planned again rather than taken from the preview: that plan predates
+        # the L1 apply above and the parent ids it created, and it was built on
+        # the read-only connection.
         expense_plan = _plan_for(
             rw_conn,
             ctx,
@@ -2287,7 +3573,14 @@ def main(argv=None):
             "moss_expense_uuid",
             _plannable(expenses, "_transaction_ref"),
         )
-        _apply(expense_plan, rw_conn, _TABLE_EXPENSES, ctx.start_time)
+        _apply(
+            expense_plan,
+            rw_conn,
+            _TABLE_EXPENSES,
+            ctx.start_time,
+            no_updated_at=no_updated_at,
+        )
+        _check_expense_numbers_now(rw_conn)
 
         expense_ids = _id_map(rw_conn, _TABLE_EXPENSES, ["moss_expense_uuid"])
         for row in bookings:
@@ -2299,10 +3592,27 @@ def main(argv=None):
             rw_conn,
             ctx,
             _TABLE_BOOKINGS,
-            ["moss_expense_id", "sub_row_number"],
+            _BOOKING_KEY,
             _plannable(bookings, "_transaction_ref", "_expense_ref"),
         )
-        _apply(booking_plan, rw_conn, _TABLE_BOOKINGS, ctx.start_time)
+        # Splits Moss reordered are renumbered BEFORE the plan is applied, and
+        # the plan is then recomputed: what looked like a rewrite of two rows'
+        # content is a move of the rows themselves.
+        booking_plan, renumbered = _apply_split_reorders(
+            rw_conn,
+            ctx,
+            booking_plan,
+            bookings,
+            ctx.start_time,
+            no_updated_at=no_updated_at,
+        )
+        _apply(
+            booking_plan,
+            rw_conn,
+            _TABLE_BOOKINGS,
+            ctx.start_time,
+            no_updated_at=no_updated_at,
+        )
 
         _post_run_checks(
             rw_conn,
@@ -2310,7 +3620,8 @@ def main(argv=None):
                 (transaction_plan, transaction_ids, _TABLE_TRANSACTIONS),
                 (expense_plan, expense_owners, _TABLE_EXPENSES),
                 (booking_plan, booking_owners, _TABLE_BOOKINGS),
-            ),
+            )
+            | renumbered,
         )
 
         if ctx.parsed_args.rollback_for_testing:
