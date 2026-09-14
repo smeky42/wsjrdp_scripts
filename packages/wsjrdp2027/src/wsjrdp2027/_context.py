@@ -977,7 +977,15 @@ class WsjRdpContext:
         action: str | None = None,
         description: str | None = None,
         read_only: bool | None = None,
+        cache_key: object | None = None,
+        cache_hint: str | None = None,
     ) -> None:
+        """Ask for approval to continue in a production environment.
+
+        With *cache_key* and *cache_hint* the question offers the
+        choices of :func:`console_confirm`, so the user can answer it
+        once for every later question using the same *cache_key*.
+        """
         if not self._config.is_production:
             _LOGGER.debug(
                 "[ctx] Not running in production - no special approval required"
@@ -993,8 +1001,6 @@ class WsjRdpContext:
                 _LOGGER.debug(f"        continue to {description}")
             return
 
-        from . import _util
-
         _LOGGER.warning(
             "[ctx] Running in production - asking for user consent in console"
         )
@@ -1007,7 +1013,9 @@ class WsjRdpContext:
                 prompt = "Do you want to continue running this script in a PRODUCTION environment?"
         print()
         print(flush=True)
-        if not _util.console_confirm(prompt, default=False):
+        if not self.console_confirm(
+            prompt, default=False, cache_key=cache_key, cache_hint=cache_hint
+        ):
             _LOGGER.info("[ctx] Ending script: No user approval given")
             raise SystemExit(0)
         else:
@@ -1030,7 +1038,11 @@ class WsjRdpContext:
             f"Do you want to send email messages in a PRODUCTION environment "
             f"via SMTP server {self.config.smtp_server}:{self.config.smtp_port}?"
         )
-        self.require_approval_to_run_in_prod(prompt=prompt)
+        self.require_approval_to_run_in_prod(
+            prompt=prompt,
+            cache_key="send_email_in_prod",
+            cache_hint="send email messages",
+        )
 
     def _get_resource_for_keys(self, keys: _typing.Iterable[str]):
         for key in keys:
@@ -1529,7 +1541,11 @@ class WsjRdpContext:
                 f"Do you want to send email messages in a PRODUCTION environment "
                 f"via SMTP server {config.smtp_server}:{config.smtp_port}?"
             )
-            self.require_approval_to_run_in_prod(prompt=prompt)
+            self.require_approval_to_run_in_prod(
+                prompt=prompt,
+                cache_key="send_email_in_prod",
+                cache_hint="send email messages",
+            )
             return True
 
         _LOGGER.info("[ctx] mail_login with args")
@@ -1666,11 +1682,12 @@ class WsjRdpContext:
         updates: _collections_abc.Iterable[_collections_abc.Mapping],
         *,
         console_confirm: bool = False,
+        dry_run: bool | None = None,
     ) -> None:
         from ._internal import update_additional_info
 
         update_additional_info.update_people_additional_info(
-            self, updates, console_confirm=console_confirm
+            self, updates, console_confirm=console_confirm, dry_run=dry_run
         )
 
     def load_people_dataframe(

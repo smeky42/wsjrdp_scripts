@@ -21,6 +21,8 @@ def create_argument_parser():
 
     p = argparse.ArgumentParser()
     p.add_argument("--keycloak-dry-run", action="store_true", default=None)
+    p.add_argument("--mailcow-dry-run", action="store_true", default=None)
+    p.add_argument("--skip-email", action="store_true", default=None)
     return p
 
 
@@ -59,6 +61,23 @@ def main(argv=None):
         ctx.logger.info(f"Found {num_people} IST to be moved to BMT")
         ctx.logger.info("")
 
+        # Die erwarteten BMT-Namen unten werden aus p.wsjrdp_role abgeleitet.
+        # Ein fest in additional_info hinterlegtes wsjrdp_role gewinnt dort
+        # gegen die Gruppenzugehoerigkeit, der Umzug wuerde die Rolle also
+        # nicht auf BMT aendern. Vor dem ersten Schreibzugriff abbrechen.
+        pinned = [
+            p
+            for p in prepared_batch.iter_people()
+            if (p.additional_info.get("wsjrdp_role") or "BMT") != "BMT"
+        ]
+        if pinned:
+            for p in pinned:
+                ctx.logger.error(
+                    f"{p.role_id_name}: additional_info.wsjrdp_role="
+                    f"{p.additional_info['wsjrdp_role']!r} blocks the move to BMT"
+                )
+            raise SystemExit(1)
+
         for p in prepared_batch.iter_people():
             ctx.logger.info(f"Move {p.role_id_name}")
             p.move_to_group(
@@ -75,8 +94,17 @@ def main(argv=None):
         _users = ctx.keycloak().get_user_list(allow_cached=False)
         ctx.logger.info(f"  ... loaded {len(_users)} users from keycloak")
 
+        # Setzt voraus, dass die Schleife oben bereits gelaufen ist: erst der
+        # Umzug macht p.wsjrdp_role zu "BMT", und daran haengt alles Weitere
+        # (auch der Sync unten, der die Rolle ohne Argument ermittelt).
         additional_info_updates = []
         for p in prepared_batch.iter_people():
+            if p.wsjrdp_role != "BMT":
+                ctx.logger.error(
+                    f"{p.role_id_name}: wsjrdp_role={p.wsjrdp_role!r} after the move "
+                    f"to BMT (primary_group_id={p.primary_group_id})"
+                )
+                raise SystemExit(1)
             expected_bmt_keycloak_username = p.get_keycloak_username_expected("BMT")
             expected_ist_keycloak_username = p.get_keycloak_username_expected("IST")
             if (

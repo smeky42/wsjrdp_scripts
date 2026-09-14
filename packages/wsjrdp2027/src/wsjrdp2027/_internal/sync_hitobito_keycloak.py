@@ -11,10 +11,49 @@ from .._models import person as _person
 
 
 if _typing.TYPE_CHECKING:
-    from .. import _keycloak_wsjrdp_adapter
+    from .. import _keycloak_wsjrdp_adapter, _mailcow_client
 
 
 _LOGGER = _logging.getLogger(__name__)
+
+
+def _writes_are_all_dry_run(
+    ctx: _context.WsjRdpContext,
+    *,
+    keycloak_adapter: _keycloak_wsjrdp_adapter.WsjRdpKeycloakAdapter,
+    mailcow_client: _mailcow_client.MailcowClient | None = None,
+) -> bool:
+    """`True` if neither Keycloak nor Mailcow nor e-mail can be written.
+
+    Only then may a question guarding those writes be skipped.  A single
+    dry-run flag is not enough: ``--keycloak-dry-run`` alone still
+    creates Mailcow aliases and sends mail.
+    """
+    if mailcow_client is not None:
+        mailcow_dry_run = mailcow_client.dry_run
+    else:
+        mailcow_dry_run = ctx.mailcow_dry_run or ctx.dry_run
+    return (
+        keycloak_adapter.dry_run
+        and mailcow_dry_run
+        # see WsjRdpContext.mail_login()
+        and (ctx.dry_run or ctx.skip_email)
+    )
+
+
+def _confirm_unless_dry_run(
+    ctx: _context.WsjRdpContext,
+    prompt: str,
+    *,
+    dry_run: bool,
+    cache_key: str,
+    cache_hint: str,
+) -> bool:
+    """Ask *prompt*, or answer it with yes when *dry_run* makes it moot."""
+    if dry_run:
+        _LOGGER.info(f"[dry-run] No question asked, assume yes: {prompt}")
+        return True
+    return ctx.console_confirm(prompt, cache_key=cache_key, cache_hint=cache_hint)
 
 
 def _check_for_keycloak_user(
@@ -49,7 +88,8 @@ def _check_for_keycloak_user(
         and keycloak_email
         and person.moss_email
         and person.wsjrdp_email
-        and ctx.console_confirm(
+        and _confirm_unless_dry_run(
+            ctx,
             f"No keycloak user for E-Mail {keycloak_email}\n"
             f"  username: {keycloak_username}\n"
             f"  email: {keycloak_email}\n"
@@ -60,6 +100,7 @@ def _check_for_keycloak_user(
             f"    hitobitoId: {person.id}\n"
             f"Create missing Keycloak user {keycloak_username} "
             f"for group {keycloak_groupname}{kc_dry_run_suffix}?",
+            dry_run=_writes_are_all_dry_run(ctx, keycloak_adapter=keycloak_adapter),
             cache_key="create_missing_keycloak_user",
             cache_hint="create missing Keycloak user",
         )
@@ -144,8 +185,14 @@ def _create_keycloak_user(
         mb = mailcow_client.get_mailbox_or_none_by_username(person.wsjrdp_email)
         if mb:
             _LOGGER.info(f"Found Mailcow mailbox for {person.wsjrdp_email}")
-        elif ctx.console_confirm(
+        elif _confirm_unless_dry_run(
+            ctx,
             f"Create Mailcow mailbox for {person.wsjrdp_email}{mc_dry_run_suffix}?",
+            dry_run=_writes_are_all_dry_run(
+                ctx,
+                keycloak_adapter=keycloak_adapter,
+                mailcow_client=mailcow_client,
+            ),
             cache_key="create_missing_mailcow_user",
             cache_hint="create missing mailcow user",
         ):
