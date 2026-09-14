@@ -768,7 +768,7 @@ class Person:
         ).fullmatch(keycloak_username):
             return keycloak_username
         else:
-            return self.get_keycloak_username_default()
+            return self.get_keycloak_username_default(wsjrdp_role)
 
     def find_role_consistency_updates(self) -> dict[str, tuple]:
         updates = {}

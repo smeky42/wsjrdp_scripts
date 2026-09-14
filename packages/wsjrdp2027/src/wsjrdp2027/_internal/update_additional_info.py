@@ -15,11 +15,14 @@ def update_people_additional_info(
     *,
     console_confirm: bool = False,
     write_versions: bool = True,
+    dry_run: bool | None = None,
 ) -> None:
     import pprint
 
     from .. import _pg, _util
 
+    if dry_run is None:
+        dry_run = ctx.dry_run
     updates = list(updates)
 
     if not updates:
@@ -27,7 +30,7 @@ def update_people_additional_info(
         return
     if console_confirm:
         _LOGGER.info(f"Updates to additional_info to apply:\n{pprint.pformat(updates)}")
-        if not _util.console_confirm("Update additional_info in DB?"):
+        if not dry_run and not _util.console_confirm("Update additional_info in DB?"):
             _LOGGER.info("!! Skipped updates to additional_info")
             return
     updates_by_key: dict[str, list[dict]] = {}
@@ -41,6 +44,9 @@ def update_people_additional_info(
                 if k not in ("keycloak_initial_password",):
                     versions.append((p_id, {k: v}))
 
+    if dry_run:
+        _LOGGER.warning("Skipping writing of people.additional_info [dry-run]")
+        return
     conn = ctx.hitobito_psycopg_connection(read_only=False)
     for key, values in updates_by_key.items():
         if key in ("wsjrdp_email", "moss_email"):
