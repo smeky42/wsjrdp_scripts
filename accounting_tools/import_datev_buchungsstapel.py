@@ -9,8 +9,9 @@ writes them to two tables:
     file). Identified by the STABLE header coordinates
     (Berater, Mandant, Datum von, Datum bis, Bezeichnung); found-or-created
     (UPSERT) per file, so a re-export of the same Stapel updates the existing
-    batch instead of creating a duplicate. See "Woran erkenne ich den Stapel?"
-    below.
+    batch instead of creating a duplicate; its `source_file` follows the newest
+    export file among its own bookings after every run. See "Woran erkenne ich
+    den Stapel?" below.
   * datev_bookings -- one row per booking, keyed on the DATEV "Buchungs GUID"
     (field 103, unique + NOT NULL): a booking whose GUID already exists is
     UPDATEd (all DATEV-derived fields refreshed, the hand-editable
@@ -46,7 +47,10 @@ anything is written (and before the production approval), a re-run of the same
 files touches nothing, and created_at/updated_at follow the import convention
 (created_at only on INSERT, updated_at only on a genuine UPDATE -- a fresh
 import leaves updated_at NULL, auto-linking included). --dry-run shows the
-plan(s) without writing; --rollback-for-testing applies and rolls back.
+plan(s) without writing; --rollback-for-testing applies and rolls back;
+--no-updated-at writes no updated_at at all -- a booking, batch or accounting
+entry that changes keeps the timestamp it has, while an inserted row still
+gets its created_at.
 
 The import REFUSES to run (before touching the database) when
 
@@ -54,6 +58,14 @@ The import REFUSES to run (before touching the database) when
   * any booking's BASE currency would not be EUR (a foreign-currency Umsatz
     without Basis-Umsatz): the accounting keeps all base figures in EUR and
     the generated amount columns rely on that.
+
+A DTVF/EXTF file of ANOTHER format (Formatname != 'Buchungsstapel', e.g. the
+'Debitoren/Kreditoren' master data of import_personal_accounts.py) is SKIPPED
+with a warning naming its format and the importer that reads it, so one call
+over a whole export directory still imports the Stapel it contains. The run
+aborts only when every given file was skipped. A file of unknown shape -- too
+few lines, or a first field that is neither DTVF nor EXTF -- still raises, so
+nothing is ever silently ignored.
 
 Woran der Buchungsstapel eindeutig zu erkennen ist
 --------------------------------------------------
@@ -73,6 +85,12 @@ no exported information is silently dropped.
 Usage:
   ./accounting_tools/import_datev_buchungsstapel.py \
       External_Data/DATEV_FY2026_Export_20260821/DTVF_Buchungsstapel_*.csv
+  ... --dry-run              plan only, write nothing
+  ... --rollback-for-testing apply, then ROLLBACK
+  ... --no-updated-at        write no updated_at: a row that changes keeps the
+                             timestamp it has (an inserted row still gets its
+                             created_at), and the auto-linking leaves the
+                             linked accounting entry's updated_at alone
   WSJRDP_SCRIPTS_CONFIG=config-prod.yml uv run accounting_tools/import_datev_buchungsstapel.py ...   # PROD (nur auf Wunsch)
 """
 
@@ -191,8 +209,10 @@ _MAPPED_COLUMNS = frozenset(
 # The datev_booking_batches identity (the composite plan key; see the module
 # docstring). The remaining batch columns are simply the non-identity keys of
 # _batch_values -- diffed/refreshed on re-import. Exception: `source_file` is
-# provenance metadata, kept OUT of the diffed values and only written when a
-# batch is inserted/updated for other reasons (see _add_source_file).
+# provenance metadata, kept OUT of the diffed values: a batch carries the file
+# it is written from (see _add_source_file) and then takes the newest file of
+# its own bookings after every run (see _sync_batch_source_files), while a
+# booking keeps the file that last wrote it.
 _BATCH_IDENTITY = [
     "consultant_number",
     "client_number",
@@ -337,6 +357,51 @@ class _BatchHeader(_typing.NamedTuple):
     source_file: str
     file_sequence: int | None
     header_raw: dict[str, str]
+
+
+class _DtvfFormat(_typing.NamedTuple):
+    """What the first three format fields of a header line say about a file."""
+
+    kennzeichen: str | None
+    category: str | None
+    name: str | None
+
+
+def _dtvf_format(header_fields: _typing.Sequence[str]) -> _DtvfFormat:
+    """Classify a header line by its Kennzeichen (field 1), Formatkategorie
+    (field 3) and Formatname (field 4) -- enough to tell a Buchungsstapel from
+    another DTVF export, and both from a file that is no DTVF at all. Missing
+    and empty fields come back as None, so a line of any shape can be
+    classified before anything is parsed out of it.
+
+    >>> _dtvf_format(["DTVF", "700", "21", "Buchungsstapel", "13"])
+    _DtvfFormat(kennzeichen='DTVF', category='21', name='Buchungsstapel')
+    >>> _dtvf_format(["DTVF", "700", "16", "Debitoren/Kreditoren", "5"])
+    _DtvfFormat(kennzeichen='DTVF', category='16', name='Debitoren/Kreditoren')
+    >>> _dtvf_format(["Datum", "Betrag", "Konto", "Text"])
+    _DtvfFormat(kennzeichen='Datum', category='Konto', name='Text')
+    >>> _dtvf_format(["EXTF", "700"])
+    _DtvfFormat(kennzeichen='EXTF', category=None, name=None)
+    """
+    return _DtvfFormat(
+        *(
+            _cell(header_fields[i]) if i < len(header_fields) else None
+            for i in (0, 2, 3)
+        )
+    )
+
+
+def _foreign_format_hint(fmt: _DtvfFormat, source_file: str) -> str:
+    """What to do with a DTVF file this importer does not read: the command
+    that imports it when its format has an importer of its own."""
+    if fmt.name == "Debitoren/Kreditoren":
+        return (
+            "Import it with: uv run accounting_tools/import_personal_accounts.py "
+            f"{source_file}"
+        )
+    return (
+        "This script imports Buchungsstapel only; no importer is known for that format."
+    )
 
 
 def _parse_header(fields: list[str], *, source_file: str) -> _BatchHeader:
@@ -703,10 +768,64 @@ def _add_source_file(batches_plan, headers: list[_BatchHeader]) -> None:
     name alone must never turn an otherwise identical Stapel into an UPDATE.
     The column is therefore kept OUT of the diffed value sets (see
     _batch_values) and only added to rows the plan already INSERTs or UPDATEs
-    for other reasons -- refreshing it whenever the row is written anyway."""
+    for other reasons, so a new batch carries its file from the start. The
+    lasting rule is _sync_batch_source_files, which moves the batch onto the
+    newest file of its own bookings once they are applied."""
     by_identity = {_batch_identity(h): h.source_file for h in headers}
     for row in (*batches_plan.inserts, *batches_plan.updates):
         row["source_file"] = by_identity[tuple(row[name] for name in _BATCH_IDENTITY)]
+
+
+def _sync_batch_source_files(conn, batch_ids: dict[tuple, int]) -> None:
+    """Point every batch of this run at the newest source_file among its own
+    bookings.
+
+    Export file names sort lexically by export time
+    (DTVF_Buchungsstapel_<YYYYMMDD>_<HHMMSS>_<NNNNN>.csv), so the greatest name
+    a batch's bookings carry names the newest export the Stapel appeared in.
+    A re-export that only adds bookings leaves the batch row identical in every
+    diffed column, so the plan never rewrites it; this step moves the
+    provenance anyway. It runs for every batch of the run, so it is idempotent
+    and also repairs a batch whose bookings a previous run already moved.
+    source_file is the only column it writes: provenance is not content, so it
+    stamps no updated_at -- with or without --no-updated-at, which is therefore
+    not involved here."""
+    ids = sorted(set(batch_ids.values()))
+    old_names = {
+        row[0]: row[1]
+        for row in conn.execute(
+            f"SELECT id, source_file FROM {_BATCHES_TABLE} WHERE id = ANY(%s)",
+            (ids,),
+        ).fetchall()
+    }
+    moved = conn.execute(
+        f"""
+        UPDATE {_BATCHES_TABLE} b
+           SET source_file = m.newest
+          FROM (SELECT datev_booking_batch_id AS id, max(source_file) AS newest
+                  FROM {_BOOKINGS_TABLE}
+                 WHERE datev_booking_batch_id = ANY(%s)
+                 GROUP BY datev_booking_batch_id) m
+         WHERE b.id = m.id
+           AND m.newest IS NOT NULL
+           AND b.source_file IS DISTINCT FROM m.newest
+        RETURNING b.id, b.label, b.source_file
+        """,
+        (ids,),
+    ).fetchall()
+    for batch_id, label, newest in moved:
+        _LOGGER.info(
+            "Batch %r: source_file %s -> %s",
+            label,
+            old_names.get(batch_id),
+            newest,
+        )
+    _LOGGER.info(
+        "source_file: %d batch(es) moved to the newest file of their bookings, "
+        "%d already newest.",
+        len(moved),
+        len(ids) - len(moved),
+    )
 
 
 def _load_batch_ids(conn, headers: list[_BatchHeader]) -> dict[tuple, int]:
@@ -791,6 +910,19 @@ def _log_plan_summary(planned, *, key_of) -> None:
         _LOGGER.info("  %s: %s", label, shown)
 
 
+def _stamp_created_at(planned, now) -> None:
+    """Give every INSERT row of a plan an explicit ``created_at``.
+
+    ``--no-updated-at`` applies the plan with ``touch=False``, which drops the
+    ``created_at`` of an INSERT together with the ``updated_at`` of an UPDATE.
+    The flag is about ``updated_at`` alone, so the inserted rows carry the
+    run's own timestamp here -- a value a row carries wins over the stamp, and
+    it is exactly the value the stamp would have written, whereas the column's
+    database default would read the database clock instead."""
+    for row in planned.inserts:
+        row["created_at"] = now
+
+
 def _guids_of(rows: list[dict[str, object]]) -> list[_uuid.UUID]:
     """The buchungs_guids of a parsed file -- the scope handed to the linking
     rules of wsjrdp2027.datev_fee_links."""
@@ -818,6 +950,14 @@ def create_argument_parser():
         default=False,
         help="Apply the plan, then ROLLBACK instead of committing (testing).",
     )
+    p.add_argument(
+        "--no-updated-at",
+        action="store_true",
+        default=False,
+        help="Do not write updated_at: rows that change -- bookings, batches "
+        "and the accounting entries the auto-linking touches -- keep the "
+        "timestamp they have (new rows still get created_at).",
+    )
     return p
 
 
@@ -830,10 +970,27 @@ def main(argv=None):
     out_base = ctx.make_out_path(_SELF_NAME + "_{{ filename_suffix }}")
     ctx.configure_log_file(out_base.with_suffix(".log"))
 
-    paths = [_pathlib.Path(p) for p in ctx.parsed_args.dtvf_files]
     parsed = []  # (header, column_names, data_rows)
-    for path in paths:
+    skipped: list[str] = []
+    for raw_path in ctx.parsed_args.dtvf_files:
+        path = _pathlib.Path(raw_path)
         header_fields, column_names, data_rows = _read_dtvf(path)
+        # A DTVF export of another format belongs to another importer: warn and
+        # go on, so one call over a whole export directory still imports the
+        # Stapel. Anything that is no DTVF/EXTF file at all falls through to
+        # _parse_header, which refuses it (defence in depth: both checks stand).
+        fmt = _dtvf_format(header_fields)
+        if fmt.kennzeichen in ("DTVF", "EXTF") and fmt.name != "Buchungsstapel":
+            skipped.append(path.name)
+            _LOGGER.warning(
+                "%s: skipped -- DTVF-Format %r (Formatkategorie %s), not a "
+                "Buchungsstapel. %s",
+                path.name,
+                fmt.name,
+                fmt.category,
+                _foreign_format_hint(fmt, raw_path),
+            )
+            continue
         header = _parse_header(header_fields, source_file=str(path))
         parsed.append((header, column_names, data_rows))
         _LOGGER.info(
@@ -845,6 +1002,14 @@ def main(argv=None):
             header.origin_indicator,
             len(data_rows),
         )
+    if not parsed:
+        _LOGGER.error(
+            "No Buchungsstapel among the given file(s): all %d were skipped "
+            "(%s). Nothing to import.",
+            len(skipped),
+            ", ".join(skipped),
+        )
+        raise SystemExit(1)
     headers = [h for h, _, _ in parsed]
     _require_eur_batch_currency(headers)
 
@@ -867,6 +1032,8 @@ def main(argv=None):
     _LOGGER.info(
         "Total bookings parsed: %d in %d batches", len(all_bookings), len(per_file)
     )
+    if skipped:
+        _LOGGER.info("Skipped (not a Buchungsstapel): %s", ", ".join(skipped))
     _require_eur_base_currency(per_file)
     _require_complete_accounts(all_bookings)
 
@@ -879,6 +1046,7 @@ def main(argv=None):
 
     truncate = ctx.parsed_args.truncate
     auto_link = not ctx.parsed_args.no_auto_link
+    no_updated_at = ctx.parsed_args.no_updated_at
     with ctx:
         bookings_plan = None
         if truncate:
@@ -968,6 +1136,11 @@ def main(argv=None):
                     len(batches_plan.inserts),
                 )
             if ctx.dry_run:
+                _LOGGER.info(
+                    "Each batch's source_file follows the newest file among its "
+                    "own bookings once the plan is applied (a dry run shows no "
+                    "such move)."
+                )
                 _LOGGER.info("[dry-run] Not applying the plan.")
                 return
             # The plan summary above shows what this approval applies (plus
@@ -975,7 +1148,11 @@ def main(argv=None):
             ctx.require_approval_to_run_in_prod()
             rw_conn = ctx.hitobito_psycopg_connection(read_only=False)
 
-        inserted, updated = batches_plan.apply(rw_conn, now=ctx.start_time)
+        if no_updated_at:
+            _stamp_created_at(batches_plan, ctx.start_time)
+        inserted, updated = batches_plan.apply(
+            rw_conn, now=ctx.start_time, touch=not no_updated_at
+        )
         _LOGGER.info(
             "Batches: %d inserted, %d updated, %d untouched (identical).",
             len(inserted),
@@ -987,13 +1164,19 @@ def main(argv=None):
             batch_ids = _load_batch_ids(rw_conn, headers)
             bookings_plan = _build_bookings_plan(rw_conn, ctx, per_file, batch_ids)
             _log_plan_summary(bookings_plan, key_of=lambda row: row["buchungs_guid"])
-        inserted, updated = bookings_plan.apply(rw_conn, now=ctx.start_time)
+        if no_updated_at:
+            _stamp_created_at(bookings_plan, ctx.start_time)
+        inserted, updated = bookings_plan.apply(
+            rw_conn, now=ctx.start_time, touch=not no_updated_at
+        )
         _LOGGER.info(
             "Bookings: %d inserted, %d updated, %d untouched (identical).",
             len(inserted),
             len(updated),
             len(bookings_plan.untouched_keys),
         )
+
+        _sync_batch_source_files(rw_conn, batch_ids)
 
         if auto_link:
             # Auto-link the imported fee bookings to their accounting entry /
@@ -1003,12 +1186,22 @@ def main(argv=None):
             # only sees what the first two left unlinked.
             fee_links = wsjrdp2027.datev_fee_links
             now = ctx.start_time
+            # A link modifies the entry, so it bumps the entry's updated_at --
+            # unless --no-updated-at, which the rules honour the same way the
+            # plans do (mirror_camt_links writes no timestamp of its own).
+            stamp = not no_updated_at
             with rw_conn.cursor() as cur:
                 for _header, rows in per_file:
                     guids = _guids_of(rows)
-                    fee_links.match_2025_fee_entries(cur, guids, now=now)
-                    fee_links.match_pre_notification_fee_entries(cur, guids, now=now)
-                    fee_links.match_return_fee_entries(cur, guids, now=now)
+                    fee_links.match_2025_fee_entries(
+                        cur, guids, now=now, stamp_updated_at=stamp
+                    )
+                    fee_links.match_pre_notification_fee_entries(
+                        cur, guids, now=now, stamp_updated_at=stamp
+                    )
+                    fee_links.match_return_fee_entries(
+                        cur, guids, now=now, stamp_updated_at=stamp
+                    )
                     fee_links.mirror_camt_links(cur, guids)
         else:
             _LOGGER.info("[--no-auto-link] Skipped accounting-entry linking.")
