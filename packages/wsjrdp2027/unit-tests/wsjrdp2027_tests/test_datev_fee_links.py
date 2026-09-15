@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import uuid
 from typing import Any
 
 import pytest
@@ -244,6 +245,80 @@ def test_link_entries_writes_one_update_with_the_full_meta():
     assert updated_at == now
     assert entry_ids == [7, 8]
     assert booking_ids == [3, 4]
+
+
+def test_link_entries_omits_updated_at_when_it_must_not_stamp():
+    """``stamp_updated_at=False`` (the importer's --no-updated-at) leaves the
+    column out of the UPDATE entirely -- not written as its old value, not
+    written as NULL -- so the entry keeps the timestamp it has. The link's own
+    creation time lives in the meta and is written either way."""
+    now = datetime.datetime(2026, 2, 3, 4, 5, 6, tzinfo=datetime.UTC)
+    cur = FakeCursor(rowcount=2)
+    datev_fee_links.link_entries(
+        cur,
+        [(7, 3), (8, 4)],
+        link_type=datev_fee_links.LINK_TYPE_RETURN,
+        now=now,
+        stamp_updated_at=False,
+    )
+    ((sql, params),) = cur.calls
+    assert "updated_at" not in sql
+    assert sql.startswith("UPDATE accounting_entries ae SET datev_booking_id")
+    assert "datev_booking_link_meta = %s" in sql
+    assert "AND ae.datev_booking_id IS NULL" in sql
+    meta, entry_ids, booking_ids = params  # no `now` among the parameters
+    assert now not in params
+    assert meta.obj["created_at"] == now.isoformat()
+    assert meta.obj["classification_string"] == datev_fee_links.LINK_TYPE_RETURN
+    assert entry_ids == [7, 8]
+    assert booking_ids == [3, 4]
+
+
+def test_link_entries_stamps_updated_at_by_default():
+    """The default is unchanged by the keyword: every caller that does not ask
+    for it keeps bumping updated_at."""
+    now = datetime.datetime(2026, 2, 3, 4, 5, 6, tzinfo=datetime.UTC)
+    cur = FakeCursor(rowcount=1)
+    datev_fee_links.link_entries(cur, [(7, 3)], link_type="x", now=now)
+    ((sql, params),) = cur.calls
+    assert "updated_at = %s" in sql
+    assert len(params) == 4
+    assert params[1] == now
+
+
+@pytest.mark.parametrize(
+    "rule,rows",
+    [
+        # One candidate row in the shape each rule's own query returns.
+        (
+            "match_2025_fee_entries",
+            [(3, "Beitrag YP 4711", decimal.Decimal("-1.23"), None)],
+        ),
+        (
+            "match_pre_notification_fee_entries",
+            [(3, "Einzug-2026-01-RCUR-4-1717", None)],
+        ),
+        ("match_return_fee_entries", [(3, None)]),
+    ],
+)
+@pytest.mark.parametrize("stamp_updated_at", [True, False])
+def test_rules_forward_stamp_updated_at(monkeypatch, rule, rows, stamp_updated_at):
+    """Each rule passes the flag through to link_entries -- the one place that
+    decides whether the entry's updated_at is bumped."""
+    seen: dict[str, Any] = {}
+
+    def fake_link_entries(cur, pairs, **kwargs):
+        seen.update(kwargs)
+
+    monkeypatch.setattr(datev_fee_links, "link_entries", fake_link_entries)
+    cur = FakeCursor(rows=rows)
+    getattr(datev_fee_links, rule)(
+        cur,
+        [uuid.UUID(int=1)],
+        now=datetime.datetime.now(datetime.UTC),
+        stamp_updated_at=stamp_updated_at,
+    )
+    assert seen["stamp_updated_at"] is stamp_updated_at
 
 
 def test_link_entries_score_is_overridable():

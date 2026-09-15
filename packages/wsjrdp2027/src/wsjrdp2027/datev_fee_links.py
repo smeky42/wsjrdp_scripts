@@ -12,6 +12,11 @@ JSON ``datev_booking_link_meta`` (``created_at``, ``author_id`` = 1 (system),
 ``score``, ``automatic_manual`` = ``"automatic"``, ``classification_string``).
 A booking carries no person of its own -- its person is the entry's subject.
 
+Writing a link modifies the entry, so it bumps the entry's ``updated_at``.
+Every rule takes ``stamp_updated_at=False`` to leave that column as it is --
+what the importer's ``--no-updated-at`` reaches; the link's own creation time
+lives in the meta's ``created_at`` either way.
+
 Three rules, applied in this order, each seeing only what its predecessors
 left unlinked:
 
@@ -242,6 +247,7 @@ def link_entries(
     link_type: str,
     now: _datetime.datetime,
     score: float = LINK_SCORE,
+    stamp_updated_at: bool = True,
 ) -> None:
     """Write a whole batch of booking<->entry links in ONE UPDATE.
 
@@ -254,7 +260,10 @@ def link_entries(
     which a rule may override with its own confidence. ``now`` is the AWARE
     ctx.start_time; created_at stores its ISO 8601 form (and the UTC session
     writes updated_at Rails-conventionally as UTC-naive). The entries ARE
-    modified, so their updated_at is bumped.
+    modified, so their updated_at is bumped -- with ``stamp_updated_at=False``
+    the UPDATE leaves that column out entirely and the entry keeps the
+    timestamp it has; the meta's own ``created_at`` (the link's creation time)
+    is written either way.
 
     ``pairs`` is a sequence of (entry_id, booking_id); it travels as two arrays
     joined via ``unnest``. The UPDATE re-checks ``datev_booking_id IS NULL``, so
@@ -272,17 +281,18 @@ def link_entries(
         "automatic_manual": "automatic",
         "classification_string": link_type,
     }
+    assignments = ["datev_booking_id = v.booking_id", "datev_booking_link_meta = %s"]
+    params: list[_typing.Any] = [Jsonb(meta)]
+    if stamp_updated_at:
+        assignments.append("updated_at = %s")
+        params.append(now)
+    params.append([entry_id for entry_id, _ in pairs])
+    params.append([booking_id for _, booking_id in pairs])
     cur.execute(
-        "UPDATE accounting_entries ae SET datev_booking_id = v.booking_id,"
-        " datev_booking_link_meta = %s, updated_at = %s"
+        f"UPDATE accounting_entries ae SET {', '.join(assignments)}"
         " FROM unnest(%s::bigint[], %s::bigint[]) AS v(entry_id, booking_id)"
         " WHERE ae.id = v.entry_id AND ae.datev_booking_id IS NULL",
-        (
-            Jsonb(meta),
-            now,
-            [entry_id for entry_id, _ in pairs],
-            [booking_id for _, booking_id in pairs],
-        ),
+        tuple(params),
     )
     if cur.rowcount != len(pairs):
         _LOGGER.warning(
@@ -294,7 +304,11 @@ def link_entries(
 
 
 def match_2025_fee_entries(
-    cur: SqlCursor, guids: _Guids, *, now: _datetime.datetime
+    cur: SqlCursor,
+    guids: _Guids,
+    *,
+    now: _datetime.datetime,
+    stamp_updated_at: bool = True,
 ) -> None:
     """Link 2025 participant-fee bookings to their accounting entry.
 
@@ -312,7 +326,8 @@ def match_2025_fee_entries(
     :func:`link_entries`), which sets the entry's datev_booking_id + link_meta
     (classification_string = :data:`LINK_TYPE_2025_FEE`) -- the link lives on
     the entry. Idempotent: a linked booking is out of scope, a linked entry out
-    of reach."""
+    of reach. ``stamp_updated_at=False`` writes the link without bumping the
+    entry's updated_at (see :func:`link_entries`)."""
     cur.execute(
         "SELECT db.id, db.original_posting_text, db.signed_offsetting_base_amount,"
         " db.booking_date"
@@ -351,7 +366,13 @@ def match_2025_fee_entries(
         " AND ae.amount_cents = c.amount_cents"
         " AND ae.value_date = c.value_date",
     )
-    link_entries(cur, pairs, link_type=LINK_TYPE_2025_FEE, now=now)
+    link_entries(
+        cur,
+        pairs,
+        link_type=LINK_TYPE_2025_FEE,
+        now=now,
+        stamp_updated_at=stamp_updated_at,
+    )
     if rows:
         _LOGGER.info(
             "2025 TN-Beitraege: %d von %d unverknuepften Buchungen mit ihrer "
@@ -368,7 +389,11 @@ def match_2025_fee_entries(
 
 
 def match_pre_notification_fee_entries(
-    cur: SqlCursor, guids: _Guids, *, now: _datetime.datetime
+    cur: SqlCursor,
+    guids: _Guids,
+    *,
+    now: _datetime.datetime,
+    stamp_updated_at: bool = True,
 ) -> None:
     """Link regular fee bookings to their accounting entry via the
     pre-notification id in Belegfeld 1.
@@ -388,7 +413,9 @@ def match_pre_notification_fee_entries(
     for the symmetric uniqueness) and written in one UPDATE (see
     :func:`link_entries`), which sets the entry's datev_booking_id + link_meta
     (classification_string = :data:`LINK_TYPE_PRE_NOTIFICATION`). Idempotent: a
-    linked booking is out of scope, a linked entry out of reach."""
+    linked booking is out of scope, a linked entry out of reach.
+    ``stamp_updated_at=False`` writes the link without bumping the entry's
+    updated_at (see :func:`link_entries`)."""
     cur.execute(
         "SELECT db.id, db.document_field_1, db.original_posting_text"
         f" FROM {BOOKINGS_TABLE} db"
@@ -426,7 +453,13 @@ def match_pre_notification_fee_entries(
         join="ae.direct_debit_pre_notification_id = c.pre_notification_id"
         " AND ae.subject_type = 'Person' AND ae.subject_id = c.person_id",
     )
-    link_entries(cur, pairs, link_type=LINK_TYPE_PRE_NOTIFICATION, now=now)
+    link_entries(
+        cur,
+        pairs,
+        link_type=LINK_TYPE_PRE_NOTIFICATION,
+        now=now,
+        stamp_updated_at=stamp_updated_at,
+    )
     if considered:
         _LOGGER.info(
             "Pre-Notification-Beitraege: %d von %d Einzug-Buchungen mit ihrer "
@@ -513,7 +546,11 @@ def select_return_fee_matches(
 
 
 def match_return_fee_entries(
-    cur: SqlCursor, guids: _Guids, *, now: _datetime.datetime
+    cur: SqlCursor,
+    guids: _Guids,
+    *,
+    now: _datetime.datetime,
+    stamp_updated_at: bool = True,
 ) -> None:
     """Link returned ("Retoure") fee bookings to the accounting entry of the
     returned bank transaction.
@@ -550,14 +587,21 @@ def match_return_fee_entries(
     (see :func:`link_entries`), which sets the entry's datev_booking_id +
     link_meta (classification_string = :data:`LINK_TYPE_RETURN`, score =
     :data:`LINK_SCORE`). Idempotent: a linked booking is out of scope, a linked
-    entry out of the pool."""
+    entry out of the pool. ``stamp_updated_at=False`` writes the link without
+    bumping the entry's updated_at (see :func:`link_entries`)."""
     if not guids:
         return
     rows = select_return_fee_matches(cur, guids)
     pairs = [
         (entry_id, booking_id) for booking_id, entry_id in rows if entry_id is not None
     ]
-    link_entries(cur, pairs, link_type=LINK_TYPE_RETURN, now=now)
+    link_entries(
+        cur,
+        pairs,
+        link_type=LINK_TYPE_RETURN,
+        now=now,
+        stamp_updated_at=stamp_updated_at,
+    )
     if rows:
         _LOGGER.info(
             "Retouren: %d von %d Retoure-Buchungen mit ihrer Beitragsbuchung "

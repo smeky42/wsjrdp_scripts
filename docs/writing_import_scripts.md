@@ -206,6 +206,15 @@ that is the Rails convention and a useful signal: a non-NULL `updated_at`
 means the row genuinely changed after its import. Pass the aware
 `ctx.start_time`, not a naive value.
 
+**`--no-updated-at`.** An importer that re-reads a source which is exported
+repeatedly (the Moss and the DATEV Buchungsstapel importers do) offers this
+flag: rows that change keep the `updated_at` they have, inserted rows still get
+`created_at` from the run. It passes `touch=False` to `apply()` and puts
+`created_at = now` into every insert row itself, and it must reach every other
+statement of the run that stamps a timestamp (the DATEV importer hands it to the
+auto-linking as `stamp_updated_at=False`). Use the same flag name and help text
+in every importer that offers it.
+
 ### 10. Provenance columns stay out of the diff
 
 Metadata about *where* a row came from (`source_file`) must not turn an
