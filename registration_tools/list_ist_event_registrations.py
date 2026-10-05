@@ -21,8 +21,8 @@ def main() -> None:
             with conn.cursor() as cursor:
                 cursor.execute(
                 """
-                SELECT people.id, people.first_name, people.last_name,
-                       people.status, groups.id, groups.name,
+                  SELECT people.id, people.first_name, people.last_name,
+                      people.status, people.email, groups.id, groups.name,
                        COALESCE((
                            SELECT array_agg(t.name ORDER BY t.name)
                            FROM event_participations AS ep
@@ -53,16 +53,18 @@ def main() -> None:
                 first_name,
                 last_name,
                 status,
+                email,
                 f"{ctx.config.hitobito_url.rstrip('/')}/groups/{group_id}/people/{person_id}",
                 group_id,
                 group_name,
                 json.dumps(events, ensure_ascii=False),
                 second_ist_meeting(events),
             )
-            for person_id, first_name, last_name, status, group_id, group_name, events in rows
+            for person_id, first_name, last_name, status, email, group_id, group_name, events in rows
         ]
         columns = [
-            "ID", "Vorname", "Nachname", "Status", "Profillink", "GruppenID", "Gruppe", "Events",
+            "ID", "Vorname", "Nachname", "Status", "Primäre Mailadresse", "Profillink",
+            "GruppenID", "Gruppe", "Events",
             "2. IST Vorbereitungstreffen",
         ]
         out_path = ctx.make_out_path("list_ist_event_registrations__{{ filename_suffix }}.xlsx")
