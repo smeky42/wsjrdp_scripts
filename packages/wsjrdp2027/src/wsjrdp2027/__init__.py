@@ -26,6 +26,7 @@ from ._payment import (
 )
 from ._payment_role import PaymentRole as PaymentRole
 from ._people import (
+    installments_cents_from_plan as installments_cents_from_plan,
     load_people_dataframe as load_people_dataframe,
     load_person_row as load_person_row,
     write_people_dataframe_to_xlsx as write_people_dataframe_to_xlsx,
@@ -214,6 +215,7 @@ __all__ = [
     "get_typst_font_paths",
     "hitobito_id_from_sepa_mandate_id",
     "insert_direct_debit_pre_notification_from_row",
+    "installments_cents_from_plan",
     "iter_people_dataframe",
     "load_accounting_balance_in_cent",
     "load_payment_dataframe",

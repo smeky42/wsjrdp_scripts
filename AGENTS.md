@@ -164,6 +164,12 @@ re-exported names from `wsjrdp2027`.
   `collection_date`/`open_amount_cents`.
 - Amounts are in places kept internally in **cents** (`*_cents`) and
   formatted German-style with `format_cents_as_eur_de(...)`.
+- **The fee of a person comes from the database**: the generated columns
+  `people.wsjrdp_regular_full_fee` and `people.wsjrdp_total_fee` (wagon
+  migration 20261006200005; overrides and reductions included) are read
+  as `regular_full_fee_eur`/`total_fee_eur` and rounded to
+  `regular_full_fee_cents`/`total_fee_cents`. Never recompute the fee
+  from the role; the Hitobito app reads the same columns.
 
 
 ## Central workflows

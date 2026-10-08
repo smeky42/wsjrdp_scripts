@@ -336,7 +336,7 @@ class PaymentRole(_enum.Enum):
         dates = _PAYMENT_DATES
         # A copy: the reduction below takes off installments, which must not
         # change the role's plan for every later call.
-        raw_installments: list[float] = list(_PAYMENT_ROLE_TO_INSTALLMENTS[self])  # type: ignore
+        raw_installments: list[float] = list(_PAYMENT_ROLE_TO_INSTALLMENTS[self])
         if fee_reduction_eur > 0:
             for i, eur in reversed(list(enumerate(raw_installments))):
                 if fee_reduction_eur > eur:

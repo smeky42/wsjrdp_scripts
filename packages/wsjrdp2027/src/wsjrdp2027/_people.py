@@ -118,7 +118,9 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "sepa_dd_sequence_type",
     "accounting_entries_count",
     "accounting_entries_amounts_cents",
+    "regular_full_fee_eur",
     "regular_full_fee_cents",
+    "total_fee_eur",
     "total_fee_cents",
     "total_fee_reduction",
     "total_fee_reduction_cents",
@@ -129,6 +131,7 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "installments_cents_sum",
     "custom_installments_comment",
     "custom_installments_issue",
+    "installments_payment_method",
     "pre_notified_amount_cents",
     "amount_paid_cents",  # bereits bezahlt
     "amount_unpaid_cents",  # insgesamt offen
@@ -236,7 +239,7 @@ def find_short_first_name(row) -> str:
 
 
 def _compute_installments_cents_dict_from_row(
-    row, id2fee_rules
+    row, id2plans
 ) -> dict[tuple[int, int], int] | None:
     from . import _util
 
@@ -251,10 +254,9 @@ def _compute_installments_cents_dict_from_row(
     early_payer = bool(row["early_payer"])
     print_at = _util.to_date_or_none(row["print_at"])
     today = _util.to_date_or_none(row["today"])
-    fee_rules = id2fee_rules.get(id, {})
-    year = _util.to_int_or_none(fee_rules.get("custom_installments_starting_year"))
-    custom_installments_cents = fee_rules.get("custom_installments_cents")
-    fee_reduction_cents = row.get("total_fee_reduction_cents") or 0
+    plan = id2plans.get(id, {})
+    year = _util.to_int_or_none(plan.get("custom_installments_starting_year"))
+    custom_installments_cents = plan.get("custom_installments_cents")
     if payment_role is None:
         return None
     elif year is None or custom_installments_cents is None:
@@ -262,34 +264,41 @@ def _compute_installments_cents_dict_from_row(
             early_payer=early_payer,
             print_at=print_at,
             today=today,
-            fee_reduction_cents=fee_reduction_cents,
+            fee_reduction_cents=_effective_fee_reduction_cents(row, payment_role),
         )
     else:
-        return {
-            (year + (i // 12), (i % 12) + 1): cents_as_int
-            for i, cents in enumerate(custom_installments_cents)
-            if (cents_as_int := int(cents)) != 0
-        }
+        return installments_cents_from_plan(year, custom_installments_cents)
 
 
-def _compute_regular_full_fee_cents(row: _pandas.Series) -> float:
-    payment_role = row.get("payment_role")
-    if payment_role:
-        return payment_role.regular_full_fee_cents
-    else:
-        status = row.get("status")
-        if status in ["registered", "deregistration_noted", "deregistered"]:
-            return 0
-        else:
-            return 10_000_000_00
+def _effective_fee_reduction_cents(
+    row: _pandas.Series, payment_role: _payment_role.PaymentRole
+) -> int:
+    """What the standard plan of the role has to take off: everything between
+    the role's tariff and the fee to be paid (``total_fee_cents``, from
+    ``people.wsjrdp_total_fee``) -- the reduction, the extra reduction, an
+    override of either fee. Never negative: a fee above the tariff is not
+    spread over the installments; the sum check of the plan reports it.
+    """
+    return max(payment_role.regular_full_fee_cents - int(row["total_fee_cents"]), 0)
 
 
-def _compute_total_fee_cents(row: _pandas.Series) -> float | None:
-    regular_full_fee_cents = _util.nan_to_none(row.get("regular_full_fee_cents", None))
-    if regular_full_fee_cents is not None:
-        return regular_full_fee_cents - row.get("total_fee_reduction_cents", 0)
-    else:
-        return None
+def _compute_regular_full_fee_cents(row: _pandas.Series) -> int:
+    """Cents of ``people.wsjrdp_regular_full_fee``: the regular full fee of the
+    payment role or its override, as the database computes it (the wagon's
+    migration 20261006200005; an unknown role gives 0 before a contract and
+    after a deregistration, an unmistakable placeholder otherwise). Rounded
+    half up from the column's three decimals, like the reduction.
+    """
+    return _eur_to_cents(row["regular_full_fee_eur"])
+
+
+def _compute_total_fee_cents(row: _pandas.Series) -> int:
+    """Cents of ``people.wsjrdp_total_fee``: the fee to be paid in total -- the
+    regular full fee minus both reductions, not below 0, or its override. The
+    app reads the same column (Person#total_fee_cents), so the sum of the
+    fees to be paid is the same wherever it is taken.
+    """
+    return _eur_to_cents(row["total_fee_eur"])
 
 
 def _sepa_dd_sequence_type_from_row(row) -> str:
@@ -385,53 +394,92 @@ def _row_to_sepa_mandat_id(row: _pandas.Series) -> str:
         return _util.sepa_mandate_id_from_hitobito_id(row["id"])
 
 
-def _fetch_id2fee_rules(
-    conn: _psycopg.Connection | _psycopg_client.PsycopgClient,
-    fee_rules: str | _collections_abc.Iterable[str] = "active",
-) -> dict:
-    import re
-    import textwrap
+# The payment methods of an installment plan (Hitobito
+# Wsjrdp2027::ParticipationFee): collected by SEPA direct debit, or paid by
+# the person's own credit transfers -- never collected. A plan without one, and
+# the standard plan of a role, is paid by direct debit.
+PAYMENT_METHOD_DIRECT_DEBIT = "direct_debit"
+PAYMENT_METHOD_CREDIT_TRANSFER = "credit_transfer"
 
-    import psycopg.rows
 
-    if isinstance(fee_rules, str):
-        fee_rules = [fee_rules]
-    else:
-        fee_rules = list(fee_rules)
-    fee_rules_str = ", ".join(f"'{s}'" for s in fee_rules)
+def _id2active_plans(df: _pandas.DataFrame) -> dict:
+    """The active individual installment plan of each person with one, read
+    from the person's own columns (``people.wsjrdp_raw_installments_eur``,
+    ``_issue``, ``_comment``, ``_payment_method``), which Hitobito writes when
+    it activates a plan. Each plan is a dict with the column names of a fee
+    rule (``custom_installments_*``)."""
+    return {
+        int(row["id"]): plan
+        for _, row in df.iterrows()
+        if (plan := _active_plan_from_person_row(row)) is not None
+    }
 
-    fee_rules_sql_stmt = f"""
-SELECT
-  "id",
-  "people_id",
-  "status",
-  custom_installments_comment,
-  custom_installments_issue,
-  custom_installments_starting_year,
-  custom_installments_cents,
-  (SELECT SUM(cents) FROM UNNEST(custom_installments_cents) cents) AS custom_installments_sum_cents
-FROM wsj27_rdp_fee_rules
-WHERE status IN ({fee_rules_str}) AND deleted_at IS NULL
-ORDER BY array_position(ARRAY[{fee_rules_str}], status) ASC
-        """
-    fee_rules_sql_stmt = re.sub(
-        r"\n+", "\n", textwrap.dedent(fee_rules_sql_stmt).strip()
-    )
 
-    _LOGGER.debug(
-        "Fetch wsj27_rdp_fee_rules SQL Query:\n%s",
-        textwrap.indent(fee_rules_sql_stmt, "  "),
-    )
-    with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-        cur.execute(fee_rules_sql_stmt)  # type: ignore
-        fee_rules_rows = cur.fetchall()
-        cur.close()
+def installments_cents_from_plan(
+    starting_year: int, cents: _collections_abc.Iterable[int]
+) -> dict[tuple[int, int], int]:
+    """The installments of an individual plan by (year, month): the plan's
+    amounts are the cents of each month from January of *starting_year*;
+    months without an installment are left out.
 
-    id2fee_rules = {}
-    for row in fee_rules_rows:
-        id2fee_rules.setdefault(row["people_id"], row)
+    >>> installments_cents_from_plan(2025, [0] * 11 + [20_000, 0, 31_250])
+    {(2025, 12): 20000, (2026, 2): 31250}
+    """
+    return {
+        (starting_year + (i // 12), (i % 12) + 1): cents_as_int
+        for i, month_cents in enumerate(cents)
+        if (cents_as_int := int(month_cents)) != 0
+    }
 
-    return id2fee_rules
+
+def _active_plan_from_person_row(row: _pandas.Series) -> dict | None:
+    """The person's active plan as a fee rule dict; None without one.
+
+    ``wsjrdp_raw_installments_eur`` is ``[starting year, euros per month from
+    January]`` (Hitobito's format of ``wsjrdp_payment_plans``), the euros
+    exact decimals of the plan's cents.
+
+    >>> from decimal import Decimal
+    >>> import pandas
+    >>> row = pandas.Series({"id": 7, "wsjrdp_raw_installments_eur": [Decimal("2026"),
+    ...     Decimal("0"), Decimal("312.500"), Decimal("0.010")], "wsjrdp_installments_issue": "HELP-1",
+    ...     "wsjrdp_installments_comment": None, "wsjrdp_installments_payment_method": "credit_transfer"})
+    >>> plan = _active_plan_from_person_row(row)
+    >>> plan["custom_installments_starting_year"], plan["custom_installments_cents"]
+    (2026, [0, 31250, 1])
+    >>> plan["custom_installments_payment_method"], plan["custom_installments_sum_cents"]
+    ('credit_transfer', 31251)
+    >>> _active_plan_from_person_row(pandas.Series({"id": 7, "wsjrdp_raw_installments_eur": None})) is None
+    True
+    """
+    raw = _util.nan_to_none(row.get("wsjrdp_raw_installments_eur"))
+    if raw is None or len(raw) == 0:
+        return None
+    cents = [
+        int(
+            (_decimal.Decimal(eur) * 100).to_integral_value(
+                rounding=_decimal.ROUND_HALF_UP
+            )
+        )
+        for eur in raw[1:]
+    ]
+    return {
+        "id": None,
+        "people_id": int(row["id"]),
+        "status": "active",
+        "custom_installments_comment": _util.nan_to_none(
+            row.get("wsjrdp_installments_comment")
+        ),
+        "custom_installments_issue": _util.nan_to_none(
+            row.get("wsjrdp_installments_issue")
+        ),
+        "custom_installments_starting_year": int(raw[0]),
+        "custom_installments_cents": cents,
+        "custom_installments_sum_cents": sum(cents),
+        "custom_installments_payment_method": _util.nan_to_none(
+            row.get("wsjrdp_installments_payment_method")
+        ),
+    }
 
 
 def _fetch_id2roles(
@@ -514,7 +562,7 @@ def _enrich_people_dataframe(
     df: _pandas.DataFrame,
     *,
     query: _people_query.PeopleQuery,
-    id2fee_rules: dict,
+    id2plans: dict,
     id2roles: dict[int, list[dict[str, _typing.Any]]],
     id2person_dicts: dict[int, dict],
     today: _datetime.date,
@@ -573,27 +621,28 @@ def _enrich_people_dataframe(
     df["payment_role"] = df.apply(_compute_payment_role, axis=1)  # ty: ignore
     df["role_id_name"] = df.apply(_compute_role_id_name, axis=1)
     df["regular_full_fee_cents"] = df.apply(_compute_regular_full_fee_cents, axis=1)
+    df["total_fee_cents"] = df.apply(_compute_total_fee_cents, axis=1)
 
-    def col_from_fee_rules(
-        col_name, *, fee_rules_col_name=None, f=lambda val: val
-    ) -> None:
-        if not fee_rules_col_name:
-            fee_rules_col_name = col_name
-        df[col_name] = df["id"].map(
-            lambda id: f(id2fee_rules.get(id, {}).get(fee_rules_col_name))
-        )
+    def col_from_plan(col_name, *, plan_key=None, f=lambda val: val) -> None:
+        if not plan_key:
+            plan_key = col_name
+        df[col_name] = df["id"].map(lambda id: f(id2plans.get(id, {}).get(plan_key)))
 
-    col_from_fee_rules("fee_rule_id", fee_rules_col_name="id")
-    col_from_fee_rules("fee_rule_status", fee_rules_col_name="status")
-    col_from_fee_rules("custom_installments_comment")
-    col_from_fee_rules("custom_installments_issue")
-    col_from_fee_rules("custom_installments_sum_cents")
-    df["installments_cents_dict"] = df.apply(lambda row: _compute_installments_cents_dict_from_row(row, id2fee_rules), axis=1)  # ty: ignore  # fmt: skip
+    col_from_plan("fee_rule_id", plan_key="id")
+    col_from_plan("fee_rule_status", plan_key="status")
+    col_from_plan("custom_installments_comment")
+    col_from_plan("custom_installments_issue")
+    col_from_plan("custom_installments_sum_cents")
+    col_from_plan(
+        "installments_payment_method",
+        plan_key="custom_installments_payment_method",
+        f=lambda method: method or PAYMENT_METHOD_DIRECT_DEBIT,
+    )
+    df["installments_cents_dict"] = df.apply(lambda row: _compute_installments_cents_dict_from_row(row, id2plans), axis=1)  # ty: ignore  # fmt: skip
     df["installments_cents_sum"] = df["installments_cents_dict"].map(
         lambda d: sum(d.values()) if d is not None else None
     )
 
-    df["total_fee_cents"] = df.apply(_compute_total_fee_cents, axis=1)  # ty: ignore  # fmt: skip
     df["accounting_entries_count"] = df["accounting_entries_amounts_cents"].map(lambda amounts: len(amounts))  # fmt: skip
     df["collection_date"] = collection_date
     df["amount_paid_cents"] = df["accounting_entries_amounts_cents"].map(sum)
@@ -618,6 +667,12 @@ def _enrich_people_dataframe(
         columns=[
             "additional_emails_for_mailings",
             "custom_installments_sum_cents",
+            # Read into the plan (installments_cents_dict, custom_installments_*,
+            # installments_payment_method).
+            "wsjrdp_raw_installments_eur",
+            "wsjrdp_installments_issue",
+            "wsjrdp_installments_comment",
+            "wsjrdp_installments_payment_method",
         ],
         inplace=True,
     )
@@ -631,7 +686,6 @@ def load_people_dataframe(
     query: _people_query.PeopleQuery | None = None,
     where: str | _people_query.PeopleWhere | None = "",
     group_by: str = "",
-    fee_rules: str | _collections_abc.Iterable[str] | None = None,
     log_resulting_data_frame: bool | None = None,
     now: _datetime.datetime | _datetime.date | str | float | None = None,
     print_at: _datetime.date | str | None = None,
@@ -679,8 +733,6 @@ def load_people_dataframe(
     if where is None:
         where = ""
     elif isinstance(where, _people_query.PeopleWhere):
-        if fee_rules is None:
-            fee_rules = where.fee_rules
         where = where.as_where_condition(people_table="people")
 
     where_clause = f"WHERE {where}" if where else ""
@@ -746,10 +798,15 @@ SELECT
   people.additional_emails_for_mailings,
   people.tag_list, people.note_list,
   people.payment_role,
+  people.wsjrdp_regular_full_fee, people.wsjrdp_total_fee,
   people.wsjrdp_total_fee_reduction,
   people.wsjrdp_total_fee_reduction_issue,
   people.wsjrdp_total_fee_reduction_hint,
   people.wsjrdp_total_fee_reduction_comment,
+  people.wsjrdp_raw_installments_eur,
+  people.wsjrdp_installments_issue,
+  people.wsjrdp_installments_comment,
+  people.wsjrdp_installments_payment_method,
   people.accounting_entries_amounts_cents,
   COALESCE(people.sepa_status, 'ok') AS sepa_status,
   people.sepa_name, people.sepa_address, people.sepa_mail, people.sepa_iban, people.sepa_bic,
@@ -786,6 +843,8 @@ ORDER BY people.id{limit_clause}
     if len(df) != 0:
         df.rename(
             columns={
+                "wsjrdp_regular_full_fee": "regular_full_fee_eur",
+                "wsjrdp_total_fee": "total_fee_eur",
                 "wsjrdp_total_fee_reduction": "total_fee_reduction",
                 "wsjrdp_total_fee_reduction_hint": "total_fee_reduction_hint",
                 "wsjrdp_total_fee_reduction_issue": "total_fee_reduction_issue",
@@ -794,15 +853,13 @@ ORDER BY people.id{limit_clause}
             inplace=True,
         )
         df["total_fee_reduction_cents"] = df["total_fee_reduction"].map(_eur_to_cents)
-        if fee_rules is None:
-            fee_rules = "active"
-        id2fee_rules = _fetch_id2fee_rules(conn, fee_rules=fee_rules)
+        id2plans = _id2active_plans(df)
         id2roles = _fetch_id2roles(conn, df=df, today=today)
         id2person_dicts = _fetch_id2person_dicts(conn, df=df)
         _enrich_people_dataframe(
             df,
             query=query,
-            id2fee_rules=id2fee_rules,
+            id2plans=id2plans,
             id2roles=id2roles,
             id2person_dicts=id2person_dicts,
             today=today,

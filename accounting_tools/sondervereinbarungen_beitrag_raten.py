@@ -1,7 +1,11 @@
 #!/usr/bin/env -S uv run
 """Tool to produce a financtial Sondervereinbarung.
 
-Uses the rules stored in the table wsj27_rdp_fee_rules.
+The agreement is about the person's planned installment plan where there is
+one -- it is made before the plan is activated --, else about the plan in
+effect (the active plan of the person, or the standard plan of the role). The
+planned plan lives in the table wsj27_rdp_fee_rules until it is activated;
+this script is the only one that reads it (apply_planned_installment_plan).
 """
 
 from __future__ import annotations
@@ -253,6 +257,62 @@ def attach_sondervereinbarung_raten(
         tmp_docx.unlink(missing_ok=True)
 
 
+# The person's planned fee rule with a plan of its own (a starting year and the
+# monthly amounts); a planned rule with a reduction alone does not count.
+_PLANNED_PLAN_SQL = """
+SELECT id, custom_installments_starting_year, custom_installments_cents,
+       custom_installments_issue, custom_installments_comment,
+       custom_installments_payment_method
+  FROM wsj27_rdp_fee_rules
+ WHERE people_id = %(people_id)s AND status = 'planned' AND deleted_at IS NULL
+   AND custom_installments_starting_year IS NOT NULL
+   AND custom_installments_cents IS NOT NULL
+ ORDER BY id
+ LIMIT 1
+"""
+
+
+def apply_planned_installment_plan(conn, person: wsjrdp2027.Person) -> bool:
+    """Puts the person's planned installment plan, where there is one, in place
+    of the plan in effect in the person's row: installments, their sum, issue,
+    comment and payment method. Answers whether there was one."""
+    import psycopg.rows
+
+    with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        cur.execute(_PLANNED_PLAN_SQL, {"people_id": person.id})
+        rule = cur.fetchone()
+    if rule is None:
+        _LOGGER.info(
+            "No planned installment plan: the agreement is about the plan in effect"
+        )
+        return False
+
+    installments = wsjrdp2027.installments_cents_from_plan(
+        rule["custom_installments_starting_year"], rule["custom_installments_cents"]
+    )
+    values = {
+        "fee_rule_id": rule["id"],
+        "fee_rule_status": "planned",
+        "installments_cents_dict": installments,
+        "installments_cents_sum": sum(installments.values()),
+        "custom_installments_issue": rule["custom_installments_issue"] or None,
+        "custom_installments_comment": rule["custom_installments_comment"] or None,
+        "installments_payment_method": rule["custom_installments_payment_method"]
+        or "direct_debit",
+    }
+    # Each column anew as objects, the person's row changed: a cell may hold
+    # a dict (the installments), which .at does not take.
+    df, idx = person.df, person.row.name
+    for col, value in values.items():
+        df[col] = pd.Series(
+            [value if i == idx else old for i, old in df[col].items()],
+            index=df.index,
+            dtype=object,
+        )
+    _LOGGER.info("Planned installment plan (fee rule %s): %s", rule["id"], installments)
+    return True
+
+
 def main(argv=None):
     ctx = wsjrdp2027.WsjRdpContext(
         argument_parser=create_argument_parser(),
@@ -265,13 +325,15 @@ def main(argv=None):
 
     person_id = ctx.parsed_args.person_id
     person = ctx.load_person_for_id(person_id)
+    apply_planned_installment_plan(
+        ctx.hitobito_psycopg_connection(read_only=True), person
+    )
 
     batch_config = wsjrdp2027.BatchConfig.from_yaml(
         SELFDIR / "sondervereinbarungen_beitrag_raten.yml",
         where=wsjrdp2027.PeopleWhere(
             id=person_id,
             exclude_deregistered=False,
-            fee_rules=["planned", "active"],
         ),
     )
     batch_config.email_from = person.helpdesk_email
