@@ -136,7 +136,9 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "accounting_value_date",
     "accounting_booking_at",
     "accounting_description",
+    "regular_full_fee_eur",
     "regular_full_fee_cents",
+    "total_fee_eur",
     "total_fee_cents",
     "total_fee_reduction",
     "total_fee_reduction_cents",
@@ -147,6 +149,7 @@ PAYMENT_DATAFRAME_COLUMNS = [
     "installments_cents_sum",
     "custom_installments_comment",
     "custom_installments_issue",
+    "installments_payment_method",
     "pre_notified_amount_cents",
     "amount_paid_cents",
     "amount_unpaid_cents",
@@ -351,11 +354,27 @@ def enrich_people_dataframe_for_payments(
             _accounting_description_from_row, axis=1
         )
 
+        _skip_credit_transfer_payments(df)
         _check_iban_bic_in_payment_dataframe(df, pedantic=pedantic)
 
     if reindex:
         df = df.reindex(columns=PAYMENT_DATAFRAME_COLUMNS)
     return df
+
+
+def _skip_credit_transfer_payments(df: _pandas.DataFrame) -> None:
+    """Skip every person whose plan is paid by credit transfer: they pay
+    themselves, nothing is announced or collected."""
+    from . import _people
+
+    for idx, row in df.iterrows():
+        if (
+            row.get("installments_payment_method")
+            == _people.PAYMENT_METHOD_CREDIT_TRANSFER
+        ):
+            _skip_payment(
+                df, idx, "payment_method=credit_transfer", log_level=_logging.INFO
+            )
 
 
 def to_int_or_none(obj: object) -> int | None:
@@ -1035,7 +1054,6 @@ def load_payment_dataframe(
     pedantic: bool = False,
     query: _people_query.PeopleQuery | None = None,
     where: str | _people_query.PeopleWhere | None = "",
-    fee_rules: str | _collections_abc.Iterable[str] = "active",
     endtoend_ids: dict[int, str] | None = None,
     now: _datetime.datetime | _datetime.date | str | float | None = None,
     accounting_entry_exclude_payment_initiation_id: _collections_abc.Iterable[int]
@@ -1060,7 +1078,6 @@ def load_payment_dataframe(
     df = _people.load_people_dataframe(
         conn,
         query=query,
-        fee_rules=fee_rules,
         log_resulting_data_frame=False,
         now=now,
         accounting_entry_exclude_payment_initiation_id=accounting_entry_exclude_payment_initiation_id,

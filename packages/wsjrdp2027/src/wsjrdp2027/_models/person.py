@@ -212,7 +212,9 @@ class Person:
         args = [f"{k}={v!r}" for k, v in self._data.items()]
         return f"{cls_name}({', '.join(args)})"
 
+    regular_full_fee_eur: _decimal.Decimal
     regular_full_fee_cents: int
+    total_fee_eur: _decimal.Decimal
     total_fee_cents: int
 
     @property

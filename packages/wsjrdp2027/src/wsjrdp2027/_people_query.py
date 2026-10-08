@@ -195,7 +195,6 @@ class PeopleWhere:
     early_payer: bool | None = None
     foto_permission: bool | None = None
     max_print_at: _datetime.date | None = None
-    fee_rules: tuple[str, ...] = ("active",)
     unit_code: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     exclude_unit_code: _collections_abc.Sequence[str | _types.NullOrNotType] | None = (
         None
@@ -235,7 +234,6 @@ class PeopleWhere:
         early_payer: bool | None = None,
         foto_permission: bool | None = None,
         max_print_at: _datetime.date | str | None = None,
-        fee_rules: _StrOrIterable = "active",
         unit_code: _StrOrNullIterable | None = None,
         exclude_unit_code: _StrOrNullIterable | None = None,
         tag: _ArrayMatchLike | None = None,
@@ -293,10 +291,6 @@ class PeopleWhere:
             self.foto_permission = foto_permission
         if max_print_at is not None:
             self.max_print_at = _util.to_date(max_print_at)
-        if isinstance(fee_rules, str):
-            self.fee_rules = (fee_rules,)
-        else:
-            self.fee_rules = tuple(fee_rules)
         self.unit_code = _to_str_or_null_list(unit_code)
         self.exclude_unit_code = _to_str_or_null_list(exclude_unit_code)
         self.tag = ArrayMatchExpr.normalize_or_none(tag)
@@ -423,11 +417,6 @@ class PeopleWhere:
             else:
                 raise RuntimeError
 
-        if self.fee_rules and list(self.fee_rules) != ["active"]:
-            fee_rules = list(self.fee_rules)
-        else:
-            fee_rules = None
-
         regular_to_out_keys = [
             "email",
             "status",
@@ -449,7 +438,6 @@ class PeopleWhere:
             "early_payer": self.early_payer,
             "foto_permission": self.foto_permission,
             "max_print_at": iso_or_none(self.max_print_at),
-            "fee_rules": fee_rules,
             "not": recursive_to_dict(self.not_),
             "or": recursive_to_dict(self.or_),
             "and": recursive_to_dict(self.and_),
@@ -473,8 +461,6 @@ class PeopleWhere:
             for fld in _dataclasses.fields(self)
             if (val := getattr(self, (key := fld.name), None)) is not None
         }
-        if list(d.get("fee_rules", [])) == ["active"]:
-            d.pop("fee_rules", None)
         for k in ["and_", "or_"]:
             if not d.get(k):
                 d.pop(k, None)
