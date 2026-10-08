@@ -57,8 +57,7 @@ def main(argv=None):
         _log_plan_summary(planned)
 
         if not planned.inserts and not planned.updates:
-            _LOGGER.info("nothing to write (%d untouched)",
-                         len(planned.untouched_keys))
+            _LOGGER.info("nothing to write (%d untouched)", len(planned.untouched_keys))
             return
         if ctx.dry_run:
             _LOGGER.info("[dry-run] Not applying the plan.")
@@ -68,8 +67,12 @@ def main(argv=None):
         ctx.require_approval_to_run_in_prod()
         rw_conn = ctx.hitobito_psycopg_connection(read_only=False)
         inserted, updated = planned.apply(rw_conn, now=ctx.start_time)
-        _LOGGER.info("%d inserted, %d updated, %d untouched.",
-                     len(inserted), len(updated), len(planned.untouched_keys))
+        _LOGGER.info(
+            "%d inserted, %d updated, %d untouched.",
+            len(inserted),
+            len(updated),
+            len(planned.untouched_keys),
+        )
 
         if ctx.parsed_args.rollback_for_testing:
             _LOGGER.warning("ROLLBACK (--rollback-for-testing) - nothing committed")
@@ -93,8 +96,12 @@ reading the code.
 ```python
 p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
 p.add_argument("files", nargs="+", help="…; the source is detected per file.")
-p.add_argument("--rollback-for-testing", action="store_true", default=False,
-               help="Apply the plan, then ROLLBACK instead of committing (testing).")
+p.add_argument(
+    "--rollback-for-testing",
+    action="store_true",
+    default=False,
+    help="Apply the plan, then ROLLBACK instead of committing (testing).",
+)
 ```
 
 `--dry-run/-n`, `--start-time` and `--today` come from the context itself --

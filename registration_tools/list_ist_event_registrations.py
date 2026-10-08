@@ -9,7 +9,11 @@ import wsjrdp2027
 
 def second_ist_meeting(events: list[str | None]) -> str:
     return next(
-        (event for event in events if event and event.startswith("2. IST Vorbereitungstreffen")),
+        (
+            event
+            for event in events
+            if event and event.startswith("2. IST Vorbereitungstreffen")
+        ),
         "",
     )
 
@@ -20,7 +24,7 @@ def main() -> None:
         with ctx.hitobito_psycopg_connection(read_only=True) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                """
+                    """
                   SELECT people.id, people.first_name, people.last_name,
                       people.status, people.email, groups.id, groups.name,
                        COALESCE((
@@ -43,7 +47,6 @@ def main() -> None:
                                     )
                 ORDER BY people.last_name, people.first_name, people.id
                 """
-                
                 )
                 rows = cursor.fetchall()
 
@@ -63,13 +66,24 @@ def main() -> None:
             for person_id, first_name, last_name, status, email, group_id, group_name, events in rows
         ]
         columns = [
-            "ID", "Vorname", "Nachname", "Status", "Primäre Mailadresse", "Profillink",
-            "GruppenID", "Gruppe", "Events",
+            "ID",
+            "Vorname",
+            "Nachname",
+            "Status",
+            "Primäre Mailadresse",
+            "Profillink",
+            "GruppenID",
+            "Gruppe",
+            "Events",
             "2. IST Vorbereitungstreffen",
         ]
-        out_path = ctx.make_out_path("list_ist_event_registrations__{{ filename_suffix }}.xlsx")
+        out_path = ctx.make_out_path(
+            "list_ist_event_registrations__{{ filename_suffix }}.xlsx"
+        )
         with pd.ExcelWriter(
-            out_path, engine="xlsxwriter", engine_kwargs={"options": {"strings_to_formulas": False}}
+            out_path,
+            engine="xlsxwriter",
+            engine_kwargs={"options": {"strings_to_formulas": False}},
         ) as writer:
             pd.DataFrame(data, columns=columns).to_excel(writer, index=False)
         print(f"Excel-Datei erstellt: {out_path}")
