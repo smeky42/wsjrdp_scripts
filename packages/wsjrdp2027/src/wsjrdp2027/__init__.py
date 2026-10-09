@@ -11,6 +11,11 @@ from ._context import (
     WsjRdpContext as WsjRdpContext,
     WsjRdpContextConfig as WsjRdpContextConfig,
 )
+from ._contract import (
+    ContractFinding as ContractFinding,
+    check_contract_consistency as check_contract_consistency,
+    load_contract_findings as load_contract_findings,
+)
 from ._mail_client import MailClient as MailClient
 from ._payment import (
     DB_PEOPLE_ALL_SEPA_STATUS as DB_PEOPLE_ALL_SEPA_STATUS,
@@ -177,6 +182,7 @@ __all__ = [
     "CamtMessage",
     "CamtTransactionDetails",
     "CamtTxUniqueDbKey",
+    "ContractFinding",
     "DirectDebitPreNotification",
     "Group",
     "KeycloakClient",
@@ -202,6 +208,7 @@ __all__ = [
     "WsjRdpContextConfig",
     "WsjRdpKeycloakAdapter",
     "build_report_tree_widget",
+    "check_contract_consistency",
     "configure_file_logging",
     "console_confirm",
     "create_dir",
@@ -218,6 +225,7 @@ __all__ = [
     "installments_cents_from_plan",
     "iter_people_dataframe",
     "load_accounting_balance_in_cent",
+    "load_contract_findings",
     "load_payment_dataframe",
     "load_payment_dataframe_from_payment_initiation",
     "load_people_dataframe",

@@ -6,7 +6,7 @@ import decimal as _decimal
 import logging as _logging
 import typing as _typing
 
-from . import _people_query, _util
+from . import _contract, _people_query, _util
 
 
 if _typing.TYPE_CHECKING:
@@ -1055,6 +1055,12 @@ def update_dataframe_for_updates(
     if used_changes:
         df["db_changes"] = False
         df["person_changes"] = df.apply(lambda _: {}, axis=1)
+        derive_contract = bool(
+            {"new_status", "new_primary_group_role_types"} & set(updates)
+        )
+        if derive_contract:
+            for col in _contract.CONTRACT_COLS:
+                df[f"new_{col}"] = _pandas_object_column(df)
 
         idx: int
         for idx, row in df.iterrows():  # type: ignore
@@ -1079,10 +1085,55 @@ def update_dataframe_for_updates(
                     if new_val != old_val:
                         changed = True
                         object_changes[chg.old_col] = [old_val, new_val]
+            if derive_contract:
+                contract_changes = _derive_contract_changes(
+                    row, person_dict, object_changes, now=now
+                )
+                for col, (_old, new) in contract_changes.items():
+                    df.at[idx, f"new_{col}"] = new
+                if contract_changes:
+                    changed = True
+                    object_changes.update(contract_changes)
             df.at[idx, "db_changes"] = changed
             df.at[idx, "person_changes"] = object_changes  # type: ignore
 
     return df
+
+
+def _pandas_object_column(df: _pandas.DataFrame) -> _pandas.Series:
+    import pandas as pd
+
+    return pd.Series([None] * len(df), index=df.index, dtype=object)
+
+
+def _derive_contract_changes(
+    row: _pandas.Series,
+    person_dict: _collections_abc.Mapping,
+    object_changes: dict[str, list],
+    *,
+    now: _datetime.datetime,
+) -> dict[str, list]:
+    """The contract columns the change in *object_changes* moves (_contract):
+    by its status, and by its role types where the fee changes."""
+    new_status = object_changes["status"][1] if "status" in object_changes else None
+    old_role_types = row.get("primary_group_role_types")
+    if "primary_group_role_types" in object_changes:
+        new_role_types = object_changes["primary_group_role_types"][1]
+    else:
+        new_role_types = old_role_types
+    try:
+        return _contract.contract_changes(
+            person_dict,
+            new_status=new_status,
+            role_change=_contract.role_change_needs_new_contract(
+                old_role_types, new_role_types
+            ),
+            now=now,
+        )
+    except _contract.ContractError as exc:
+        raise _contract.ContractError(
+            f"{row.get('id_and_name', row['id'])}: {exc}"
+        ) from None
 
 
 def update_postgres_db_for_dataframe(
