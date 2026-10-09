@@ -178,6 +178,12 @@ class PeopleWhere:
     exclude_email: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     exclude_status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
+    # The participation contract (people.contract_status): none, confirmed or
+    # ended. Apart from status, which follows the documents.
+    contract_status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
+    exclude_contract_status: (
+        _collections_abc.Sequence[str | _types.NullOrNotType] | None
+    ) = None
     sepa_status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     exclude_sepa_status: (
         _collections_abc.Sequence[str | _types.NullOrNotType] | None
@@ -221,6 +227,8 @@ class PeopleWhere:
         exclude_email: _StrOrNullIterable | None = None,
         status: _StrOrNullIterable | None = None,
         exclude_status: _StrOrNullIterable | None = None,
+        contract_status: _StrOrNullIterable | None = None,
+        exclude_contract_status: _StrOrNullIterable | None = None,
         sepa_status: _StrOrNullIterable | None = None,
         exclude_sepa_status: _StrOrNullIterable | None = None,
         pre_notification_status: _StrOrNullIterable | None = None,
@@ -271,6 +279,8 @@ class PeopleWhere:
         self.exclude_email = _to_str_or_null_list(exclude_email)
         self.status = _to_str_or_null_list(status)
         self.exclude_status = _to_str_or_null_list(exclude_status)
+        self.contract_status = _to_str_or_null_list(contract_status)
+        self.exclude_contract_status = _to_str_or_null_list(exclude_contract_status)
         self.sepa_status = _to_str_or_null_list(sepa_status)
         self.exclude_sepa_status = _to_str_or_null_list(exclude_sepa_status)
         self.pre_notification_status = _to_str_or_null_list(pre_notification_status)
@@ -420,6 +430,7 @@ class PeopleWhere:
         regular_to_out_keys = [
             "email",
             "status",
+            "contract_status",
             "sepa_status",
             "pre_notification_status",
             "id",
@@ -534,7 +545,14 @@ class PeopleWhere:
             ),
         )
 
-        for key in ["id", "sepa_status", "email", "status", "unit_code"]:
+        for key in [
+            "id",
+            "sepa_status",
+            "email",
+            "status",
+            "contract_status",
+            "unit_code",
+        ]:
             expr = f"{people_table}.{key}"
             if key == "sepa_status":
                 expr = f"COALESCE({expr}, 'ok')"

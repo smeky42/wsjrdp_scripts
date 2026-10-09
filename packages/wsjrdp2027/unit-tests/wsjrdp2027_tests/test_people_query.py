@@ -19,6 +19,8 @@ class Test_PeopleWhere:
         where = PeopleWhere()
         assert where.status is None
         assert where.exclude_status is None
+        assert where.contract_status is None
+        assert where.exclude_contract_status is None
 
 
 class Test_PeopleWhere_Yaml_To_Dict:
@@ -91,6 +93,25 @@ class Test_PeopleWhere__as_where_condition:
     def test_exclude_status(self):
         where_str = PeopleWhere(exclude_status="registered").as_where_condition()
         assert where_str == "people.status <> 'registered'"
+
+    def test_contract_status(self):
+        where_str = PeopleWhere(contract_status="confirmed").as_where_condition()
+        assert where_str == "people.contract_status = 'confirmed'"
+
+    def test_contract_status_list(self):
+        where_str = PeopleWhere(contract_status="confirmed,ended").as_where_condition()
+        assert where_str == "people.contract_status IN ('confirmed', 'ended')"
+
+    def test_exclude_contract_status(self):
+        where_str = PeopleWhere(exclude_contract_status="none").as_where_condition()
+        assert where_str == "people.contract_status <> 'none'"
+
+    def test_contract_status_beside_status(self):
+        where_str = PeopleWhere(
+            status="printed", contract_status="confirmed"
+        ).as_where_condition()
+        assert "people.status = 'printed'" in where_str
+        assert "people.contract_status = 'confirmed'" in where_str
 
     def test_sepa_status(self):
         where_str = PeopleWhere(sepa_status="ok").as_where_condition()
@@ -313,6 +334,18 @@ class Test_PeopleWhere__to_dict:
     def test_exclude_status(self):
         where_dict = PeopleWhere(exclude_status="registered").to_dict()
         assert where_dict == {"exclude_status": "registered"}
+
+    def test_contract_status(self):
+        where_dict = PeopleWhere(contract_status="confirmed").to_dict()
+        assert where_dict == {"contract_status": "confirmed"}
+
+    def test_exclude_contract_status(self):
+        where_dict = PeopleWhere(exclude_contract_status=["none", "ended"]).to_dict()
+        assert where_dict == {"exclude_contract_status": ["none", "ended"]}
+
+    def test_contract_status_round_trip(self):
+        where = PeopleWhere(contract_status="confirmed", exclude_status="deregistered")
+        assert PeopleWhere.from_dict(where.to_dict()) == where
 
     def test_sepa_status(self):
         where_dict = PeopleWhere(sepa_status="ok").to_dict()
