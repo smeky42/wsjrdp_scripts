@@ -7,11 +7,12 @@ def _create_df():
 
     df = pandas.DataFrame()
 
+    no_contract = {"contract_status": "none"}
     people = {
-        1: {"status": "registered", "tag_list": []},
-        2: {"status": "upload", "tag_list": ["bar"]},
-        3: {"status": "reviewed", "tag_list": ["baz"]},
-        4: {"status": "confirmed", "tag_list": ["bar", "foo"]},
+        1: {"status": "registered", "tag_list": [], **no_contract},
+        2: {"status": "upload", "tag_list": ["bar"], **no_contract},
+        3: {"status": "reviewed", "tag_list": ["baz"], **no_contract},
+        4: {"status": "confirmed", "tag_list": ["bar", "foo"], **no_contract},
     }
 
     ids = sorted(people.keys())
@@ -34,11 +35,18 @@ class Test_Update_DataFrame_For_Updates:
         update_dataframe_for_updates(df, updates=updates)
         assert list(df["new_status"]) == ["confirmed"] * len(df)
         assert list(df["db_changes"]) == [True, True, True, False]
-        assert list(df["person_changes"]) == [
-            {"status": ["registered", "confirmed"]},
-            {"status": ["upload", "confirmed"]},
-            {"status": ["reviewed", "confirmed"]},
-            {},
+        assert [changes.get("status") for changes in df["person_changes"]] == [
+            ["registered", "confirmed"],
+            ["upload", "confirmed"],
+            ["reviewed", "confirmed"],
+            None,
+        ]
+        # The confirmation starts the contract (test_contract.py has the rules).
+        assert [changes.get("contract_status") for changes in df["person_changes"]] == [
+            ["none", "confirmed"],
+            ["none", "confirmed"],
+            ["none", "confirmed"],
+            None,
         ]
 
     def test_add_note(self, df):

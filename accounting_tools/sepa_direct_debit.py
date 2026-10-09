@@ -429,6 +429,9 @@ def main(argv=None):
 
     excluded_ids = _excluded_ids_from_parsed_arg(ctx.parsed_args.exclude_id)
 
+    with ctx.hitobito_psycopg_connection(read_only=True) as ro_conn:
+        wsjrdp2027.check_contract_consistency(ctx, ro_conn)
+
     with ctx.psycopg_connect() as conn:
         if args.find_planned_payment_initiation:
             pain_row = _find_planned_payment_initiation(ctx, args, conn)

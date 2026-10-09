@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses as _dataclasses
 import typing as _typing
 
-from . import _util
+from . import _contract, _util
 
 
 if _typing.TYPE_CHECKING:
@@ -31,6 +31,11 @@ PERSON_VERSION_COLS = [
     "company",
     "company_name",
     "complete_document_upload_at",
+    "contract_confirmed_at",
+    "contract_confirmed_by_id",
+    "contract_confirmed_by_type",
+    "contract_ended_at",
+    "contract_status",
     "contract_upload_at",
     "country",
     "diet",
@@ -106,6 +111,8 @@ class _ScalarChange:
     new_col: str
     col_type: type | None = None
     render_jinja2: bool = False
+    # A list of strings, given as a list or a single (comma separated) string.
+    str_list: bool = False
 
     @property
     def col_name(self) -> str:
@@ -118,6 +125,8 @@ class _ScalarChange:
     def __normalize(self, value):
         from . import _util
 
+        if self.str_list:
+            return _util.to_str_list(_util.nan_to_none(value))
         if self.col_type and not issubclass(self.col_type, (int, float)):
             return _util.nan_to_none(value)
         else:
@@ -129,6 +138,8 @@ class _ScalarChange:
         """Compute value for *row* in column *column* for user provided *value*."""
         if self.render_jinja2:
             return _util.render_template(value or "", {"row": row})
+        elif self.str_list:
+            return self.__normalize(value)
         else:
             return value
 
@@ -196,14 +207,23 @@ class _StrListChange:
 PERSON_CHANGES: list[_ScalarChange | _StrListChange] = [
     *(_ScalarChange(old_col=col, new_col=f"new_{col}") for col in PERSON_VERSION_COLS),
     _ScalarChange(
-        old_col="primary_group_role_types", new_col="new_primary_group_role_types"
+        old_col="primary_group_role_types",
+        new_col="new_primary_group_role_types",
+        str_list=True,
     ),
     _ScalarChange(old_col=None, new_col="add_note", render_jinja2=True),
     _StrListChange(old_col="tag_list", add_col="add_tags", remove_col="remove_tags"),
 ]
 
+# The contract columns follow status and the role (_contract): written
+# with the change that moves them, never set by an update of their own.
+DERIVED_UPDATE_KEYS = frozenset(f"new_{col}" for col in _contract.CONTRACT_COLS)
+
 UPDATE_KEY_TO_CHANGE = {
-    col_name: chg for chg in PERSON_CHANGES for col_name in chg.col_names
+    col_name: chg
+    for chg in PERSON_CHANGES
+    for col_name in chg.col_names
+    if col_name not in DERIVED_UPDATE_KEYS
 }
 
 VALID_PERSON_UPDATE_KEYS = frozenset(UPDATE_KEY_TO_CHANGE.keys())
