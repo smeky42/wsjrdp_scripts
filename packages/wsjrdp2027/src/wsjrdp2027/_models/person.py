@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime as _datetime
 import decimal as _decimal
 import logging as _logging
-import math as _math
 import re as _re
 import typing as _typing
 
@@ -147,6 +146,12 @@ class Person:
     id: int
     primary_group_id: int
     status: str
+    # The participation contract, apart from status (wagon migration
+    # 20261006200006): none, confirmed or ended.
+    contract_status: str
+
+    contract_confirmed_at: _datetime.datetime | None
+    contract_ended_at: _datetime.datetime | None
 
     @property
     def df(self) -> _pandas.DataFrame:
@@ -167,11 +172,9 @@ class Person:
             return self._df.iloc[self._index]
 
     def __normalize_val(self, key, val) -> _typing.Any:
-        if (
-            (key in self._KEEP_NAN_KEYS)
-            or not isinstance(val, float)
-            or not _math.isnan(val)
-        ):
+        from .. import _util
+
+        if (key in self._KEEP_NAN_KEYS) or not _util.is_nan_or_none(val):
             return val
         else:
             return None

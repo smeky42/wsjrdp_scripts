@@ -36,6 +36,9 @@ PEOPLE_DATAFRAME_COLUMNS = [
     "id",
     "status",
     "status_de",
+    "contract_status",
+    "contract_confirmed_at",
+    "contract_ended_at",
     "first_name",
     "last_name",
     "short_first_name",
@@ -280,6 +283,37 @@ def _effective_fee_reduction_cents(
     spread over the installments; the sum check of the plan reports it.
     """
     return max(payment_role.regular_full_fee_cents - int(row["total_fee_cents"]), 0)
+
+
+# The timestamp columns of people that may be empty. pandas reads them as
+# datetime64 with NaT for an empty cell -- or as object with None when the
+# whole column is empty -- and NaT is truthy. Loaded, they hold a plain
+# datetime or None, like the date columns hold a date or None.
+NULLABLE_TIMESTAMP_COLUMNS = ("contract_confirmed_at", "contract_ended_at")
+
+
+def _to_datetime_or_none_column(df: _pandas.DataFrame, col: str) -> None:
+    """Makes the timestamp column *col* of *df* hold a datetime or None.
+
+    >>> import datetime, pandas as pd
+    >>> df = pd.DataFrame([{"at": datetime.datetime(2026, 10, 9, 12, 0)}, {"at": None}])
+    >>> str(df["at"].dtype), type(df["at"][1]).__name__
+    ('datetime64[ns]', 'NaTType')
+    >>> _to_datetime_or_none_column(df, "at")
+    >>> str(df["at"].dtype), df["at"].tolist()
+    ('object', [datetime.datetime(2026, 10, 9, 12, 0), None])
+    """
+    import pandas as pd
+
+    from . import _util
+
+    def to_datetime_or_none(val):
+        val = _util.nan_to_none(val)
+        return val.to_pydatetime() if isinstance(val, pd.Timestamp) else val
+
+    df[col] = pd.Series(
+        [to_datetime_or_none(val) for val in df[col]], index=df.index, dtype=object
+    )
 
 
 def _compute_regular_full_fee_cents(row: _pandas.Series) -> int:
@@ -784,6 +818,7 @@ SELECT
   people.created_at, people.updated_at,
   people.print_at, people.contract_upload_at, people.complete_document_upload_at,
   people.status,
+  people.contract_status, people.contract_confirmed_at, people.contract_ended_at,
   people.first_name, people.last_name, people.nickname, people.birthday,
   people.email,
   people.street, people.housenumber, people.town, people.zip_code, people.country,
@@ -852,6 +887,8 @@ ORDER BY people.id{limit_clause}
             },
             inplace=True,
         )
+        for col in NULLABLE_TIMESTAMP_COLUMNS:
+            _to_datetime_or_none_column(df, col)
         df["total_fee_reduction_cents"] = df["total_fee_reduction"].map(_eur_to_cents)
         id2plans = _id2active_plans(df)
         id2roles = _fetch_id2roles(conn, df=df, today=today)

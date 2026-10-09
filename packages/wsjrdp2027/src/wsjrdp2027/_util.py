@@ -837,12 +837,37 @@ def dedup(iterable):
     return list(dedup_iter(iterable))
 
 
+def _is_nan(obj) -> bool:
+    """Whether *obj* is a missing value of a data frame: a float NaN, or the
+    NaT of a timestamp column. NaT is a datetime, truthy, and unequal to
+    itself like NaN.
+    """
+    if isinstance(obj, float):
+        return _math.isnan(obj)
+    else:
+        return isinstance(obj, _datetime.datetime) and obj != obj  # noqa: PLR0124
+
+
 def is_nan_or_none(obj) -> bool:
-    return bool(obj is None or (isinstance(obj, float) and _math.isnan(obj)))
+    """
+    >>> import pandas as pd
+    >>> [is_nan_or_none(x) for x in (None, float("nan"), pd.NaT)]
+    [True, True, True]
+    >>> [is_nan_or_none(x) for x in (0.0, "", pd.Timestamp("2026-10-09"))]
+    [False, False, False]
+    """
+    return bool(obj is None or _is_nan(obj))
 
 
 def nan_to_none(obj: _T) -> _T | None:
-    if isinstance(obj, float) and _math.isnan(obj):
+    """
+    >>> import pandas as pd
+    >>> nan_to_none(float("nan")), nan_to_none(pd.NaT), nan_to_none(1.5)
+    (None, None, 1.5)
+    >>> nan_to_none(pd.Timestamp("2026-10-09 12:00"))
+    Timestamp('2026-10-09 12:00:00')
+    """
+    if _is_nan(obj):
         return None
     else:
         return obj
