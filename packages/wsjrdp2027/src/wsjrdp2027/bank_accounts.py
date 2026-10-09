@@ -84,6 +84,36 @@ WSJ27_PAX_BANK_MONEY_MARKET_ACCOUNT = BankAccount(
     servicer_address="Kamp 17, 33098 Paderborn",
 )
 
+WSJ27_PAX_BANK_NOTICE_DEPOSIT_ACCOUNT = BankAccount(
+    account_identification="DE35370601932001939036",
+    opening_balance_cents=0,
+    opening_balance_currency="EUR",
+    opening_balance_date="2026-04-21",
+    short_name="Pax-Bank Kündigungsgeld 36",
+    description="Kündigungsgeld 40 Tage IK, Zinsen monatlich auf das Tagesgeldkonto 28",
+    iban="DE35370601932001939036",
+    owner_name="Ring deutscher Pfadfinder*innenverbände e.V.",
+    owner_address="Chausseestraße 128/129, 10115 Berlin",
+    servicer_name="Pax-Bank für Kirche und Caritas eG",
+    servicer_bic="GENODED1PAX",
+    servicer_address="Kamp 17, 33098 Paderborn",
+)
+
+WSJ27_PAX_BANK_FIXED_DEPOSIT_ACCOUNT = BankAccount(
+    account_identification="DE95370601932001939702",
+    opening_balance_cents=0,
+    opening_balance_currency="EUR",
+    opening_balance_date="2026-04-21",
+    short_name="Pax-Bank Festgeld 02",
+    description="Festgeld IK, angelegt aus dem Tagesgeldkonto 28",
+    iban="DE95370601932001939702",
+    owner_name="Ring deutscher Pfadfinder*innenverbände e.V.",
+    owner_address="Chausseestraße 128/129, 10115 Berlin",
+    servicer_name="Pax-Bank für Kirche und Caritas eG",
+    servicer_bic="GENODED1PAX",
+    servicer_address="Kamp 17, 33098 Paderborn",
+)
+
 WSJ27_SKATBANK_GIRO_ACCOUNT = BankAccount(
     account_identification="DE70830654080005498201",
     opening_balance_cents=0,
@@ -102,6 +132,8 @@ WSJ27_SKATBANK_GIRO_ACCOUNT = BankAccount(
 WSJ27_ACCOUNTS: list[BankAccount] = [
     WSJ27_PAX_BANK_GIRO_ACCOUNT,
     WSJ27_PAX_BANK_MONEY_MARKET_ACCOUNT,
+    WSJ27_PAX_BANK_NOTICE_DEPOSIT_ACCOUNT,
+    WSJ27_PAX_BANK_FIXED_DEPOSIT_ACCOUNT,
     WSJ27_SKATBANK_GIRO_ACCOUNT,
 ]
 
