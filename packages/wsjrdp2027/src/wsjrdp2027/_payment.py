@@ -357,7 +357,7 @@ def enrich_people_dataframe_for_payments(
             _accounting_description_from_row, axis=1
         )
 
-        _skip_credit_transfer_payments(df)
+        _skip_payments_not_to_collect(df)
         _check_iban_bic_in_payment_dataframe(df, pedantic=pedantic)
 
     if reindex:
@@ -365,19 +365,64 @@ def enrich_people_dataframe_for_payments(
     return df
 
 
-def _skip_credit_transfer_payments(df: _pandas.DataFrame) -> None:
-    """Skip every person whose plan is paid by credit transfer: they pay
-    themselves, nothing is announced or collected."""
+# A status that keeps a person out of a collection, whatever the contract.
+_STATUSES_NOT_TO_COLLECT = frozenset(["deregistration_noted", "deregistered"])
+
+
+def _skip_payments_not_to_collect(df: _pandas.DataFrame) -> None:
+    """Skip every person nothing may be collected from, whatever the query
+    selected -- the pre-notification and, with the people's current data, the
+    collection itself:
+
+    - the plan in effect is not paid by direct debit (credit transfer: they
+      pay themselves);
+    - the SEPA mandate is not ok (sepa_status);
+    - no contract in force (contract_status), or a deregistration noted.
+    """
     from . import _people
 
     for idx, row in df.iterrows():
-        if (
-            row.get("installments_payment_method")
-            == _people.PAYMENT_METHOD_CREDIT_TRANSFER
-        ):
-            _skip_payment(
-                df, idx, "payment_method=credit_transfer", log_level=_logging.INFO
-            )
+        reasons = []
+        method = row.get("installments_payment_method")
+        if method != _people.PAYMENT_METHOD_DIRECT_DEBIT:
+            reasons.append(f"payment_method={method}")
+        sepa_status = row.get("sepa_status") or "ok"
+        if sepa_status != "ok":
+            reasons.append(f"sepa_status={sepa_status}")
+        contract_status = row.get("contract_status")
+        if contract_status != "confirmed":
+            reasons.append(f"contract_status={contract_status}")
+        status = row.get("status")
+        if status in _STATUSES_NOT_TO_COLLECT:
+            reasons.append(f"status={status}")
+        if reasons:
+            _skip_payment(df, idx, ", ".join(reasons), log_level=_logging.INFO)
+
+
+def report_contract_without_confirmed_status(
+    df: _pandas.DataFrame,
+    *,
+    logger: _logging.Logger | _logging.LoggerAdapter | None = None,
+) -> _pandas.DataFrame:
+    """Logs the people of a payment run with a contract in force whose status
+    is not confirmed (it stepped back, a document is missing): collected, as
+    the contract says. Returns their rows."""
+    logger = logger or _LOGGER
+    if not len(df):
+        return df
+    mask = (df["payment_status"] == "ok") & (df["status"] != "confirmed")
+    rows = df[mask]
+    logger.info("==== Contract in force, status not confirmed: %s", len(rows))
+    for _, row in rows.iterrows():
+        logger.info(
+            "  %5s %s: status=%s contract_status=%s open_amount=%s",
+            row["id"],
+            row.get("short_full_name", ""),
+            row["status"],
+            row.get("contract_status"),
+            row.get("open_amount_cents"),
+        )
+    return rows
 
 
 def to_int_or_none(obj: object) -> int | None:

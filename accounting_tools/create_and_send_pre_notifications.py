@@ -249,6 +249,7 @@ def handle_df(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> pd.DataFrame:
     _LOGGER.info("")
     _LOGGER.info("==== Overall payments: %s", len(df))
     _LOGGER.info("")
+    wsjrdp2027.report_contract_without_confirmed_status(df, logger=_LOGGER)
     df_no_updates = df[df["skip_db_updates"] == True].copy()
     df_updates = df[df["skip_db_updates"] == False]
     if len(df) != len(df_no_updates) + len(df_updates):

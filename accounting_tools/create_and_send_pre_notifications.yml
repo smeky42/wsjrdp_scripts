@@ -4,7 +4,10 @@ updates:
 query:
   where:
     sepa_status: ['ok']
-    status: 'confirmed'
+    # The contract in force, whatever the documents say (status may have
+    # stepped back); a noted deregistration is not collected.
+    contract_status: 'confirmed'
+    exclude_status: ['deregistration_noted', 'deregistered']
     role: ['CMT', 'UL', 'YP', 'IST']
     exclude_primary_group_id: [5, 6, 7, 46]
   include_sepa_mail_in_mailing_to: true
