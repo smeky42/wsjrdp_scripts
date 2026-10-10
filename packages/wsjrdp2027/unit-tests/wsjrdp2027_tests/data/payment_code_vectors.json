@@ -1,0 +1,266 @@
+[
+  {
+    "data": "00000000",
+    "codeword": "000000000000",
+    "code": "RF04000000000000",
+    "printed": "RF04 0000 0000 0000"
+  },
+  {
+    "data": "ZZZZZZZZ",
+    "codeword": "ZZZZZZZZ0E8N",
+    "code": "RF77ZZZZZZZZ0E8N",
+    "printed": "RF77 ZZZZ ZZZZ 0E8N"
+  },
+  {
+    "data": "K7M3QX9P",
+    "codeword": "K7M3QX9PNFK3",
+    "code": "RF75K7M3QX9PNFK3",
+    "printed": "RF75 K7M3 QX9P NFK3"
+  },
+  {
+    "data": "0123456Z",
+    "codeword": "0123456ZZ0KJ",
+    "code": "RF420123456ZZ0KJ",
+    "printed": "RF42 0123 456Z Z0KJ"
+  },
+  {
+    "data": "WWNCHSPM",
+    "codeword": "WWNCHSPMBNSC",
+    "code": "RF74WWNCHSPMBNSC",
+    "printed": "RF74 WWNC HSPM BNSC"
+  },
+  {
+    "data": "8W9H2N49",
+    "codeword": "8W9H2N4920Z5",
+    "code": "RF268W9H2N4920Z5",
+    "printed": "RF26 8W9H 2N49 20Z5"
+  },
+  {
+    "data": "YSRCYWQF",
+    "codeword": "YSRCYWQF250D",
+    "code": "RF34YSRCYWQF250D",
+    "printed": "RF34 YSRC YWQF 250D"
+  },
+  {
+    "data": "TB6B7E7N",
+    "codeword": "TB6B7E7N57TC",
+    "code": "RF62TB6B7E7N57TC",
+    "printed": "RF62 TB6B 7E7N 57TC"
+  },
+  {
+    "data": "513VACS4",
+    "codeword": "513VACS4QEY1",
+    "code": "RF55513VACS4QEY1",
+    "printed": "RF55 513V ACS4 QEY1"
+  },
+  {
+    "data": "J8944G02",
+    "codeword": "J8944G02TFV2",
+    "code": "RF86J8944G02TFV2",
+    "printed": "RF86 J894 4G02 TFV2"
+  },
+  {
+    "data": "391ASJQH",
+    "codeword": "391ASJQHVEYT",
+    "code": "RF21391ASJQHVEYT",
+    "printed": "RF21 391A SJQH VEYT"
+  },
+  {
+    "data": "39XDW3AG",
+    "codeword": "39XDW3AGHCCS",
+    "code": "RF4639XDW3AGHCCS",
+    "printed": "RF46 39XD W3AG HCCS"
+  },
+  {
+    "data": "B9X8CKDQ",
+    "codeword": "B9X8CKDQAAQ7",
+    "code": "RF96B9X8CKDQAAQ7",
+    "printed": "RF96 B9X8 CKDQ AAQ7"
+  },
+  {
+    "data": "06DKKD1X",
+    "codeword": "06DKKD1XRP66",
+    "code": "RF9006DKKD1XRP66",
+    "printed": "RF90 06DK KD1X RP66"
+  },
+  {
+    "data": "HR328QMM",
+    "codeword": "HR328QMMTC1B",
+    "code": "RF06HR328QMMTC1B",
+    "printed": "RF06 HR32 8QMM TC1B"
+  },
+  {
+    "data": "VN46CNZ9",
+    "codeword": "VN46CNZ96VG3",
+    "code": "RF02VN46CNZ96VG3",
+    "printed": "RF02 VN46 CNZ9 6VG3"
+  },
+  {
+    "data": "7DX9F587",
+    "codeword": "7DX9F587G276",
+    "code": "RF507DX9F587G276",
+    "printed": "RF50 7DX9 F587 G276"
+  },
+  {
+    "data": "9DCNA21K",
+    "codeword": "9DCNA21K39TZ",
+    "code": "RF749DCNA21K39TZ",
+    "printed": "RF74 9DCN A21K 39TZ"
+  },
+  {
+    "data": "1ZQC435F",
+    "codeword": "1ZQC435FDDZB",
+    "code": "RF521ZQC435FDDZB",
+    "printed": "RF52 1ZQC 435F DDZB"
+  },
+  {
+    "data": "V7HFFVZS",
+    "codeword": "V7HFFVZSHMJH",
+    "code": "RF82V7HFFVZSHMJH",
+    "printed": "RF82 V7HF FVZS HMJH"
+  },
+  {
+    "data": "H5VSAS4C",
+    "codeword": "H5VSAS4CEX8S",
+    "code": "RF12H5VSAS4CEX8S",
+    "printed": "RF12 H5VS AS4C EX8S"
+  },
+  {
+    "data": "6QY2Z8PV",
+    "codeword": "6QY2Z8PVE5RG",
+    "code": "RF366QY2Z8PVE5RG",
+    "printed": "RF36 6QY2 Z8PV E5RG"
+  },
+  {
+    "data": "BPMZ4E2V",
+    "codeword": "BPMZ4E2V2B90",
+    "code": "RF60BPMZ4E2V2B90",
+    "printed": "RF60 BPMZ 4E2V 2B90"
+  },
+  {
+    "data": "VPYZXF1R",
+    "codeword": "VPYZXF1R001V",
+    "code": "RF61VPYZXF1R001V",
+    "printed": "RF61 VPYZ XF1R 001V"
+  },
+  {
+    "data": "19DEP8SW",
+    "codeword": "19DEP8SW34KN",
+    "code": "RF7819DEP8SW34KN",
+    "printed": "RF78 19DE P8SW 34KN"
+  },
+  {
+    "data": "FVWKBQTE",
+    "codeword": "FVWKBQTEXG8P",
+    "code": "RF72FVWKBQTEXG8P",
+    "printed": "RF72 FVWK BQTE XG8P"
+  },
+  {
+    "data": "6NJK2G3F",
+    "codeword": "6NJK2G3FC1WA",
+    "code": "RF466NJK2G3FC1WA",
+    "printed": "RF46 6NJK 2G3F C1WA"
+  },
+  {
+    "data": "KW2ED7XX",
+    "codeword": "KW2ED7XX391P",
+    "code": "RF48KW2ED7XX391P",
+    "printed": "RF48 KW2E D7XX 391P"
+  },
+  {
+    "data": "EHC0BBXJ",
+    "codeword": "EHC0BBXJR1NX",
+    "code": "RF54EHC0BBXJR1NX",
+    "printed": "RF54 EHC0 BBXJ R1NX"
+  },
+  {
+    "data": "VHWZ5643",
+    "codeword": "VHWZ5643Z3NB",
+    "code": "RF65VHWZ5643Z3NB",
+    "printed": "RF65 VHWZ 5643 Z3NB"
+  },
+  {
+    "data": "BM91M114",
+    "codeword": "BM91M114YJDN",
+    "code": "RF86BM91M114YJDN",
+    "printed": "RF86 BM91 M114 YJDN"
+  },
+  {
+    "data": "TGNNRWB0",
+    "codeword": "TGNNRWB03692",
+    "code": "RF13TGNNRWB03692",
+    "printed": "RF13 TGNN RWB0 3692"
+  },
+  {
+    "data": "HNH70R93",
+    "codeword": "HNH70R93BB6V",
+    "code": "RF74HNH70R93BB6V",
+    "printed": "RF74 HNH7 0R93 BB6V"
+  },
+  {
+    "data": "3GRZ7FDK",
+    "codeword": "3GRZ7FDK2MKE",
+    "code": "RF433GRZ7FDK2MKE",
+    "printed": "RF43 3GRZ 7FDK 2MKE"
+  },
+  {
+    "data": "JBH1JRJG",
+    "codeword": "JBH1JRJG1SYP",
+    "code": "RF34JBH1JRJG1SYP",
+    "printed": "RF34 JBH1 JRJG 1SYP"
+  },
+  {
+    "data": "99FCN74T",
+    "codeword": "99FCN74TPAZ6",
+    "code": "RF1899FCN74TPAZ6",
+    "printed": "RF18 99FC N74T PAZ6"
+  },
+  {
+    "data": "1DKWE8PA",
+    "codeword": "1DKWE8PAKHH7",
+    "code": "RF051DKWE8PAKHH7",
+    "printed": "RF05 1DKW E8PA KHH7"
+  },
+  {
+    "data": "ZJ7A79BN",
+    "codeword": "ZJ7A79BNP25S",
+    "code": "RF72ZJ7A79BNP25S",
+    "printed": "RF72 ZJ7A 79BN P25S"
+  },
+  {
+    "data": "JJ2APFGE",
+    "codeword": "JJ2APFGE5W73",
+    "code": "RF13JJ2APFGE5W73",
+    "printed": "RF13 JJ2A PFGE 5W73"
+  },
+  {
+    "data": "R19AYYY2",
+    "codeword": "R19AYYY2V8ZX",
+    "code": "RF85R19AYYY2V8ZX",
+    "printed": "RF85 R19A YYY2 V8ZX"
+  },
+  {
+    "data": "RHAQDMVW",
+    "codeword": "RHAQDMVW1AT5",
+    "code": "RF03RHAQDMVW1AT5",
+    "printed": "RF03 RHAQ DMVW 1AT5"
+  },
+  {
+    "data": "6D1SXCR1",
+    "codeword": "6D1SXCR1JQGG",
+    "code": "RF466D1SXCR1JQGG",
+    "printed": "RF46 6D1S XCR1 JQGG"
+  },
+  {
+    "data": "40NMPXJM",
+    "codeword": "40NMPXJMZD99",
+    "code": "RF7640NMPXJMZD99",
+    "printed": "RF76 40NM PXJM ZD99"
+  },
+  {
+    "data": "YET79TKH",
+    "codeword": "YET79TKHVEXP",
+    "code": "RF17YET79TKHVEXP",
+    "printed": "RF17 YET7 9TKH VEXP"
+  }
+]
