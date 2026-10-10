@@ -474,6 +474,8 @@ def main(argv=None):
                 booking_at=ctx.start_time,
             )
 
+        wsjrdp2027.report_contract_without_confirmed_status(df, logger=_LOGGER)
+
         if ctx.parsed_args.end_to_end_id_suffix:
             df["sepa_dd_endtoend_id"] = df["sepa_dd_endtoend_id"].map(
                 lambda s: s + ctx.parsed_args.end_to_end_id_suffix

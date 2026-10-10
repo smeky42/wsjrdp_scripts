@@ -5,6 +5,7 @@ import datetime
 from decimal import Decimal
 
 import pandas
+import pytest
 import wsjrdp2027
 from wsjrdp2027 import _payment, _people
 from wsjrdp2027._payment_role import PaymentRole
@@ -122,26 +123,80 @@ class Test_Installments_From_A_Persons_Plan:
         assert plan["custom_installments_cents"] == list(range(0, 100_000, 997))
 
 
-class Test_Skip_Credit_Transfer_Payments:
-    def test_skips_a_plan_paid_by_credit_transfer_only(self):
-        df = pandas.DataFrame(
+class Test_Skip_Payments_Not_To_Collect:
+    @staticmethod
+    def _df(*people):
+        defaults = {
+            "installments_payment_method": "direct_debit",
+            "sepa_status": "ok",
+            "contract_status": "confirmed",
+            "status": "confirmed",
+            "payment_status": "ok",
+            "payment_status_reason": "",
+        }
+        return pandas.DataFrame(
+            [{"id": i, **defaults, **p} for i, p in enumerate(people, start=1)]
+        )
+
+    def test_collects_a_contract_in_force_by_direct_debit_with_an_ok_mandate(self):
+        df = self._df({}, {"status": "printed"}, {"sepa_status": None})
+
+        _payment._skip_payments_not_to_collect(df)
+
+        assert list(df["payment_status"]) == ["ok", "ok", "ok"]
+
+    @pytest.mark.parametrize(
+        "person, reason",
+        [
+            (
+                {"installments_payment_method": "credit_transfer"},
+                "payment_method=credit_transfer",
+            ),
+            ({"installments_payment_method": None}, "payment_method=None"),
+            ({"sepa_status": "in_review"}, "sepa_status=in_review"),
+            ({"contract_status": "none"}, "contract_status=none"),
+            ({"contract_status": "ended"}, "contract_status=ended"),
+            ({"status": "deregistration_noted"}, "status=deregistration_noted"),
+            ({"status": "deregistered"}, "status=deregistered"),
+        ],
+    )
+    def test_skips(self, person, reason):
+        df = self._df(person)
+
+        _payment._skip_payments_not_to_collect(df)
+
+        assert list(df["payment_status"]) == ["skipped"]
+        assert list(df["payment_status_reason"]) == [reason]
+
+    def test_keeps_an_earlier_reason_and_joins_several(self):
+        df = self._df(
             {
-                "id": [1, 2, 3],
-                "installments_payment_method": [
-                    "credit_transfer",
-                    "direct_debit",
-                    "credit_transfer",
-                ],
-                "payment_status": ["ok", "ok", "skipped"],
-                "payment_status_reason": ["", "", "amount = 0"],
+                "payment_status": "skipped",
+                "payment_status_reason": "amount = 0",
+                "installments_payment_method": "credit_transfer",
+                "sepa_status": "in_review",
             }
         )
 
-        _payment._skip_credit_transfer_payments(df)
+        _payment._skip_payments_not_to_collect(df)
 
-        assert list(df["payment_status"]) == ["skipped", "ok", "skipped"]
         assert list(df["payment_status_reason"]) == [
-            "payment_method=credit_transfer",
-            "",
-            "amount = 0, payment_method=credit_transfer",
+            "amount = 0, payment_method=credit_transfer, sepa_status=in_review"
         ]
+
+
+class Test_Report_Contract_Without_Confirmed_Status:
+    def test_lists_collected_people_whose_status_is_not_confirmed(self):
+        df = pandas.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "status": ["confirmed", "printed", "printed"],
+                "contract_status": ["confirmed", "confirmed", "confirmed"],
+                "payment_status": ["ok", "ok", "skipped"],
+                "open_amount_cents": [100, 200, 300],
+            }
+        )
+
+        rows = _payment.report_contract_without_confirmed_status(df)
+
+        assert list(rows["id"]) == [2]
