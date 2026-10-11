@@ -1,5 +1,7 @@
 -- The three Moss tables of the wagon hitobito_wsjrdp_2027, schema only: what
--- test_import_moss_transactions.py creates in the integration-testing DB.
+-- test_import_moss_transactions.py creates in a schema of its own (moss_it)
+-- of the integration-testing DB, with "public." replaced by that schema, so
+-- the tests never see the Moss rows of the restored production dump.
 -- Generated with: docker exec development-postgres-1 pg_dump -U hitobito -d
 -- hitobito_development --schema-only --no-owner --no-privileges --no-comments
 -- -t moss_transactions -t moss_expenses -t moss_bookings -- then stripped of
@@ -49,6 +51,7 @@ END) STORED,
     comment text DEFAULT ''::text NOT NULL,
     additional_info jsonb DEFAULT '{}'::jsonb NOT NULL,
     sub_row_number integer NOT NULL,
+    contribution_subject_link_meta jsonb DEFAULT '{}'::jsonb NOT NULL,
     CONSTRAINT chk_moss_bookings_account_kind CHECK (((account_kind IS NULL) OR ((account_kind)::text = ANY (ARRAY[('BANK'::character varying)::text, ('TRANSIT'::character varying)::text, ('CLEARING'::character varying)::text, ('LIABILITY'::character varying)::text, ('CREDITOR'::character varying)::text, ('DEBITOR'::character varying)::text, ('INCOME'::character varying)::text, ('EXPENSE'::character varying)::text, ('EQUITY'::character varying)::text, ('UNKNOWN'::character varying)::text]))))
 );
 

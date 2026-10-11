@@ -358,8 +358,9 @@ def main(argv=None):
 
     assert batch_config.query.collection_date is not None
 
-    with ctx.hitobito_psycopg_connection(read_only=True) as conn:
-        wsjrdp2027.check_contract_consistency(ctx, conn)
+    wsjrdp2027.check_contract_consistency(
+        ctx, ctx.hitobito_psycopg_connection(read_only=True)
+    )
 
     prepared_batch = ctx.load_people_and_prepare_batch(
         batch_config,

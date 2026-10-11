@@ -429,8 +429,9 @@ def main(argv=None):
 
     excluded_ids = _excluded_ids_from_parsed_arg(ctx.parsed_args.exclude_id)
 
-    with ctx.hitobito_psycopg_connection(read_only=True) as ro_conn:
-        wsjrdp2027.check_contract_consistency(ctx, ro_conn)
+    wsjrdp2027.check_contract_consistency(
+        ctx, ctx.hitobito_psycopg_connection(read_only=True)
+    )
 
     with ctx.psycopg_connect() as conn:
         if args.find_planned_payment_initiation:
@@ -548,11 +549,16 @@ def main(argv=None):
             _LOGGER.warning("")
             print(flush=True)
 
-        if pain_id is not None:
+        if pain_id is not None and sum_amount != 0:
             datev_csv_filename = wsjrdp2027.datev.write_datev_csv_for_pain_id(
                 ctx=ctx, conn=conn, pain_id=pain_id
             )
         else:
+            # Nothing collected, nothing to book: no DATEV CSV at all.
+            if pain_id is not None:
+                _LOGGER.info(
+                    "No payments => no DATEV CSV for payment initiation %s", pain_id
+                )
             datev_csv_filename = None
 
     _LOGGER.info("finish writing output")

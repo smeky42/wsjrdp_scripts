@@ -45,6 +45,13 @@ import pytest_wsjrdp2027
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 IMPORTER_PATH = ROOT / "accounting_tools" / "import_moss_transactions.py"
 SCHEMA_SQL = pathlib.Path(__file__).parent / "fixtures" / "moss_tables_schema.sql"
+# The schema the tests keep their Moss tables in: the restored production
+# dump carries real Moss rows in public, which every count and every plan here
+# would see. Connections of the tests and of the scripts they start look here
+# first (search_path, PGOPTIONS) and find everything else in public.
+MOSS_SCHEMA = "moss_it"
+MOSS_SEARCH_PATH = f"{MOSS_SCHEMA}, public"
+_moss_schema_created = False
 
 
 def _load_importer():
@@ -828,25 +835,28 @@ def write_exports(
 
 
 @pytest.fixture
-def moss_tables(integration_testing_ctx):
-    """The three Moss tables in the integration-testing DB, created from the
-    DDL fixture and COMMITTED once -- the subprocess tests need them in the
-    committed state, and every test body rolls its own writes back."""
+def moss_tables(integration_testing_ctx, monkeypatch):
+    """The three Moss tables in the schema MOSS_SCHEMA of the integration-
+    testing DB, created afresh from the DDL fixture once per test session and
+    COMMITTED -- the subprocess tests need them in the committed state, and
+    every test body rolls its own writes back.
+
+    The read-write connection of the context and the scripts a test starts
+    (PGOPTIONS) look in MOSS_SCHEMA first."""
+    global _moss_schema_created
+    monkeypatch.setenv(
+        "PGOPTIONS", f"-c search_path={MOSS_SEARCH_PATH.replace(' ', '')}"
+    )
     conn = integration_testing_ctx.hitobito_psycopg_connection(read_only=False)
-    found = conn.execute("SELECT to_regclass('public.moss_transactions')").fetchone()
-    if found[0] is None:
-        conn.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
-        conn.commit()
-        return
-    has_identity = conn.execute(
-        "SELECT 1 FROM information_schema.columns WHERE table_name = 'moss_transactions'"
-        " AND column_name = 'moss_object_uuid'"
-    ).fetchone()
-    if has_identity is None:
-        pytest.skip(
-            "integration DB has moss tables without moss_object_uuid; "
-            "drop them or restore a newer dump"
+    if not _moss_schema_created:
+        conn.execute(f"DROP SCHEMA IF EXISTS {MOSS_SCHEMA} CASCADE")  # noqa: S608 - fixed identifier
+        conn.execute(f"CREATE SCHEMA {MOSS_SCHEMA}")  # noqa: S608 - fixed identifier
+        conn.execute(
+            SCHEMA_SQL.read_text(encoding="utf-8").replace("public.", f"{MOSS_SCHEMA}.")
         )
+        _moss_schema_created = True
+    conn.execute(f"SET search_path TO {MOSS_SEARCH_PATH}")  # noqa: S608 - fixed identifiers
+    conn.commit()
 
 
 @pytest.fixture
