@@ -87,19 +87,24 @@ class Test_Contract_Changes_By_Status:
 
 
 class Test_Contract_Changes_By_Role:
-    def test_a_role_with_another_fee_ends_the_contract_in_force(self):
+    def test_a_role_with_another_fee_lets_the_contract_wait_for_its_replacement(self):
         # UL to IST: back to registered, the new role needs a new contract.
         assert changes(IN_FORCE, "confirmed", "registered", role_change=True) == {
-            "contract_status": ["confirmed", "ended"],
-            "contract_ended_at": [None, NOW],
+            "contract_status": ["confirmed", "replacement_pending"],
         }
 
-    def test_the_new_contract_starts_with_the_next_confirmation(self):
-        ended = {**IN_FORCE, "contract_status": "ended", "contract_ended_at": NOW}
-        assert changes(ended, "reviewed", "confirmed")["contract_status"] == [
-            "ended",
-            "confirmed",
-        ]
+    def test_the_new_contract_replaces_the_old_with_the_next_confirmation(self):
+        pending = {**IN_FORCE, "contract_status": "replacement_pending"}
+        result = changes(pending, "reviewed", "confirmed")
+        assert result["contract_status"] == ["replacement_pending", "confirmed"]
+        assert result["contract_confirmed_at"][1] == NOW
+
+    def test_a_deregistration_ends_the_contract_waiting_for_its_replacement(self):
+        pending = {**IN_FORCE, "contract_status": "replacement_pending"}
+        assert changes(pending, "registered", "deregistered") == {
+            "contract_status": ["replacement_pending", "ended"],
+            "contract_ended_at": [None, NOW],
+        }
 
     @pytest.mark.parametrize("new_status", [None, "confirmed"])
     def test_a_role_change_that_stays_confirmed_is_refused(self, new_status):
@@ -177,7 +182,7 @@ class Test_Update_DataFrame_Derives_The_Contract:
         assert row["new_contract_confirmed_at"] == NOW
         assert row["new_contract_confirmed_by_id"] == 1
 
-    def test_the_ul_to_ist_role_change_ends_the_contract(self):
+    def test_the_ul_to_ist_role_change_lets_the_contract_wait_for_its_replacement(self):
         # registration_tools/2025-11-25__UL-Rollenwechsel-zu-IST.yml
         df = _df({29: {"status": "confirmed", "contract": IN_FORCE}})
         updates = {
@@ -190,8 +195,8 @@ class Test_Update_DataFrame_Derives_The_Contract:
 
         person_changes = df.iloc[0]["person_changes"]
         assert person_changes["status"] == ["confirmed", "registered"]
-        assert person_changes["contract_status"] == ["confirmed", "ended"]
-        assert person_changes["contract_ended_at"] == [None, NOW]
+        assert person_changes["contract_status"] == ["confirmed", "replacement_pending"]
+        assert "contract_ended_at" not in person_changes
 
     def test_a_move_to_the_bmt_keeps_the_contract(self):
         df = _df(
@@ -297,7 +302,26 @@ class Test_Contract_Consistency:
         [
             ("confirmed", NO_CONTRACT, "without a contract in force"),
             ("confirmed", ENDED, "without a contract in force"),
-            ("deregistered", IN_FORCE, "with a contract in force"),
+            ("deregistered", IN_FORCE, "with contract_status 'confirmed'"),
+            (
+                "confirmed",
+                {**IN_FORCE, "contract_status": "replacement_pending"},
+                "without a contract in force",
+            ),
+            (
+                "deregistered",
+                {**IN_FORCE, "contract_status": "replacement_pending"},
+                "with contract_status 'replacement_pending'",
+            ),
+            (
+                "registered",
+                {
+                    **IN_FORCE,
+                    "contract_status": "replacement_pending",
+                    "contract_ended_at": ENDED_AT,
+                },
+                "no contract_ended_at",
+            ),
             (
                 "confirmed",
                 {**IN_FORCE, "contract_confirmed_at": None},

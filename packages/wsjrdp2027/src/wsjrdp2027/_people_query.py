@@ -178,8 +178,9 @@ class PeopleWhere:
     exclude_email: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     exclude_status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
-    # The participation contract (people.contract_status): none, confirmed or
-    # ended. Apart from status, which follows the documents.
+    # The participation contract (people.contract_status): none, confirmed,
+    # replacement_pending or ended. Apart from status, which follows the
+    # documents.
     contract_status: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     exclude_contract_status: (
         _collections_abc.Sequence[str | _types.NullOrNotType] | None
