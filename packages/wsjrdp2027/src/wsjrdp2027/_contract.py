@@ -5,14 +5,17 @@ person.
 The contract follows status the way the wagon's Person#track_contract does:
 
 - a change to ``confirmed`` starts a contract unless one is in force (a
-  re-confirmation keeps the first date);
-- a change to ``deregistered`` ends the contract in force;
+  re-confirmation keeps the first date); a contract waiting for its
+  replacement is replaced by it;
+- a change to ``deregistered`` ends the contract in force or the one waiting
+  for its replacement;
 - every other change of status leaves it as it is.
 
 On top of that, a change of role that changes the fee (the payment role type:
-UL to IST, YP to UL, ...) needs a new contract: the contract in force ends as
-if the person deregistered, and the next confirmation starts a new one. A
-move between groups of the same payment role type (IST to BMT and back, a
+UL to IST, YP to UL, ...) needs a new contract: the contract in force waits
+for its replacement (``replacement_pending``). By law it holds until the new
+one is confirmed, but nothing is collected meanwhile (only ``confirmed`` is).
+A move between groups of the same payment role type (IST to BMT and back, a
 waiting list to a unit, an unapproved leader becoming a leader) keeps it.
 
 The scripts write as the Administrator (versions.whodunnit 1), so a contract
@@ -128,12 +131,11 @@ def contract_changes(
     if role_change and after["contract_status"] == "confirmed":
         if not status_changes or new_status == "confirmed":
             raise ContractError(
-                "A change of role to another fee ends the contract in force; "
+                "A change of role to another fee needs a new contract; "
                 "status must leave 'confirmed' with it (the new role needs a "
                 f"new confirmation), but it stays {old_status!r}"
             )
-        after["contract_status"] = "ended"
-        after["contract_ended_at"] = now
+        after["contract_status"] = "replacement_pending"
 
     if status_changes:
         if new_status == "confirmed" and after["contract_status"] != "confirmed":
@@ -142,7 +144,10 @@ def contract_changes(
             after["contract_ended_at"] = None
             after["contract_confirmed_by_type"] = SCRIPT_CONFIRMED_BY_TYPE
             after["contract_confirmed_by_id"] = SCRIPT_CONFIRMED_BY_ID
-        elif new_status == "deregistered" and after["contract_status"] == "confirmed":
+        elif new_status == "deregistered" and after["contract_status"] in (
+            "confirmed",
+            "replacement_pending",
+        ):
             after["contract_status"] = "ended"
             after["contract_ended_at"] = now
 
@@ -162,7 +167,7 @@ def contract_changes(
 # stepped back (a document missing, a deregistration noted) -- a selection by
 # status does not collect from such a person.
 
-CONTRACT_STATUSES = ("none", "confirmed", "ended")
+CONTRACT_STATUSES = ("none", "confirmed", "replacement_pending", "ended")
 
 _CONSISTENCY_COLS = ("id", "status", *CONTRACT_COLS)
 
@@ -200,11 +205,13 @@ def contract_problems(
         errors.append(f"unknown contract_status {contract!r}")
     if status == "confirmed" and contract != "confirmed":
         errors.append("status is 'confirmed' without a contract in force")
-    if status == "deregistered" and contract == "confirmed":
-        errors.append("status is 'deregistered' with a contract in force")
-    if contract == "confirmed" and (confirmed_at is None or ended_at is not None):
+    if status == "deregistered" and contract in ("confirmed", "replacement_pending"):
+        errors.append(f"status is 'deregistered' with contract_status {contract!r}")
+    if contract in ("confirmed", "replacement_pending") and (
+        confirmed_at is None or ended_at is not None
+    ):
         errors.append(
-            "contract in force needs contract_confirmed_at and no contract_ended_at"
+            f"contract_status {contract!r} needs contract_confirmed_at and no contract_ended_at"
         )
     if contract == "ended" and (confirmed_at is None or ended_at is None):
         errors.append(
@@ -216,6 +223,8 @@ def contract_problems(
         errors.append("no contract, but contract dates or confirmed_by are set")
     if confirmed_at is not None and ended_at is not None and ended_at < confirmed_at:
         errors.append("contract_ended_at before contract_confirmed_at")
+    if contract == "replacement_pending":
+        notes.append("contract waiting for its replacement: not collected")
     if contract == "confirmed" and status not in ("confirmed", "deregistered"):
         notes.append(
             f"contract in force, status {status!r}: not collected by a selection on status"
