@@ -171,6 +171,14 @@ class PsycopgClient:
         logger = _logging_util.PrefixLoggerAdapter(
             self._logger, prefix=f"{self.__class__.__qualname__}.__create_connection: "
         )
+        # Hitobito (Rails) keeps its timestamp columns in UTC and sets its
+        # sessions to UTC; so does every connection here, whatever the
+        # server's default: a datetime with a timezone written to a column
+        # without one lands in UTC. Committed before the read-only setting,
+        # which needs no open transaction.
+        conn.execute("SET TimeZone TO 'UTC'")
+        if not conn.autocommit:
+            conn.commit()
         if self.__is_read_only():
             if conn.autocommit:
                 conn.execute("SET default_transaction_read_only TO TRUE;")

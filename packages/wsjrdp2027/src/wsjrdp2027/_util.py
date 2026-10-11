@@ -1492,8 +1492,17 @@ def not_in_expr(expr, elts, *, empty_expr: str = "TRUE") -> str:
 
 
 def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
-    df = df.copy()
+    """A copy of *df* that Excel takes: lists joined to text, and timestamps
+    without their timezone (the wall-clock time stays), in timezone-aware
+    columns as well as in single cells of object columns.
 
+    >>> import datetime, pandas as pd, zoneinfo
+    >>> at = datetime.datetime(2026, 10, 11, 13, 0, tzinfo=zoneinfo.ZoneInfo("Europe/Berlin"))
+    >>> df = pd.DataFrame({"at": pd.Series([at, None], dtype=object), "ids": [[1, 2], []]})
+    >>> out = dataframe_copy_for_xlsx(df)
+    >>> str(out["at"][0]), out["at"][0].tzinfo, out["ids"].tolist()
+    ('2026-10-11 13:00:00', None, ['1, 2', ''])
+    """
     # Excel does not support timestamps with timezones, so we remove
     # them here.
     df = df.copy()
@@ -1514,6 +1523,8 @@ def dataframe_copy_for_xlsx(df: _pandas.DataFrame) -> _pandas.DataFrame:
     def to_excel_val(obj):
         if isinstance(obj, list):
             return ", ".join(str_or_repr(x) for x in obj)
+        elif isinstance(obj, _datetime.datetime) and obj.tzinfo is not None:
+            return obj.replace(tzinfo=None)
         else:
             return obj
 

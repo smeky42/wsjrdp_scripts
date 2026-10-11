@@ -12,7 +12,6 @@ import wsjrdp2027
 
 
 _DAY_OF_MONTH = 5
-_FIRST_COLLECTION_DATE = _datetime.date(2026, 9, _DAY_OF_MONTH)
 _CUSTOM_PRE_NOTIFICATION_QUERY = """---
 where:
   id: [4, 141, 203, 204]
@@ -29,6 +28,21 @@ _ROOT_DIR = (_SELFDIR / ".." / "..").resolve()
 def sepa_simulation_fixture():
     pytest_wsjrdp2027.restore_integration_tests_db()
     yield
+
+
+def _first_collection_date(ctx: wsjrdp2027.WsjRdpContext) -> _datetime.date:
+    """The collection day of the month after the last one the restored dump
+    already has pre-notifications for: earlier months are collected in
+    production and have nothing left to collect."""
+    conn = ctx.hitobito_psycopg_connection(read_only=True)
+    last = conn.execute(
+        "SELECT max(collection_date) FROM wsjrdp_direct_debit_pre_notifications"
+    ).fetchone()[0]
+    if last is None:
+        last = _datetime.date.today()
+    return (last.replace(day=1) + _datetime.timedelta(days=32)).replace(
+        day=_DAY_OF_MONTH
+    )
 
 
 def _load_output_json_from_dir(path: _pathlib.Path, /) -> dict:
@@ -75,7 +89,7 @@ class Test_Run_Monthly_SEPA_Direct_Debits:
                 ]
             )
 
-        today = _FIRST_COLLECTION_DATE
+        today = _first_collection_date(ctx)
 
         today2results = {}
 

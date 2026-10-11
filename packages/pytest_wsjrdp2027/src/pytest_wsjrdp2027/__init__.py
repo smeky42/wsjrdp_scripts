@@ -56,7 +56,15 @@ def uv_run(
 
 
 def restore_integration_tests_db():
-    uv_run(["./tools/db_restore.py", "./integration-tests/hitobito_production.dump"])
+    # Connections other tests of the session left open would keep the
+    # database from being dropped.
+    uv_run(
+        [
+            "./tools/db_restore.py",
+            "--terminate-other-clients",
+            "./integration-tests/hitobito_production.dump",
+        ]
+    )
 
 
 def run_script(script, *args):

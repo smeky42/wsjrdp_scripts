@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+import zoneinfo
 
 import psycopg
 import psycopg.sql
@@ -1018,3 +1019,22 @@ class Test_pg_table_array_columns:
         conn.commit()
         assert fetch_column(conn, "uuids", 1) == [U1]
         assert fetch_column(conn, "uuids", inserted.inserted_ids[0]) == [U2]
+
+
+def test_connections_run_in_utc(ctx):
+    """Every connection of the context runs its session in UTC, as Hitobito
+    does: a datetime with a timezone lands in a timestamp column in UTC."""
+    for read_only in (True, False):
+        conn = ctx.hitobito_psycopg_connection(read_only=read_only, force_new=True)
+        assert conn.execute("SHOW TimeZone").fetchone()[0] == "UTC"
+        stored = conn.execute(
+            "SELECT %s::timestamp",
+            (
+                datetime.datetime(
+                    2026, 10, 11, 13, 0, tzinfo=zoneinfo.ZoneInfo("Europe/Berlin")
+                ),
+            ),
+        ).fetchone()[0]
+        assert stored == datetime.datetime(2026, 10, 11, 11, 0)  # noqa: DTZ001 - naive by intent
+        conn.rollback()
+        conn.close()

@@ -608,8 +608,13 @@ def write_datev_csv_for_pain_id(
     limit: int | None = None,
     offset: int | None = None,
     now: _datetime.date | None = None,
-) -> _pathlib.Path:
-    # See https://developer.datev.de/de/file-format/details/datev-format/format-description/booking-batch
+) -> _pathlib.Path | None:
+    """Writes the DATEV booking batch (EXTF) of the payment initiation
+    *pain_id*: one booking per collected pre-notification. Returns the path,
+    or None without a file when the payment initiation collects nothing.
+
+    See https://developer.datev.de/de/file-format/details/datev-format/format-description/booking-batch
+    """
 
     import re
 
@@ -633,6 +638,13 @@ LIMIT {limit}
 OFFSET {offset or 0}
 """,
     )
+
+    if df.empty:
+        _LOGGER.warning(
+            "No collected pre-notification in payment initiation %s => no DATEV CSV written",
+            pain_id,
+        )
+        return None
 
     row = df.iloc[0]
     collection_date = row["collection_date"]
