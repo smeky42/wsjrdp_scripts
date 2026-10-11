@@ -428,3 +428,60 @@ class TestOtherLengths:
         typed = issued[6][:4] + codeword[:8] + codeword[9:]
         match = pc.match_payment_code(typed, issued, **self.lengths())
         assert (match.code, match.method) == (issued[6], "edit")
+
+
+def _pairwise_distances(code: str, issued: list[str]) -> tuple[int, int]:
+    """Comparing with every codeword one by one: what IssuedCodewords must
+    answer."""
+    from rapidfuzz.distance import Hamming, Levenshtein
+
+    hamming = levenshtein = len(code) + 1
+    for other in issued:
+        if len(other) == len(code):
+            hamming = min(hamming, Hamming.distance(code, other))
+        levenshtein = min(levenshtein, Levenshtein.distance(code, other))
+    return hamming, levenshtein
+
+
+def _mutate(codeword: str, rng: random.Random) -> str:
+    """A close neighbour: a few symbols changed, dropped or added."""
+    chars = list(codeword)
+    for _ in range(rng.randint(1, 3)):
+        kind = rng.randrange(3)
+        if kind == 0:
+            chars[rng.randrange(len(chars))] = rng.choice(pc.ALPHABET)
+        elif kind == 1 and len(chars) > 1:
+            del chars[rng.randrange(len(chars))]
+        else:
+            chars.insert(rng.randrange(len(chars) + 1), rng.choice(pc.ALPHABET))
+    return "".join(chars)
+
+
+def test_issued_codewords_answer_exactly_as_pairwise():
+    rng = random.Random(2027)
+    issued = [pc.generate_rs_codeword() for _ in range(300)]
+    issued += [_mutate(codeword, rng) for codeword in issued[:60]]
+    index = pc.IssuedCodewords(issued)
+
+    queries = [pc.generate_rs_codeword() for _ in range(100)]
+    queries += [_mutate(codeword, rng) for codeword in rng.sample(issued, 60)]
+    for query in queries:
+        assert index.distances(query) == _pairwise_distances(query, issued), query
+
+
+def test_issued_codewords_grow_and_normalise():
+    index = pc.IssuedCodewords()
+    assert index.distances("K7M3QX9PNFK3") == (13, 13)
+    index.add("k7m3-qx9p nfk3")
+    assert len(index) == 1
+    assert index.distances("K7M3QX9PNFK3") == (0, 0)
+
+
+def test_generators_take_an_index_kept_across_draws():
+    index = pc.IssuedCodewords()
+    for _ in range(20):
+        index.add(pc.generate_distinct_rs_codeword(index))
+    code = pc.generate_distinct_payment_code(index)
+    hamming, levenshtein = index.distances(pc.codeword_of(code))
+    assert hamming >= pc.MIN_HAMMING_DISTANCE
+    assert levenshtein >= pc.MIN_LEVENSHTEIN_DISTANCE

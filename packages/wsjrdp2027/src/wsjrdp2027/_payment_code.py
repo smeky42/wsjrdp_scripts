@@ -49,6 +49,7 @@ import secrets as _secrets
 import typing as _typing
 
 import reedsolo as _reedsolo  # type: ignore[import-untyped]
+from rapidfuzz import process as _process
 from rapidfuzz.distance import (
     DamerauLevenshtein as _DamerauLevenshtein,
     Hamming as _Hamming,
@@ -119,6 +120,56 @@ def _codec(parity_length: int) -> _typing.Any:
 
 class PaymentCodeError(Exception):
     """No payment code could be issued."""
+
+
+class IssuedCodewords:
+    """The issued codewords, prepared for the distance questions a new draw
+    asks: the smallest Hamming and Levenshtein distance to any of them.
+
+    The answers are exact -- the same as comparing with every codeword one by
+    one -- but each question is one call of ``rapidfuzz.process.cdist`` over
+    all of them, and the codewords are normalised once when added instead of
+    on every draw. Pass one instance to the generators to keep it across many
+    draws, adding each new code to it.
+    """
+
+    def __init__(self, codewords: _collections_abc.Iterable[str] = ()) -> None:
+        self._all: list[str] = []
+        self._by_length: dict[int, list[str]] = {}
+        for codeword in codewords:
+            self.add(codeword)
+
+    def add(self, codeword: str) -> None:
+        normalized = _SEPARATORS.sub("", codeword).upper()
+        self._all.append(normalized)
+        self._by_length.setdefault(len(normalized), []).append(normalized)
+
+    def __len__(self) -> int:
+        return len(self._all)
+
+    def distances(self, code: str) -> tuple[int, int]:
+        """The smallest Hamming and Levenshtein distances of code to the
+        issued codewords; one more than the code's length where there is none
+        to compare with. Hamming counts only codewords of the same length."""
+        hamming = levenshtein = len(code) + 1
+        same_length = self._by_length.get(len(code))
+        if same_length:
+            hamming = min(
+                hamming,
+                int(
+                    _process.cdist([code], same_length, scorer=_Hamming.distance).min()
+                ),
+            )
+        if self._all:
+            levenshtein = min(
+                levenshtein,
+                int(
+                    _process.cdist(
+                        [code], self._all, scorer=_Levenshtein.distance
+                    ).min()
+                ),
+            )
+        return hamming, levenshtein
 
 
 def _symbols(codeword: str) -> bytearray:
@@ -209,16 +260,14 @@ def is_valid_payment_code(
     )
 
 
-def _distances(code: str, issued: _collections_abc.Iterable[str]) -> tuple[int, int]:
+def _distances(
+    code: str, issued: _collections_abc.Iterable[str] | IssuedCodewords
+) -> tuple[int, int]:
     """The smallest Hamming and Levenshtein distances of code to the issued
     codes; one more than the code's length where there is none to compare
     with. Hamming counts only codes of the same length."""
-    hamming = levenshtein = len(code) + 1
-    for other in issued:
-        if len(other) == len(code):
-            hamming = min(hamming, _Hamming.distance(code, other))
-        levenshtein = min(levenshtein, _Levenshtein.distance(code, other))
-    return hamming, levenshtein
+    index = issued if isinstance(issued, IssuedCodewords) else IssuedCodewords(issued)
+    return index.distances(code)
 
 
 def generate_rs_codeword(
@@ -243,7 +292,7 @@ def generate_rs_codeword(
 
 
 def generate_distinct_rs_codeword(
-    issued_codes: _collections_abc.Iterable[str] = (),
+    issued_codes: _collections_abc.Iterable[str] | IssuedCodewords = (),
     *,
     data_length: int = DATA_LENGTH,
     parity_length: int = PARITY_LENGTH,
@@ -257,7 +306,8 @@ def generate_distinct_rs_codeword(
     issued code.
 
     Draws until the code has at least ``min_hamming_distance`` and
-    ``min_levenshtein_distance`` to every code in ``issued_codes``. After
+    ``min_levenshtein_distance`` to every code in ``issued_codes`` (codes or
+    an :class:`IssuedCodewords` kept across draws). After
     ``max_attempts`` draws without such a code it returns the draw farthest
     from the issued codes (largest Hamming distance first, then largest
     Levenshtein distance), or raises :class:`PaymentCodeError` with
@@ -269,7 +319,11 @@ def generate_distinct_rs_codeword(
     """
     if max_attempts < 1:
         raise ValueError(f"max_attempts must be at least 1, got {max_attempts}")
-    issued = [_SEPARATORS.sub("", code).upper() for code in issued_codes]
+    issued = (
+        issued_codes
+        if isinstance(issued_codes, IssuedCodewords)
+        else IssuedCodewords(issued_codes)
+    )
     best_code = ""
     best_distances = (-1, -1)
     for _ in range(max_attempts):
@@ -294,7 +348,7 @@ def generate_distinct_rs_codeword(
 
 
 def generate_distinct_payment_code(
-    issued_codes: _collections_abc.Iterable[str] = (),
+    issued_codes: _collections_abc.Iterable[str] | IssuedCodewords = (),
     *,
     data_length: int = DATA_LENGTH,
     parity_length: int = PARITY_LENGTH,
@@ -320,7 +374,9 @@ def generate_distinct_payment_code(
             f"got {data_length} + {parity_length}"
         )
     codeword = generate_distinct_rs_codeword(
-        [codeword_of(code) for code in issued_codes],
+        issued_codes
+        if isinstance(issued_codes, IssuedCodewords)
+        else [codeword_of(code) for code in issued_codes],
         data_length=data_length,
         parity_length=parity_length,
         min_hamming_distance=min_hamming_distance,

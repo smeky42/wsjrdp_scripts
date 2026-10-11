@@ -31,6 +31,7 @@ from ._payment import (
     write_payment_dataframe_to_xlsx as write_payment_dataframe_to_xlsx,
 )
 from ._payment_code import (
+    IssuedCodewords as IssuedCodewords,
     PaymentCodeError as PaymentCodeError,
     PaymentCodeMatch as PaymentCodeMatch,
     TypedPaymentCode as TypedPaymentCode,
@@ -205,6 +206,7 @@ __all__ = [
     "MailClient",
     "MailcowClient",
     "PainMessage",
+    "IssuedCodewords",
     "PaymentCodeError",
     "PaymentCodeMatch",
     "PaymentRole",
