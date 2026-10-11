@@ -96,6 +96,57 @@ RF reference holds. Finding, checking and matching typed codes take the
 same two arguments; a code is always matched with the lengths it was
 issued with.
 
+### Distances to many issued codes
+
+`IssuedCodewords` holds the issued codewords for the distance questions of
+new draws. Its answers are exact, the same as comparing with every codeword
+one by one, but each question is one `rapidfuzz.process.cdist` call over all
+of them, and the codewords are normalised once. The generators take an
+instance instead of a list; keeping one across many draws (adding each new
+code) avoids preparing the issued codes again for every code.
+
+## Filling the stock
+
+The wagon hands codes out of `wsjrdp_payment_references` (status
+`available`) and makes one itself when none is left; its Verwaltung page
+also fills the stock. `accounting_tools/fill_payment_references.py` fills it
+from here:
+
+- `--fill-to N` (default 500) makes as many as are missing for N available
+  codes, `--count N` exactly N; `--dry-run` only shows the plan,
+  `--rollback-for-testing` inserts and rolls back.
+- The codes are made on the read-only connection. After the approval the
+  read/write transaction takes the advisory lock the wagon takes when it
+  makes codes (`pg_advisory_xact_lock(2027000001)`), reads the codewords
+  again and aborts when a code that appeared in the meantime comes too close.
+- `--benchmark` touches no database: for each size in `--benchmark-sizes` it
+  fills an in-memory set with that many random codewords and makes up to
+  `--benchmark-count` codes against it within `--benchmark-seconds`.
+
+`--benchmark` on a laptop (Apple Silicon), 1000 codes per size, the sizes
+growing by the codes made before:
+
+| Issued codewords | Seconds per 1000 codes | Draws per code | Fell back to the farthest draw |
+|---|---|---|---|
+| 0 | 0.1 | 1.01 | 0 |
+| 1,000 | 0.2 | 1.03 | 0 |
+| 5,000 | 0.7 | 1.12 | 0 |
+| 10,000 | 1.4 | 1.22 | 0 |
+| 20,000 | 3.0 | 1.49 | 0 |
+| 50,000 | 10.2 | 2.54 | 13 of 1000 |
+| 100,000 | 39.5 | 5.66 | 218 of 1000 |
+| 200,000 | 116.5 (515 made) | 8.89 | 395 of 515 |
+
+How many codes keep the distances: a codeword has about 2.2 · 10^7 other
+codewords within Hamming distance 7 out of 32^8 ≈ 1.1 · 10^12, so a random
+draw meets such a neighbour among N issued codes with a probability of about
+1 − exp(−N / 50,000). Up to about 20,000 codes almost every draw keeps the
+distances; around 50,000 the draws start to run out of attempts, and beyond
+100,000 most codes fall back to the farthest draw and keep the distances no
+longer. Codes chosen with structure instead of at random could reach more:
+a Reed-Solomon subcode with 5 data symbols has 32^5 ≈ 3.4 · 10^7 codewords
+at a Hamming distance of at least 8, before the Levenshtein rule.
+
 ## Matching a typed code
 
 `find_payment_codes(text)` finds `RF` followed by two check digits and the
