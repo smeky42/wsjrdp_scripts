@@ -530,6 +530,15 @@ wheels = [
 ]
 
 [[package]]
+name = "iso3166"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/e7/4997ca315143cf3dc54ec116070c108b621677fa80083a499b50643237c4/iso3166-3.0.0.tar.gz", hash = "sha256:e567b55d169211d4d499c73307350da15df5d38248e60bae559609570c42ef55", size = 10295, upload-time = "2026-09-03T02:54:43.795Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/72/99/8e10f81806db750ee6acf11c980207c45feddd36066cb708328e5c5aceea/iso3166-3.0.0-py3-none-any.whl", hash = "sha256:990b1e6a433ffd89d67da8ca16f40a2af107aba1660b255a38dbd36ad221090b", size = 8949, upload-time = "2026-09-03T02:54:42.854Z" },
+]
+
+[[package]]
 name = "iso4217"
 version = "1.15.20260101"
 source = { registry = "https://pypi.org/simple" }
@@ -2044,6 +2053,7 @@ dependencies = [
     { name = "dictdiffer" },
     { name = "html2text" },
     { name = "humanfriendly" },
+    { name = "iso3166" },
     { name = "iso4217" },
     { name = "jinja2" },
     { name = "lxml" },
@@ -2084,6 +2094,7 @@ requires-dist = [
     { name = "dictdiffer", specifier = ">=0.9.0" },
     { name = "html2text", specifier = ">=2025.4.15" },
     { name = "humanfriendly", specifier = ">=10.0" },
+    { name = "iso3166", specifier = ">=3.0.0" },
     { name = "iso4217", specifier = ">=1.14.20250512" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "lxml" },

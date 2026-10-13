@@ -35,6 +35,7 @@ dependencies = [
     "reedsolo==1.7.0",
     "python-stdnum>=2.2",
     "rapidfuzz>=3.14",
+    "iso3166>=3.0.0",
 ]
 
 [dependency-groups]
