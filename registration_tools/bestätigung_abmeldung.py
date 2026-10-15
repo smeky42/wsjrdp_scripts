@@ -143,6 +143,43 @@ def _deregistration_note(
         return ""
 
 
+def _rerun_reasons(person: wsjrdp2027.Person) -> list[str]:
+    """Why running for *person* may be a mistake: already deregistered, or no
+    contract in force that the deregistration would end."""
+    reasons = []
+    if person.status == "deregistered":
+        reasons.append("status is already 'deregistered'")
+    contract_status = person.contract_status or "none"
+    if contract_status == "ended":
+        ended_at = person.contract_ended_at
+        reasons.append(
+            "contract_status is already 'ended'"
+            + (f" (ended at {ended_at:%Y-%m-%d %H:%M})" if ended_at else "")
+        )
+    elif contract_status == "none":
+        reasons.append("contract_status is 'none' (no contract was ever confirmed)")
+    return reasons
+
+
+def _contract_change_line(mailing: wsjrdp2027.PreparedBatch) -> str:
+    """One log line on what the run does to the person's contract."""
+    row = mailing.df.iloc[0]
+    changes = row.get("person_changes") or {}
+    if "contract_status" not in changes:
+        return f"Contract: {row.get('contract_status') or 'none'} (unchanged)"
+    old, new = changes["contract_status"]
+    details = [
+        f"{col} {changes[col][1]:%Y-%m-%d %H:%M}"
+        for col in ("contract_confirmed_at", "contract_ended_at")
+        if col in changes and changes[col][1] is not None
+    ]
+    if not details and row.get("contract_confirmed_at") is not None:
+        details.append(f"confirmed at {row['contract_confirmed_at']:%Y-%m-%d %H:%M}")
+    return f"Contract: {old or 'none'} -> {new}" + (
+        f" ({', '.join(details)})" if details else ""
+    )
+
+
 def main(argv=None):
     with wsjrdp2027.WsjRdpContext(
         argument_parser=create_argument_parser(), argv=argv, __file__=__file__
@@ -152,6 +189,15 @@ def main(argv=None):
 
         # conn = ctx.hitobito_psycopg_connection()
         person = ctx.load_person_for_id(person_id)
+        if reasons := _rerun_reasons(person):
+            for reason in reasons:
+                _LOGGER.warning("%s: %s", person.id_and_name, reason)
+            if not ctx.console_confirm(
+                f"{person.id_and_name}: {'; '.join(reasons)}. Continue anyway?",
+                default=False,
+            ):
+                _LOGGER.info("Ending script: not confirmed")
+                raise SystemExit(0)
         ctx.out_dir = ctx.out_dir / person.id_and_name
         try:
             primary_group = person.primary_group
@@ -207,6 +253,7 @@ def main(argv=None):
             open_editor=ctx.parsed_args.open_editor,
             report_all_updates=True,
         )
+        _LOGGER.info(_contract_change_line(mailing))
 
         ctx.update_db_and_send_mailing(
             mailing,
