@@ -59,10 +59,39 @@ Written ONLY on INSERT, never overwritten on re-import: ``fin_account_id``
 report ENVELOPE columns (report_identification, report_*_sequence_number,
 report_page_number, report_creation_date_time), captured once as provenance.
 
+The payment links, planned before the approval and written after the upsert
+-- only where empty and unambiguous, never overwritten (a manual link
+survives), over the rows this run inserts and every stored row still open. They
+match on our own references only, never on bank transaction codes:
+
+- ``direct_debit_pre_notification_id``: a transaction whose end-to-end id is
+  the one debit's -- a return, or a debit's single collection (TxDtls);
+- ``direct_debit_payment_info_id`` / ``payment_initiation_id``: an entry
+  (Ntry) row whose ``PmtInfId`` is the one Sammler's -- its collective credit
+  -- names that Sammler and its order.
+
+Where a bank replaced our references (a SEPA file imported through banking
+software), the bank's are recorded beside ours in ``additional_info``
+(``bank_endtoend_id`` on the debit, ``bank_payment_information_identification``
+on the Sammler, ``bank_message_identification`` on the order); the link pass
+matches them as well.
+
+An export whose transaction carries no Refs element at all (a look-back
+export may leave them out) does not erase the stored references: the stored
+Refs stay -- in ``references``, ``tx_dtls``, ``ntry`` and the columns read
+from them (end-to-end id, mandate, the derived person) -- and the preview
+reports each such transaction. An empty or partial Refs element is taken as
+the file says.
+
+Before the approval the log shows every transaction to insert or change (date,
+amount, counterparty, purpose, end-to-end id) and every planned link, and warns
+about a return without its debit and a Sammler whose SEPA file went to the bank
+without its credit (the bank replaced the references, e.g. when a SEPA file
+went through banking software; link it by hand, see accounting_tools/one-shots).
+
 Never touched by this importer (manual / downstream): ``comment``,
-``additional_info``, ``category`` / ``sub_category``, the accounting links
-(``payment_initiation_id``, ``direct_debit_payment_info_id``, the reversal
-``*_id`` columns) and everything DATEV/booking-side (``datev_*``,
+``additional_info``, ``category`` / ``sub_category``, the reversal ``*_id``
+columns and everything DATEV/booking-side (``datev_*``,
 ``account_id``/``account_type``, ``offsetting_*``, ``cost_center_number``,
 ``sphere_number``). New rows get their database defaults there.
 
@@ -446,6 +475,314 @@ def _assert_immutable_unchanged(planned, existing: dict) -> None:
         )
 
 
+# --- the link pass (module docstring) ---------------------------------------
+
+# The stored transactions that may still get a link: no debit yet but an
+# end-to-end id, or no Sammler yet but a PmtInfId on an entry (Ntry) row.
+_LINKABLE_SQL = """
+SELECT camt_type, account_identification, account_servicer_reference, transaction_details_index,
+       endtoend_id, "references"->>'PmtInfId' AS pmt_inf_id, entry_or_details,
+       direct_debit_pre_notification_id IS NULL AS debit_open,
+       direct_debit_payment_info_id IS NULL AND payment_initiation_id IS NULL AS sammler_open
+FROM wsjrdp_camt_transactions
+WHERE deleted_at IS NULL AND replaced_by_id IS NULL
+  AND ((direct_debit_pre_notification_id IS NULL AND endtoend_id IS NOT NULL)
+    OR (direct_debit_payment_info_id IS NULL AND payment_initiation_id IS NULL
+        AND "references" ? 'PmtInfId' AND entry_or_details = 'entry'))
+"""
+
+# The debits by end-to-end id: ours, or -- where the bank replaced it -- the
+# bank's recorded in additional_info (bank_endtoend_id).
+_DEBITS_BY_ENDTOEND_SQL = """
+SELECT ref, MIN(id), COUNT(*), MIN(subject_id), MIN(collection_date), MIN(amount_cents)
+FROM (
+  SELECT endtoend_id AS ref, id, subject_id, collection_date, amount_cents
+  FROM wsjrdp_direct_debit_pre_notifications WHERE endtoend_id = ANY(%(refs)s)
+  UNION
+  SELECT additional_info->>'bank_endtoend_id', id, subject_id, collection_date, amount_cents
+  FROM wsjrdp_direct_debit_pre_notifications WHERE additional_info->>'bank_endtoend_id' = ANY(%(refs)s)
+) debits
+GROUP BY ref
+"""
+
+# The Sammler by PmtInfId: ours, or the bank's recorded in additional_info
+# (bank_payment_information_identification).
+_SAMMLER_BY_PMT_INF_ID_SQL = """
+SELECT ref, MIN(id), COUNT(*), MIN(payment_initiation_id), MIN(requested_collection_date), MIN(control_sum_cents)
+FROM (
+  SELECT payment_information_identification AS ref, id, payment_initiation_id, requested_collection_date,
+         control_sum_cents
+  FROM wsjrdp_direct_debit_payment_infos WHERE payment_information_identification = ANY(%(refs)s)
+  UNION
+  SELECT additional_info->>'bank_payment_information_identification', id, payment_initiation_id,
+         requested_collection_date, control_sum_cents
+  FROM wsjrdp_direct_debit_payment_infos
+  WHERE additional_info->>'bank_payment_information_identification' = ANY(%(refs)s)
+) sammler
+GROUP BY ref
+"""
+
+# The Sammler whose SEPA file went to the bank but which no bank transaction
+# names as their credit.
+_SAMMLER_WITHOUT_CREDIT_SQL = """
+SELECT i.id, i.payment_initiation_id, i.requested_collection_date
+FROM wsjrdp_direct_debit_payment_infos i
+JOIN wsjrdp_payment_initiations o ON o.id = i.payment_initiation_id
+WHERE o.status = 'xml_generated'
+  AND NOT EXISTS (SELECT 1 FROM wsjrdp_camt_transactions c
+                  WHERE c.direct_debit_payment_info_id = i.id AND c.deleted_at IS NULL
+                    AND c.replaced_by_id IS NULL)
+ORDER BY i.id
+"""
+
+
+class _Links(_typing.NamedTuple):
+    """The planned links, each a list of (key, target, display) tuples."""
+
+    debits: list
+    sammler: list
+
+
+# The columns that come from a transaction's TxDtls/Refs: the references
+# themselves, the end-to-end id and mandate read from them, and the person the
+# mandate derives.
+_FROM_REFS = (
+    "references",
+    "endtoend_id",
+    "mandate_id",
+    "imported_subject_id",
+    "imported_subject_type",
+    "imported_subject_link_meta",
+)
+
+
+def _keep_stored_refs(value_rows: dict, existing: dict) -> list[tuple]:
+    """Keeps what an export cannot tell: where a transaction's TxDtls carries
+    no Refs element at all (a look-back export may leave them out) but the
+    stored row has them, the incoming row takes the stored Refs -- in
+    ``tx_dtls``, in ``ntry`` (NtryDtls/TxDtls) -- and the columns read from
+    them (_FROM_REFS). An empty or partial Refs element is the file's word and
+    is taken as it is. Returns the keys kept, for the preview."""
+    kept = []
+    for key, row in value_rows.items():
+        stored = existing.get(key)
+        tx_dtls = row["tx_dtls"]
+        if stored is None or (tx_dtls is not None and "Refs" in tx_dtls):
+            continue
+        stored_refs = (stored.get("tx_dtls") or {}).get("Refs")
+        if stored_refs is None:
+            continue
+        row["tx_dtls"] = {**(tx_dtls or {}), "Refs": stored_refs}
+        ntry_tx_dtls = ((row["ntry"] or {}).get("NtryDtls") or {}).get("TxDtls")
+        if isinstance(ntry_tx_dtls, dict) and "Refs" not in ntry_tx_dtls:
+            ntry_tx_dtls["Refs"] = stored_refs
+        for column in _FROM_REFS:
+            row[column] = stored.get(column)
+        kept.append(key)
+    return kept
+
+
+def _plan_links(conn, value_rows: dict, insert_keys: set) -> _Links:
+    """The links this run writes: for every stored transaction still open
+    (_LINKABLE_SQL) and every transaction it inserts, the one debit with its
+    end-to-end id and -- for an entry row -- the one Sammler with its PmtInfId.
+    Matched on our own references only, never on bank transaction codes."""
+    candidates: dict[tuple, dict] = {}
+    with conn.cursor() as cur:
+        cur.execute(_LINKABLE_SQL)
+        for row in cur.fetchall():
+            key = tuple(row[:4])
+            candidates[key] = {
+                "endtoend_id": row[4] if row[7] else None,
+                "pmt_inf_id": row[5] if (row[8] and row[6] == "entry") else None,
+            }
+    for key in insert_keys:
+        row = value_rows[key]
+        candidates[key] = {
+            "endtoend_id": row["endtoend_id"],
+            "pmt_inf_id": (row["references"] or {}).get("PmtInfId")
+            if row["entry_or_details"] == "entry"
+            else None,
+        }
+
+    endtoend_ids = sorted(
+        {c["endtoend_id"] for c in candidates.values() if c["endtoend_id"]}
+    )
+    pmt_inf_ids = sorted(
+        {c["pmt_inf_id"] for c in candidates.values() if c["pmt_inf_id"]}
+    )
+    with conn.cursor() as cur:
+        cur.execute(_DEBITS_BY_ENDTOEND_SQL, {"refs": endtoend_ids})
+        debits = {r[0]: r[1:] for r in cur.fetchall() if r[2] == 1}
+        cur.execute(_SAMMLER_BY_PMT_INF_ID_SQL, {"refs": pmt_inf_ids})
+        sammler = {r[0]: r[1:] for r in cur.fetchall() if r[2] == 1}
+
+    links = _Links(debits=[], sammler=[])
+    for key in sorted(candidates):
+        c = candidates[key]
+        if (debit := debits.get(c["endtoend_id"])) is not None:
+            links.debits.append((key, debit[0], debit))
+        if (info := sammler.get(c["pmt_inf_id"])) is not None:
+            links.sammler.append((key, (info[0], info[2]), info))
+    return links
+
+
+def _key_label(key: tuple) -> str:
+    return f"{key[1]}/{key[2]}" + (f"#{key[3]}" if key[3] else "")
+
+
+def _tx_line(row: dict) -> str:
+    """One transaction for the preview: dates, signed amount, counterparty,
+    purpose and end-to-end id."""
+    cents = int(_decimal.Decimal(row["signed_base_amount"]) * 100)
+    partner = row["dbtr_name"] if cents >= 0 else row["cdtr_name"]
+    purpose = (row["description"] or "").replace("\n", " ")
+    if len(purpose) > 70:
+        purpose = purpose[:69] + "…"
+    parts = [
+        str(row["booking_date"] or row["value_date"]),
+        f"{wsjrdp2027.format_cents_as_eur_de(cents):>14}",
+        partner or "–",
+        purpose or "–",
+    ]
+    if row["endtoend_id"]:
+        parts.append(f"E2E {row['endtoend_id']}")
+    if row["return_reason"]:
+        parts.append(f"Rückgabe {row['return_reason']}")
+    return " | ".join(parts)
+
+
+def _log_preview(
+    planned, value_rows: dict, substantive_keys: set, links: _Links
+) -> None:
+    """What an approval writes, transaction by transaction -- logged BEFORE the
+    approval: the rows to insert and to change, and the links."""
+    for label, rows in (("INSERT", planned.inserts), ("UPDATE", planned.updates)):
+        for r in rows:
+            key = _key_of(r)
+            if label == "UPDATE" and key not in substantive_keys:
+                continue
+            _LOGGER.info(
+                "  %s %s: %s", label, _key_label(key), _tx_line(value_rows.get(key, r))
+            )
+    for key, debit_id, (_, _, subject_id, collection_date, cents) in links.debits:
+        _LOGGER.info(
+            "  LINK %s -> Einzug #%s (Person %s, fällig %s, %s)",
+            _key_label(key),
+            debit_id,
+            subject_id,
+            collection_date,
+            wsjrdp2027.format_cents_as_eur_de(cents),
+        )
+    for key, (info_id, order_id), (_, _, _, collection_date, cents) in links.sammler:
+        _LOGGER.info(
+            "  LINK %s -> Sammler #%s / Auftrag #%s (fällig %s, Kontrollsumme %s)",
+            _key_label(key),
+            info_id,
+            order_id,
+            collection_date,
+            wsjrdp2027.format_cents_as_eur_de(cents),
+        )
+
+
+def _apply_links(conn, links: _Links, *, now, stamp_updated_at) -> None:
+    """Writes the planned links by key; each UPDATE re-checks that the link is
+    still empty, so a link set meanwhile is kept (a short rowcount is logged)."""
+    updated_at = ", updated_at = %(now)s" if stamp_updated_at else ""
+    key_match = (
+        "c.camt_type = v.camt_type AND c.account_identification = v.account_identification"
+        " AND c.account_servicer_reference = v.account_servicer_reference"
+        " AND c.transaction_details_index = v.transaction_details_index"
+    )
+    key_columns = "camt_type, account_identification, account_servicer_reference, transaction_details_index"
+
+    def key_params(rows) -> dict:
+        return {
+            "now": now,
+            "types": [k[0] for k, _, _ in rows],
+            "accounts": [k[1] for k, _, _ in rows],
+            "refs": [k[2] for k, _, _ in rows],
+            "indexes": [k[3] for k, _, _ in rows],
+        }
+
+    keys_sql = (
+        "%(types)s::text[], %(accounts)s::text[], %(refs)s::text[], %(indexes)s::int[]"
+    )
+    with conn.cursor() as cur:
+        if links.debits:
+            cur.execute(
+                "UPDATE wsjrdp_camt_transactions c"
+                f" SET direct_debit_pre_notification_id = v.debit_id{updated_at}"
+                f" FROM unnest({keys_sql}, %(debit_ids)s::bigint[]) AS v({key_columns}, debit_id)"
+                f" WHERE {key_match} AND c.direct_debit_pre_notification_id IS NULL",
+                {
+                    **key_params(links.debits),
+                    "debit_ids": [t for _, t, _ in links.debits],
+                },
+            )
+            if cur.rowcount != len(links.debits):
+                _LOGGER.warning(
+                    "Debit links: %d planned, %d written.",
+                    len(links.debits),
+                    cur.rowcount,
+                )
+        if links.sammler:
+            cur.execute(
+                "UPDATE wsjrdp_camt_transactions c"
+                " SET direct_debit_payment_info_id = v.info_id,"
+                f" payment_initiation_id = v.order_id{updated_at}"
+                f" FROM unnest({keys_sql}, %(info_ids)s::bigint[], %(order_ids)s::bigint[])"
+                f" AS v({key_columns}, info_id, order_id)"
+                f" WHERE {key_match} AND c.direct_debit_payment_info_id IS NULL"
+                " AND c.payment_initiation_id IS NULL",
+                {
+                    **key_params(links.sammler),
+                    "info_ids": [t[0] for _, t, _ in links.sammler],
+                    "order_ids": [t[1] for _, t, _ in links.sammler],
+                },
+            )
+            if cur.rowcount != len(links.sammler):
+                _LOGGER.warning(
+                    "Sammler links: %d planned, %d written.",
+                    len(links.sammler),
+                    cur.rowcount,
+                )
+
+
+def _log_unlinked(conn, value_rows: dict, insert_keys: set, links: _Links) -> None:
+    """Warns about what stays without a link: returns without their debit,
+    and Sammler whose SEPA file went to the bank without their credit (the
+    planned links counted as written)."""
+    linked = {key for key, _, _ in links.debits}
+    for key in sorted(insert_keys):
+        row = value_rows[key]
+        if row["return_reason"] and key not in linked:
+            _LOGGER.warning(
+                "Return without its debit: %s: %s", _key_label(key), _tx_line(row)
+            )
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT camt_type, account_identification, account_servicer_reference, transaction_details_index"
+            " FROM wsjrdp_camt_transactions WHERE return_reason IS NOT NULL"
+            " AND direct_debit_pre_notification_id IS NULL AND deleted_at IS NULL AND replaced_by_id IS NULL"
+        )
+        for row in cur.fetchall():
+            if tuple(row) not in linked:
+                _LOGGER.warning(
+                    "Stored return without its debit: %s", _key_label(tuple(row))
+                )
+        cur.execute(_SAMMLER_WITHOUT_CREDIT_SQL)
+        planned_infos = {target[0] for _, target, _ in links.sammler}
+        for info_id, order_id, collection_date in cur.fetchall():
+            if info_id not in planned_infos:
+                _LOGGER.warning(
+                    "Sammler #%s (Auftrag #%s, fällig %s) without the bank's credit.",
+                    info_id,
+                    order_id,
+                    collection_date,
+                )
+
+
 def create_argument_parser():
     import argparse
 
@@ -556,19 +893,29 @@ def main(argv=None):
             )
         creatable = [a for a in missing if a in known_bank]
 
-        builder = SingleTableUpsertPlanBuilder(
-            _TABLE_NAME,
-            list(_KEY),
-            list(value_rows.values()),
-            time_zone=ctx.hitobito_time_zone,
-        )
-        # fin_account_id and message_creation_date_time are not value columns:
-        # load them read-only for the fin-account stability guard resp. the
-        # recency guard (the export that produced a row's current values).
-        builder.load_existing(
-            ro_conn,
-            read_only_columns=["fin_account_id", "message_creation_date_time"],
-        )
+        def load_builder():
+            builder = SingleTableUpsertPlanBuilder(
+                _TABLE_NAME,
+                list(_KEY),
+                list(value_rows.values()),
+                time_zone=ctx.hitobito_time_zone,
+            )
+            # fin_account_id and message_creation_date_time are not value
+            # columns: load them read-only for the fin-account stability guard
+            # resp. the recency guard (the export that produced a row's
+            # current values).
+            builder.load_existing(
+                ro_conn,
+                read_only_columns=["fin_account_id", "message_creation_date_time"],
+            )
+            return builder
+
+        builder = load_builder()
+        # An export without a Refs element keeps the stored references (the
+        # builder holds copies of the value rows, so it is built again).
+        kept_refs_keys = _keep_stored_refs(value_rows, builder.existing)
+        if kept_refs_keys:
+            builder = load_builder()
         # imported_subject_link_meta is a full-state jsonb (like the snapshots):
         # the incoming dict IS the target, so an unlinked row's {} clears a
         # stale meta rather than merging into it.
@@ -628,7 +975,32 @@ def main(argv=None):
                 "Will create %d new fin_account(s): %s", len(creatable), creatable
             )
 
-        if not planned.inserts and not planned.updates and not creatable:
+        # The link pass, planned before anything is written -- over the stored
+        # rows still open and the rows this run inserts, by key.
+        insert_keys = {_key_of(r) for r in planned.inserts}
+        links = _plan_links(ro_conn, value_rows, insert_keys)
+        _LOGGER.info(
+            "Planned links: %d to a debit (returns, single collections), %d to a "
+            "Sammler (collective credits).",
+            len(links.debits),
+            len(links.sammler),
+        )
+        _log_preview(planned, value_rows, substantive_keys, links)
+        for key in kept_refs_keys:
+            _LOGGER.warning(
+                "  KEEP Refs %s: the export carries no Refs element, the stored "
+                "references (end-to-end id, mandate, MsgId/PmtInfId) stay.",
+                _key_label(key),
+            )
+        _log_unlinked(ro_conn, value_rows, insert_keys, links)
+
+        if (
+            not planned.inserts
+            and not planned.updates
+            and not creatable
+            and not links.debits
+            and not links.sammler
+        ):
             _LOGGER.info(
                 "nothing to write (%d untouched).", len(planned.untouched_keys)
             )
@@ -637,7 +1009,8 @@ def main(argv=None):
             _LOGGER.info("[dry-run] Not applying the plan.")
             return
 
-        # The plan summary above shows exactly what this approval applies.
+        # The preview above shows exactly what this approval applies: every
+        # transaction written and every link.
         ctx.require_approval_to_run_in_prod()
         rw_conn = ctx.hitobito_psycopg_connection(read_only=False)
 
@@ -695,6 +1068,13 @@ def main(argv=None):
             len(acct_only_keys),
             len(planned.untouched_keys),
             recency_blocked,
+        )
+
+        _apply_links(rw_conn, links, now=now, stamp_updated_at=not no_updated_at)
+        _LOGGER.info(
+            "Payment links written: %d to a debit, %d to a Sammler.",
+            len(links.debits),
+            len(links.sammler),
         )
         if ctx.parsed_args.rollback_for_testing:
             _LOGGER.warning(
