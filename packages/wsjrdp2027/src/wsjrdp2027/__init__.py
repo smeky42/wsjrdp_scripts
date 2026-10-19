@@ -16,6 +16,10 @@ from ._contract import (
     check_contract_consistency as check_contract_consistency,
     load_contract_findings as load_contract_findings,
 )
+from ._log_entry import (
+    LogEntry as LogEntry,
+    insert_log_entries as insert_log_entries,
+)
 from ._mail_client import MailClient as MailClient
 from ._payment import (
     DB_PEOPLE_ALL_SEPA_STATUS as DB_PEOPLE_ALL_SEPA_STATUS,
@@ -203,6 +207,7 @@ __all__ = [
     "DirectDebitPreNotification",
     "Group",
     "KeycloakClient",
+    "LogEntry",
     "MailClient",
     "MailcowClient",
     "PainMessage",
@@ -250,6 +255,7 @@ __all__ = [
     "get_typst_font_paths",
     "hitobito_id_from_sepa_mandate_id",
     "insert_direct_debit_pre_notification_from_row",
+    "insert_log_entries",
     "installments_cents_from_plan",
     "is_valid_payment_code",
     "is_valid_rs_codeword",
