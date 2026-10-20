@@ -427,17 +427,17 @@ def _confirm_person(
                 batch_config.updates["new_unit_code"] = unit_code
         _LOGGER.info("Query:\n%s", batch_config.query)
 
-        print(flush=True)
-        _LOGGER.info(person.role_id_name)
+        _LOGGER.debug(person.role_id_name)
         if batch_config.updates:
-            _LOGGER.info("Updates:\n%s", pprint.pformat(batch_config.updates))
+            _LOGGER.debug("Updates Input (w/o derived updates):\n%s", pprint.pformat(batch_config.updates))
         else:
-            _LOGGER.info("Updates: %r", batch_config.updates)
-        print(flush=True)
+            _LOGGER.debug("Updates Input (w/o derived updates): %r", batch_config.updates)
 
+        print(flush=True)
         prepared_batch = ctx.load_people_and_prepare_batch(
-            batch_config, log_resulting_data_frame=False
+            batch_config, log_resulting_data_frame=False, report_all_updates=True
         )
+        print(flush=True)
         ctx.update_db_and_send_mailing(prepared_batch, zip_eml=False)
 
 

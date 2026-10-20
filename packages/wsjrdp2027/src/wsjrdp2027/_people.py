@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections.abc as _collections_abc
+import dataclasses as _dataclasses
 import datetime as _datetime
 import decimal as _decimal
 import logging as _logging
@@ -1146,11 +1147,18 @@ def update_postgres_db_for_dataframe(
     now: _datetime.datetime | _datetime.date | str | float | None = None,
     logger: _logging.Logger | _logging.LoggerAdapter = _LOGGER,
     report_all_updates: bool | None = None,
+    person_updates_logged: bool = False,
     ctx=None,
 ) -> None:
+    """Writes the changes of *df* (:func:`update_dataframe_for_updates`).
+
+    With *person_updates_logged* (the changes were logged before, see
+    :meth:`PreparedBatch.log_person_updates`) the log shows only the
+    progress per person, the changes go to DEBUG."""
     import psycopg as _psycopg
 
     from . import _util
+    from ._batch import _person_updates_for_display
 
     if dry_run is None:
         dry_run = False
@@ -1183,8 +1191,9 @@ def update_postgres_db_for_dataframe(
             id = row["id"]
             id_and_name = row.get("id_and_name", str(id))
             db_changes = row["db_changes"]
-            person_changes = row["person_changes"]
-            summary = f"{i}/{df_len} ({pcnt:.1f}) {id_and_name}: db_changes={db_changes} person_changes={person_changes}"
+            progress = f"{i}/{df_len} ({pcnt:.1f}) {id_and_name}"
+            updates = _person_updates_for_display(row, today=now.date())
+            summary = f"{progress}: db_changes={db_changes} updates={updates}"
             logger.info(summary)
             if not db_changes:
                 skipped_ids.add(id)
@@ -1291,6 +1300,95 @@ def _update_person_from_row(
     _pg.pg_update_person(cursor, id=row["id"], updates=person_updates)
 
 
+@_dataclasses.dataclass(frozen=True, kw_only=True)
+class RoleChange:
+    """The change of the roles in the primary group that an update of a
+    person writes (:func:`_update_roles`): every role of *old_roles* ends
+    yesterday -- one that would end before it starts is deleted --, and a
+    role of each of *new_role_types* starts today in *new_group_id*."""
+
+    old_group_id: int
+    new_group_id: int
+    old_roles: list[dict]
+    new_role_types: list[str]
+    # Why the change cannot be written; None if it can.
+    error: str | None = None
+
+    def for_display(self, *, today: _datetime.date | None = None) -> dict:
+        """The change as the person updates log shows it (_batch).
+
+        >>> chg = RoleChange(
+        ...     old_group_id=46,
+        ...     new_group_id=47,
+        ...     old_roles=[
+        ...         {"id": 1, "type": "Group::Unit::Member", "group_id": 46,
+        ...          "start_on": _datetime.date(2026, 1, 1)},
+        ...         {"id": 2, "type": "Group::Unit::Member", "group_id": 46,
+        ...          "start_on": _datetime.date(2026, 10, 20)},
+        ...     ],
+        ...     new_role_types=["Group::Unit::Member"],
+        ... )
+        >>> chg.for_display(today=_datetime.date(2026, 10, 20))
+        {'create': ['Group::Unit::Member in group 47'], 'delete': ['Group::Unit::Member #2 in group 46'], 'end': ['Group::Unit::Member #1 in group 46']}
+        """
+        yesterday = today - _datetime.timedelta(days=1) if today else None
+        ended: dict[str, list[str]] = {}
+        for role in self.old_roles:
+            start_on = _util.to_date_or_none(role.get("start_on"))
+            deleted = (
+                yesterday is not None and start_on is not None and yesterday <= start_on
+            )
+            ended.setdefault("delete" if deleted else "end", []).append(
+                f"{role.get('type')} #{role.get('id')} in group {role.get('group_id')}"
+            )
+        display: dict[str, list[str] | str] = dict(ended)
+        display["create"] = [
+            f"{role_type} in group {self.new_group_id}"
+            for role_type in self.new_role_types
+        ]
+        if self.error:
+            display["error"] = self.error
+        return dict(sorted(display.items()))
+
+
+def role_change_for_row(
+    row: _pandas.Series | _collections_abc.Mapping[str, _typing.Any],
+) -> RoleChange | None:
+    """The change of the roles in the primary group the update of *row*
+    writes, None if it changes neither the primary group nor the role
+    types of the primary group (see :class:`RoleChange`)."""
+    person_changes = row["person_changes"]
+    if not {"primary_group_id", "primary_group_role_types"} & set(person_changes):
+        return None
+    primary_group_id = row["primary_group_id"]
+    role_types = row["primary_group_role_types"]
+
+    if "new_primary_group_id" in row and "primary_group_id" in person_changes:
+        new_primary_group_id = row["new_primary_group_id"]
+        new_role_types = row.get("new_primary_group_role_types") or role_types
+    elif (
+        "new_primary_group_role_types" in row
+        and "primary_group_role_types" in person_changes
+    ):
+        new_primary_group_id = primary_group_id
+        new_role_types = row["new_primary_group_role_types"]
+    else:
+        return None
+
+    error = None
+    if new_primary_group_id != primary_group_id and len(new_role_types) != len(
+        role_types
+    ):
+        error = "Cannot move person to different primary group while changing number of role types"
+    return RoleChange(
+        old_group_id=primary_group_id,
+        new_group_id=new_primary_group_id,
+        old_roles=list(row["primary_group_roles"]),
+        new_role_types=list(new_role_types),
+        error=error,
+    )
+
+
 def _update_roles(
     cursor: _psycopg.Cursor,
     /,
@@ -1304,33 +1402,25 @@ def _update_roles(
 
     today = now.date()
     yesterday = today - _datetime.timedelta(days=1)
-    person_changes = row["person_changes"]
 
-    primary_group_id = row["primary_group_id"]
-    roles = row["primary_group_roles"]
-    id2role = {role["id"]: role for role in roles}
-    role_types = row["primary_group_role_types"]
-
-    if "new_primary_group_id" in row.index and "primary_group_id" in person_changes:
-        new_primary_group_id = row["new_primary_group_id"]
-        new_role_types = row.get("new_primary_group_role_types") or role_types
-    elif (
-        "new_primary_group_role_types" in row.index
-        and "primary_group_role_types" in person_changes
-    ):
-        new_primary_group_id = primary_group_id
-        new_role_types = row["new_primary_group_role_types"]
-    else:
+    role_change = role_change_for_row(row)
+    if role_change is None:
         logger.debug("No role change")
         return
+    primary_group_id = role_change.old_group_id
+    new_primary_group_id = role_change.new_group_id
+    roles = role_change.old_roles
+    id2role = {role["id"]: role for role in roles}
+    new_role_types = role_change.new_role_types
     logger.debug("  primary_group_id: %s -> %s", primary_group_id, new_primary_group_id)
-    logger.debug("  primary_group_role_types: %s -> %s", role_types, new_role_types)
-
-    if new_primary_group_id != primary_group_id:
-        if len(new_role_types) != len(role_types):
-            err_msg = "Cannot move person to different primary group while changing number of role types"
-            logger.error("  %s", err_msg)
-            raise RuntimeError(err_msg)
+    logger.debug(
+        "  primary_group_role_types: %s -> %s",
+        row["primary_group_role_types"],
+        new_role_types,
+    )
+    if role_change.error:
+        logger.error("  %s", role_change.error)
+        raise RuntimeError(role_change.error)
 
     roles_ids = [role["id"] for role in roles]
     updated_ids = _pg.pg_update_role_set_end_on_for_ids(
