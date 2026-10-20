@@ -97,6 +97,46 @@ class PreparedEmailMessage:
             return None
 
 
+def _person_updates_for_display(
+    row: _pandas.Series | _collections_abc.Mapping[str, _typing.Any],
+    *,
+    today: _datetime.date | None = None,
+) -> dict[str, _typing.Any]:
+    """The changes of one person (``row["person_changes"]``) as an update
+    reads them: ``tag_list`` as ``add_tags`` / ``remove_tags``, the note of
+    ``add_note``, the roles of the primary group that end, are deleted (only
+    known with *today*) and are created as ``roles``
+    (:meth:`RoleChange.for_display`), every other column as ``[old, new]``.
+
+    >>> _person_updates_for_display({
+    ...     "person_changes": {
+    ...         "status": ["reviewed", "confirmed"],
+    ...         "tag_list": [["A", "Warteliste"], ["A", "B"]],
+    ...     },
+    ...     "add_note": "Bestätigt",
+    ... })
+    {'add_note': 'Bestätigt', 'add_tags': ['B'], 'remove_tags': ['Warteliste'], 'status': ['reviewed', 'confirmed']}
+    >>> _person_updates_for_display({"person_changes": {}, "add_note": None})
+    {}
+    """
+    from . import _people
+
+    changes = dict(row.get("person_changes") or {})
+    updates: dict[str, _typing.Any] = {}
+    if changes and (role_change := _people.role_change_for_row(row)):
+        updates["roles"] = role_change.for_display(today=today)
+    if note := _util.nan_to_none(row.get("add_note")):
+        updates["add_note"] = note
+    if (tag_list := changes.pop("tag_list", None)) is not None:
+        old_tags, new_tags = (set(tags or ()) for tags in tag_list)
+        if added := sorted(new_tags - old_tags):
+            updates["add_tags"] = added
+        if removed := sorted(old_tags - new_tags):
+            updates["remove_tags"] = removed
+    updates.update(changes)
+    return dict(sorted(updates.items()))
+
+
 @_dataclasses.dataclass(kw_only=True)
 class PreparedBatch:
     name: str = "batch"
@@ -114,6 +154,7 @@ class PreparedBatch:
     skip_email: bool = False
     skip_db_updates: bool = False
     results: dict = _dataclasses.field(default_factory=dict)
+    person_updates_logged: bool = False
 
     def __post_init__(self) -> None:
         if self.now is None:
@@ -123,6 +164,38 @@ class PreparedBatch:
         for msg in self.messages:
             if (p := msg.person) is not None:
                 yield p
+
+    def log_person_updates(
+        self,
+        *,
+        logger: _logging.Logger | _logging.LoggerAdapter | None = None,
+        level: int = _logging.INFO,
+    ) -> None:
+        """Logs one block per person with every change the DB update will
+        write (see :func:`person_updates_for_display`), the derived ones
+        included."""
+        import pprint
+
+        logger = logger or _LOGGER
+        if "person_changes" not in self.df:
+            logger.log(level, "Updates: none")
+            return
+        for _, row in self.df.iterrows():
+            name = row.get("id_and_name", row["id"])
+            skip_db_updates = bool(_util.nan_to_none(row.get("skip_db_updates")))
+            skip_db_suffix = " [skip_db_updates]" if skip_db_updates else ""
+            updates = _person_updates_for_display(row, today=self.now.date())
+            if updates:
+                logger.log(
+                    level,
+                    "Updates for %s%s:\n%s",
+                    name,
+                    skip_db_suffix,
+                    pprint.pformat(updates),
+                )
+            else:
+                logger.log(level, "Updates for %s%s: none", name, skip_db_suffix)
+        self.person_updates_logged = True
 
     def _get_out_dir(self, out_dir: _pathlib.Path | str | None = None) -> _pathlib.Path:
         if out_dir:
@@ -871,7 +944,6 @@ class BatchConfig:
         open_editor: bool | None = None,
         report_all_updates: bool | None = None,
     ) -> PreparedBatch:
-        import pprint
         import time
 
         import pandas as _pandas
@@ -912,14 +984,6 @@ class BatchConfig:
         if len(people) > 1:
             _LOGGER.info("Prepare mailing...")
         tic = time.monotonic()
-        if report_all_updates:
-            _LOGGER.info("")
-            if self.updates:
-                _LOGGER.info("Updates:\n%s", pprint.pformat(self.updates))
-            else:
-                _LOGGER.info("Updates: %r", self.updates)
-            print(flush=True)
-
         messages = tuple(
             self._prepare_email_message_for_person(
                 p,
@@ -940,7 +1004,7 @@ class BatchConfig:
             )
         else:
             config_yaml = self.__to_yaml__().encode("utf-8")
-        return PreparedBatch(
+        prepared_batch = PreparedBatch(
             name=self.name,
             df=df,
             unfiltered_df=unfiltered_df,
@@ -956,6 +1020,9 @@ class BatchConfig:
             skip_email=skip_email,
             skip_db_updates=bool(_util.coalesce(skip_db_updates, False)),
         )
+        if report_all_updates:
+            prepared_batch.log_person_updates()
+        return prepared_batch
 
     def _prepare_email_message_for_person(
         self,

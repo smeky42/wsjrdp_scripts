@@ -1857,6 +1857,7 @@ class WsjRdpContext:
         skip_db_updates: bool | None = None,
         now: _datetime.datetime | _datetime.date | str | float | None = None,
         report_all_updates: bool | None = None,
+        person_updates_logged: bool = False,
     ) -> None:
         from . import _people
 
@@ -1877,6 +1878,7 @@ class WsjRdpContext:
                 ctx=self,
                 now=now,
                 report_all_updates=report_all_updates,
+                person_updates_logged=person_updates_logged,
             )
 
     def update_db_and_send_mailing(
@@ -1901,6 +1903,7 @@ class WsjRdpContext:
             dry_run=dry_run,
             skip_db_updates=prepared_batch.skip_db_updates,
             report_all_updates=report_all_updates,
+            person_updates_logged=prepared_batch.person_updates_logged,
         )
 
         if skip_email_reasons := prepared_batch.get_skip_email_reasons(dry_run=dry_run):
