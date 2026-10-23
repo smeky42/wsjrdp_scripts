@@ -22,7 +22,7 @@ _SELFDIR = _pathlib.Path(__file__).parent.resolve()
 _LOGGER = logging.getLogger(__name__)
 
 
-COLLECTION_DATE = datetime.date(2026, 5, 5)
+COLLECTION_DATE = datetime.date(2026, 11, 5)
 
 
 def _create_argument_parser():
@@ -243,7 +243,60 @@ def _report_df_unusual(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> None:
     ctx.require_approval_to_run_in_prod("Unusual payment amounts are OK?")
 
 
-def handle_df(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> pd.DataFrame:
+def _report_credit_transfer(
+    ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame, results: dict
+) -> None:
+    """Reports the people who pay by credit transfer: not collected, they
+    transfer themselves. Those with an amount open are listed one by one and
+    written to an xlsx; the ids and the open sum go into the results."""
+
+    def to_eur(cents: int) -> str:
+        return wsjrdp2027.format_cents_as_eur_de(cents, zero_cents=",--")
+
+    df_open = df[df["open_amount_cents"] > 0]
+    sum_cents = int(df["open_amount_cents"].sum())
+    results["credit_transfer_ids"] = sorted(int(id) for id in df["id"])
+    results["credit_transfer_open_amount_cents"] = sum_cents
+    _LOGGER.info("")
+    _LOGGER.info("==== Credit transfer payers (not collected)")
+    _LOGGER.info("  Number of credit transfer payers: %s", len(df))
+    _LOGGER.info("  ... with an amount open: %s", len(df_open))
+    if not df_open.empty:
+        _LOGGER.info(
+            "%4s%5s %20s |%11s |%11s |%11s |%11s | %s",
+            "role",
+            "id",
+            "short_full_name",
+            "paid",
+            "due",
+            "open",
+            "this month",
+            "reason",
+        )
+        for _, row in df_open.iterrows():
+            _LOGGER.info(
+                "%4s%5s %20s |%11s |%11s |%11s |%11s | %s",
+                getattr(row.get("payment_role"), "short_role_name", None) or "-",
+                row["id"],
+                str(row["short_full_name"])[:20],
+                to_eur(row["amount_paid_cents"]),
+                to_eur(row["amount_due_cents"]),
+                to_eur(row["open_amount_cents"]),
+                to_eur(row["amount_due_in_collection_date_month_cents"]),
+                row["payment_status_reason"],
+            )
+    _LOGGER.info(
+        "  Credit transfer payers: SUM(open_amount_cents) = %s",
+        wsjrdp2027.format_cents_as_eur_de(sum_cents),
+    )
+    xlsx_path = ctx.make_out_path("pre_notification_credit_transfer.xlsx")
+    wsjrdp2027.write_people_dataframe_to_xlsx(df, xlsx_path, log_level=logging.DEBUG)
+    _LOGGER.info("  wrote df_credit_transfer xlsx %s", xlsx_path)
+
+
+def handle_df(
+    ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame, results: dict
+) -> pd.DataFrame:
     import pandas as _pandas
 
     _LOGGER.info("")
@@ -261,6 +314,13 @@ def handle_df(ctx: wsjrdp2027.WsjRdpContext, df: pd.DataFrame) -> pd.DataFrame:
         _report_df(
             df_no_updates, title="Skipped payments", condition="skip_db_updates is True"
         )
+    # Credit transfer payers are never collected (whatever else their row
+    # says) and do not count as skipped payments below.
+    df_updates, df_credit_transfer = wsjrdp2027.split_off_credit_transfer_payers(
+        df_updates
+    )
+    if len(df_credit_transfer):
+        _report_credit_transfer(ctx, df_credit_transfer, results)
     df_ok = df_updates[df_updates["payment_status"] == "ok"].copy()
     df_not_ok = df_updates[df_updates["payment_status"] != "ok"].copy()
     if len(df_not_ok):
@@ -362,9 +422,10 @@ def main(argv=None):
         ctx, ctx.hitobito_psycopg_connection(read_only=True)
     )
 
+    df_results: dict = {}
     prepared_batch = ctx.load_people_and_prepare_batch(
         batch_config,
-        df_cb=lambda df: handle_df(ctx, df),
+        df_cb=lambda df: handle_df(ctx, df, df_results),
     )
     prepared_batch.write_data(zip_eml=ctx.parsed_args.zip_eml)
     df_ok = prepared_batch.df
@@ -386,6 +447,7 @@ def main(argv=None):
             skip_db_updates=prepared_batch.skip_db_updates,
         )
         prepared_batch.results.update(results)
+    prepared_batch.results.update(df_results)
 
     prepared_batch.write_results(json_indent=2)
     with ctx.mail_login(from_addr=prepared_batch.from_addr) as mail_client:
