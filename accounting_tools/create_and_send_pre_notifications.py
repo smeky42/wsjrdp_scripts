@@ -314,8 +314,6 @@ def handle_df(
         _report_df(
             df_no_updates, title="Skipped payments", condition="skip_db_updates is True"
         )
-    # Credit transfer payers are never collected (whatever else their row
-    # says) and do not count as skipped payments below.
     df_updates, df_credit_transfer = wsjrdp2027.split_off_credit_transfer_payers(
         df_updates
     )
