@@ -425,6 +425,45 @@ def report_contract_without_confirmed_status(
     return rows
 
 
+# The payment_status of a person who pays the installments by credit
+# transfer: nothing to collect from them, they transfer themselves.
+PAYMENT_STATUS_CREDIT_TRANSFER = "credit_transfer"
+
+
+def split_off_credit_transfer_payers(
+    df: _pandas.DataFrame,
+) -> tuple[_pandas.DataFrame, _pandas.DataFrame]:
+    """Splits the people who pay their installments by credit transfer
+    (``installments_payment_method``) off a payment dataframe: returns the
+    rest and them, theirs with ``payment_status`` ``credit_transfer`` (their
+    ``payment_status_reason`` kept). They are never collected, whatever else
+    their row says -- an IBAN missing, an amount open.
+
+    >>> import pandas
+    >>> df = pandas.DataFrame({
+    ...     "id": [1, 2],
+    ...     "installments_payment_method": ["direct_debit", "credit_transfer"],
+    ...     "payment_status": ["ok", "skipped"],
+    ...     "payment_status_reason": ["", "payment_method=credit_transfer, No IBAN"],
+    ... })
+    >>> rest, credit_transfer = split_off_credit_transfer_payers(df)
+    >>> list(rest["id"]), list(credit_transfer["id"])
+    ([1], [2])
+    >>> credit_transfer.iloc[0]["payment_status"]
+    'credit_transfer'
+    >>> credit_transfer.iloc[0]["payment_status_reason"]
+    'payment_method=credit_transfer, No IBAN'
+    """
+    from . import _people
+
+    is_credit_transfer = (
+        df["installments_payment_method"] == _people.PAYMENT_METHOD_CREDIT_TRANSFER
+    )
+    df_credit_transfer = df[is_credit_transfer].copy()
+    df_credit_transfer["payment_status"] = PAYMENT_STATUS_CREDIT_TRANSFER
+    return df[~is_credit_transfer], df_credit_transfer
+
+
 def to_int_or_none(obj: object) -> int | None:
     try:
         return int(obj)  # type: ignore
