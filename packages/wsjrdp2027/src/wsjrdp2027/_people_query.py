@@ -195,6 +195,12 @@ class PeopleWhere:
     exclude_pre_notification_status: (
         _collections_abc.Sequence[str | _types.NullOrNotType] | None
     ) = None
+    installments_payment_method: (
+        _collections_abc.Sequence[str | _types.NullOrNotType] | None
+    ) = None
+    exclude_installments_payment_method: (
+        _collections_abc.Sequence[str | _types.NullOrNotType] | None
+    ) = None
     id: _collections_abc.Sequence[int] | None = None
     exclude_id: _collections_abc.Sequence[int] | None = None
     primary_group: _collections_abc.Sequence[str | int] | None = None
@@ -234,6 +240,8 @@ class PeopleWhere:
         exclude_sepa_status: _StrOrNullIterable | None = None,
         pre_notification_status: _StrOrNullIterable | None = None,
         exclude_pre_notification_status: _StrOrNullIterable | None = None,
+        installments_payment_method: _StrOrNullIterable | None = None,
+        exclude_installments_payment_method: _StrOrNullIterable | None = None,
         id: _StrIntOrIterable | None = None,
         exclude_id: str | int | _collections_abc.Iterable[str | int] | None = None,
         primary_group_id: _StrIntOrIterable | None = None,
@@ -287,6 +295,12 @@ class PeopleWhere:
         self.pre_notification_status = _to_str_or_null_list(pre_notification_status)
         self.exclude_pre_notification_status = _to_str_or_null_list(
             exclude_pre_notification_status
+        )
+        self.installments_payment_method = _to_str_or_null_list(
+            installments_payment_method
+        )
+        self.exclude_installments_payment_method = _to_str_or_null_list(
+            exclude_installments_payment_method
         )
         self.id = _util.to_int_list_or_none(id)
         self.exclude_id = _util.to_int_list_or_none(exclude_id)
@@ -434,6 +448,7 @@ class PeopleWhere:
             "contract_status",
             "sepa_status",
             "pre_notification_status",
+            "installments_payment_method",
             "id",
             "primary_group",
             "unit_code",
@@ -553,10 +568,13 @@ class PeopleWhere:
             "status",
             "contract_status",
             "unit_code",
+            "installments_payment_method",
         ]:
             expr = f"{people_table}.{key}"
             if key == "sepa_status":
                 expr = f"COALESCE({expr}, 'ok')"
+            elif key == "installments_payment_method":
+                expr = f"COALESCE({people_table}.wsjrdp_installments_payment_method, 'direct_debit')"
             val = getattr(self, key, None)
             if val is not None:
                 where = combine_where(where, in_expr(expr, val))
