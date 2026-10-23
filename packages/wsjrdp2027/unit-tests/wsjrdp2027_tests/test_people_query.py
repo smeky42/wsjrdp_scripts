@@ -121,6 +121,24 @@ class Test_PeopleWhere__as_where_condition:
         where_str = PeopleWhere(exclude_sepa_status="ok").as_where_condition()
         assert where_str == "COALESCE(people.sepa_status, 'ok') <> 'ok'"
 
+    def test_installments_payment_method(self):
+        where_str = PeopleWhere(
+            installments_payment_method="direct_debit"
+        ).as_where_condition()
+        assert where_str == (
+            "COALESCE(people.wsjrdp_installments_payment_method, 'direct_debit')"
+            " = 'direct_debit'"
+        )
+
+    def test_exclude_installments_payment_method(self):
+        where_str = PeopleWhere(
+            exclude_installments_payment_method="credit_transfer"
+        ).as_where_condition()
+        assert where_str == (
+            "COALESCE(people.wsjrdp_installments_payment_method, 'direct_debit')"
+            " <> 'credit_transfer'"
+        )
+
     def test_pre_notification_status(self):
         where_str = PeopleWhere(
             pre_notification_status="pre_notified"
@@ -354,6 +372,19 @@ class Test_PeopleWhere__to_dict:
     def test_exclude_sepa_status(self):
         where_dict = PeopleWhere(exclude_sepa_status="ok").to_dict()
         assert where_dict == {"exclude_sepa_status": "ok"}
+
+    def test_installments_payment_method_round_trip(self):
+        where = PeopleWhere.from_dict(
+            {
+                "installments_payment_method": ["direct_debit"],
+                "exclude_installments_payment_method": "credit_transfer",
+            }
+        )
+        assert where.to_dict() == {
+            "installments_payment_method": "direct_debit",
+            "exclude_installments_payment_method": "credit_transfer",
+        }
+        assert PeopleWhere.from_dict(where.to_dict()) == where
 
     def test_pre_notification_status(self):
         where_dict = PeopleWhere(pre_notification_status="pre_notified").to_dict()
