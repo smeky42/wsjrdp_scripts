@@ -169,3 +169,20 @@ class Test_load_pre_notifications_for_people:
             10
         ]
         assert p3.get_open_pre_notifications() == []
+
+
+class Test_Person_sepa_mandate_date:
+    def test_from_additional_info(self):
+        p = Person(
+            additional_info={"sepa_mandate_date": "2026-10-20"},
+            print_at=_datetime.date(2025, 6, 1),
+        )
+        assert p.sepa_mandate_date == _datetime.date(2026, 10, 20)
+
+    def test_falls_back_to_print_at(self):
+        p = Person(additional_info={}, print_at=_datetime.date(2025, 6, 1))
+        assert p.sepa_mandate_date == _datetime.date(2025, 6, 1)
+
+    def test_none_without_additional_info_and_print_at(self):
+        assert Person(additional_info={}, print_at=None).sepa_mandate_date is None
+        assert Person().sepa_mandate_date is None
