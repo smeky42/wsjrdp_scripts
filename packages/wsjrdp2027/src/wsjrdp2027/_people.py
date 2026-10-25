@@ -429,6 +429,12 @@ def _row_to_sepa_mandat_id(row: _pandas.Series) -> str:
         return _util.sepa_mandate_id_from_hitobito_id(row["id"])
 
 
+def _row_to_sepa_mandate_date(row: _pandas.Series) -> _datetime.date | None:
+    return _util.sepa_mandate_date_from_additional_info_or_print_at(
+        row.get("additional_info"), row["print_at"]
+    )
+
+
 # The payment methods of an installment plan (Hitobito
 # Wsjrdp2027::ParticipationFee): collected by SEPA direct debit, or paid by
 # the person's own credit transfers -- never collected. A plan without one, and
@@ -650,7 +656,7 @@ def _enrich_people_dataframe(
 
     df["sepa_bank_name"] = df["sepa_iban"].map(_iban_to_bank_name)
     df["sepa_mandate_id"] = df.apply(_row_to_sepa_mandat_id, axis=1)
-    df["sepa_mandate_date"] = df["print_at"].map(lambda d: d if d else collection_date)
+    df["sepa_mandate_date"] = df.apply(_row_to_sepa_mandate_date, axis=1)  # ty: ignore
 
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
     df["payment_role"] = df.apply(_compute_payment_role, axis=1)  # ty: ignore

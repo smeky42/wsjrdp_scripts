@@ -1237,6 +1237,50 @@ def sepa_mandate_id_from_hitobito_id(hitobito_id: str | int) -> str:
     return f"wsjrdp2027{hitobito_id}"
 
 
+def sepa_mandate_date_from_additional_info_or_print_at(
+    additional_info: dict | None,
+    print_at: _datetime.date | None,
+    /,
+) -> _datetime.date | None:
+    """The date a person's SEPA mandate was signed: the ISO date that Hitobito
+    stores in ``additional_info["sepa_mandate_date"]`` for an updated mandate,
+    else the print of the registration (``print_at``), else None.
+
+    >>> import datetime
+    >>> print_at = datetime.date(2025, 6, 1)
+    >>> sepa_mandate_date_from_additional_info_or_print_at(
+    ...     {"sepa_mandate_date": "2026-10-20"}, print_at
+    ... )
+    datetime.date(2026, 10, 20)
+    >>> sepa_mandate_date_from_additional_info_or_print_at(
+    ...     {"sepa_mandate_date": "2026-10-20"}, None
+    ... )
+    datetime.date(2026, 10, 20)
+    >>> sepa_mandate_date_from_additional_info_or_print_at({}, print_at)
+    datetime.date(2025, 6, 1)
+    >>> sepa_mandate_date_from_additional_info_or_print_at(None, print_at)
+    datetime.date(2025, 6, 1)
+    >>> sepa_mandate_date_from_additional_info_or_print_at(
+    ...     {"sepa_mandate_date": "invalid"}, print_at
+    ... )
+    datetime.date(2025, 6, 1)
+    >>> sepa_mandate_date_from_additional_info_or_print_at({}, None) is None
+    True
+    >>> import pandas as pd
+    >>> sepa_mandate_date_from_additional_info_or_print_at({}, pd.NaT) is None
+    True
+    """
+    if sepa_mandate_date := (additional_info or {}).get("sepa_mandate_date"):
+        try:
+            return _datetime.date.fromisoformat(sepa_mandate_date)
+        except TypeError, ValueError:
+            _LOGGER.warning(
+                "Ignoring invalid sepa_mandate_date %r in additional_info",
+                sepa_mandate_date,
+            )
+    return nan_to_none(print_at)
+
+
 def hitobito_id_from_sepa_mandate_id(mandate_id: str | None) -> int | None:
     """Return Hitobito id from SEPA-mandate id.
 

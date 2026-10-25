@@ -467,6 +467,17 @@ class Person:
     def additional_info(self) -> dict[str, _typing.Any]:
         return self._data.get("additional_info", {})
 
+    @property
+    def sepa_mandate_date(self) -> _datetime.date | None:
+        """The date the SEPA mandate was signed:
+        ``additional_info["sepa_mandate_date"]``, else ``print_at``, else
+        None."""
+        from .. import _util
+
+        return _util.sepa_mandate_date_from_additional_info_or_print_at(
+            self.additional_info, self.get("print_at")
+        )
+
     def del_additional_info(self, key: str) -> None:
         self.set_additional_info(key, None)
 
