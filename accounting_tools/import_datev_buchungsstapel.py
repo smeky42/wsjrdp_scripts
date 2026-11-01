@@ -59,6 +59,34 @@ The import REFUSES to run (before touching the database) when
     without Basis-Umsatz): the accounting keeps all base figures in EUR and
     the generated amount columns rely on that.
 
+Bookings deleted in DATEV
+-------------------------
+DATEV may change and DELETE bookings of a Stapel until it is finalized
+(Festschreibung), and every export carries each Stapel in full. A stored
+booking therefore counts as deleted in DATEV when its Stapel is part of this
+run and its GUID appears in no file of the run; such bookings are DELETEd, so
+the table stays a mirror of DATEV. A booking moved into another Stapel of the
+run keeps its GUID and is re-assigned by the upsert, not deleted. A Stapel
+that is not part of the run is never touched, so a run over the 2026 export
+leaves the 2025 bookings alone.
+
+The deletions are part of the plan preview (dry run, rollback run, before the
+production approval); each deleted row is written to the run's log as JSON.
+The run REFUSES (before writing anything) when
+
+  * a booking to delete is still linked -- from accounting_entries,
+    wsjrdp_camt_transactions, moss_bookings or moss_transactions; the
+    foreign keys would silently null those links. --allow-unlinking-deleted
+    clears the links (and their link meta) and deletes anyway.
+  * a Stapel with bookings to delete comes from an OLDER export than the
+    stored one (header 'Erzeugt am' before the stored datev_created_at): the
+    file would "delete" bookings that were added later.
+
+--keep-deleted reports the deletions but keeps the bookings. A Stapel deleted
+in DATEV as a whole has no file in the export, so its bookings cannot be
+recognised; the run only lists stored Stapel of the same financial year(s)
+that it did not receive. --truncate reloads everything and is unaffected.
+
 A DTVF/EXTF file of ANOTHER format (Formatname != 'Buchungsstapel', e.g. the
 'Debitoren/Kreditoren' master data of import_personal_accounts.py) is SKIPPED
 with a warning naming its format and the importer that reads it, so one call
@@ -84,9 +112,12 @@ no exported information is silently dropped.
 
 Usage:
   ./accounting_tools/import_datev_buchungsstapel.py \
-      External_Data/DATEV_FY2026_Export_20260821/DTVF_Buchungsstapel_*.csv
+      External_Data/DATEV_Exports/DATEV_FY2026_Export_20260821/DTVF_Buchungsstapel_*.csv
   ... --dry-run              plan only, write nothing
   ... --rollback-for-testing apply, then ROLLBACK
+  ... --keep-deleted         report bookings DATEV no longer exports, keep them
+  ... --allow-unlinking-deleted
+                             delete them even when linked (clears the links)
   ... --no-updated-at        write no updated_at: a row that changes keeps the
                              timestamp it has (an inserted row still gets its
                              created_at), and the auto-linking leaves the
@@ -96,9 +127,11 @@ Usage:
 
 from __future__ import annotations
 
+import collections as _collections
 import csv as _csv
 import datetime as _datetime
 import decimal as _decimal
+import json as _json
 import logging as _logging
 import pathlib as _pathlib
 import re as _re
@@ -929,6 +962,234 @@ def _guids_of(rows: list[dict[str, object]]) -> list[_uuid.UUID]:
     return [_typing.cast("_uuid.UUID", row["buchungs_guid"]) for row in rows]
 
 
+# --- Bookings deleted in DATEV (see the module docstring) --------------------
+
+#: Every place a booking is linked from: (table, id column, link meta column).
+_BOOKING_LINKS: tuple[tuple[str, str, str | None], ...] = (
+    ("accounting_entries", "datev_booking_id", "datev_booking_link_meta"),
+    ("wsjrdp_camt_transactions", "datev_booking_id", None),
+    ("moss_bookings", "expense_datev_booking_id", "expense_datev_booking_link_meta"),
+    (
+        "moss_transactions",
+        "clearing_datev_booking_id",
+        "clearing_datev_booking_link_meta",
+    ),
+)
+
+
+class _DeletionPlan(_typing.NamedTuple):
+    """The stored bookings DATEV no longer exports, read before the approval."""
+
+    #: Preview columns of each booking to delete, ordered by id.
+    rows: list[dict[str, object]]
+    #: booking id -> the links pointing at it ("table #id").
+    links: dict[int, list[str]]
+    #: Stapel with deletions whose file is older than the stored export.
+    stale: list[str]
+
+
+_NO_DELETIONS = _DeletionPlan(rows=[], links={}, stale=[])
+
+
+def _deleted_in_datev(
+    stored: dict[str, dict[str, object]], run_guids: set[str]
+) -> list[dict[str, object]]:
+    """The bookings of ``stored`` (GUID -> row; only bookings of the Stapel in
+    this run) whose GUID appears in no file of the run. A GUID found in another
+    Stapel of the run is a move, not a deletion.
+
+    >>> stored = {"a": {"id": 1}, "b": {"id": 2}, "c": {"id": 3}}
+    >>> [row["id"] for row in _deleted_in_datev(stored, {"a", "c"})]
+    [2]
+    >>> _deleted_in_datev(stored, {"a", "b", "c", "x"})  # "b" may sit in another Stapel
+    []
+    >>> [row["id"] for row in _deleted_in_datev(stored, set())]
+    [1, 2, 3]
+    """
+    return [row for guid, row in stored.items() if guid not in run_guids]
+
+
+def _plan_deleted_bookings(conn, per_file) -> _DeletionPlan:
+    """Read (never write) the stored bookings of this run's Stapel that DATEV
+    no longer exports, the links pointing at them, and the Stapel whose file
+    is older than the stored export. A new Stapel has no stored bookings, so
+    the plan is complete before any batch is inserted."""
+    headers = [header for header, _rows in per_file]
+    stored_batches = {
+        tuple(row[2:]): (row[0], row[1])
+        for row in conn.execute(
+            f"SELECT id, datev_created_at, {', '.join(_BATCH_IDENTITY)}"
+            f" FROM {_BATCHES_TABLE}"
+        ).fetchall()
+    }
+    header_by_batch_id = {
+        stored_batches[_batch_identity(h)][0]: h
+        for h in headers
+        if _batch_identity(h) in stored_batches
+    }
+    if not header_by_batch_id:
+        return _NO_DELETIONS
+
+    cursor = conn.execute(
+        f"""
+        SELECT b.id, b.buchungs_guid, b.datev_booking_batch_id, bb.label AS batch,
+               b.booking_date, b.account_number, b.offsetting_account_number,
+               b.debit_credit, b.base_amount, b.base_currency,
+               b.original_posting_text
+          FROM {_BOOKINGS_TABLE} b
+          JOIN {_BATCHES_TABLE} bb ON bb.id = b.datev_booking_batch_id
+         WHERE b.datev_booking_batch_id = ANY(%s)
+         ORDER BY b.id
+        """,
+        (sorted(header_by_batch_id),),
+    )
+    names = [column.name for column in cursor.description]
+    stored = {
+        str(row[1]): dict(zip(names, row, strict=True)) for row in cursor.fetchall()
+    }
+    run_guids = {str(row["buchungs_guid"]) for _h, rows in per_file for row in rows}
+    rows = _deleted_in_datev(stored, run_guids)
+    if not rows:
+        return _NO_DELETIONS
+
+    ids = [row["id"] for row in rows]
+    links: dict[int, list[str]] = _collections.defaultdict(list)
+    for table, column, _meta in _BOOKING_LINKS:
+        for link_id, booking_id in conn.execute(
+            f"SELECT id, {column} FROM {table} WHERE {column} = ANY(%s) ORDER BY id",
+            (ids,),
+        ).fetchall():
+            links[booking_id].append(f"{table} #{link_id}")
+
+    stored_created_at = dict(stored_batches.values())
+    stale = []
+    for batch_id in sorted(
+        {_typing.cast("int", row["datev_booking_batch_id"]) for row in rows}
+    ):
+        header = header_by_batch_id[batch_id]
+        stored_at = stored_created_at[batch_id]
+        if (
+            header.datev_created_at
+            and stored_at
+            and header.datev_created_at < stored_at
+        ):
+            stale.append(
+                f"{header.label!r} ({_pathlib.Path(header.source_file).name}: "
+                f"exported {header.datev_created_at}, stored export {stored_at})"
+            )
+    return _DeletionPlan(rows=rows, links=dict(links), stale=stale)
+
+
+def _log_missing_stapel(conn, headers: list[_BatchHeader]) -> None:
+    """List stored Stapel of the run's financial year(s) that the run did not
+    receive -- a Stapel deleted in DATEV as a whole leaves no file to compare
+    with, so it is only reported, never deleted."""
+    years = sorted({h.fiscal_year_start for h in headers if h.fiscal_year_start})
+    run = {_batch_identity(h) for h in headers}
+    missing = [
+        row[0]
+        for row in conn.execute(
+            f"SELECT label, {', '.join(_BATCH_IDENTITY)} FROM {_BATCHES_TABLE}"
+            " WHERE financial_year_start = ANY(%s) ORDER BY period_from, id",
+            (years,),
+        ).fetchall()
+        if tuple(row[1:]) not in run
+    ]
+    if missing:
+        _LOGGER.warning(
+            "Stored Stapel of the same financial year(s) not in this run (kept; "
+            "a Stapel deleted in DATEV as a whole cannot be recognised): %s",
+            ", ".join(repr(label) for label in missing),
+        )
+
+
+def _log_deletion_plan(plan: _DeletionPlan, *, keep_deleted: bool) -> None:
+    """Show the deletions an approval would apply -- logged BEFORE the
+    production approval, next to the INSERT/UPDATE summary."""
+    if not plan.rows:
+        _LOGGER.info("Planned for %s: 0 DELETEs.", _BOOKINGS_TABLE)
+        return
+    _LOGGER.info(
+        "Planned for %s: %d DELETEs (bookings DATEV no longer exports)%s.",
+        _BOOKINGS_TABLE,
+        len(plan.rows),
+        " -- kept, --keep-deleted" if keep_deleted else "",
+    )
+    for row in plan.rows:
+        linked = plan.links.get(_typing.cast("int", row["id"]))
+        _LOGGER.info(
+            "  DELETE: id %s | %s | Stapel %r | %s | %s -> %s | %s %s %s | %s%s",
+            row["id"],
+            row["buchungs_guid"],
+            row["batch"],
+            row["booking_date"],
+            row["account_number"],
+            row["offsetting_account_number"],
+            row["debit_credit"],
+            row["base_amount"],
+            row["base_currency"],
+            row["original_posting_text"],
+            f" | linked: {', '.join(linked)}" if linked else "",
+        )
+
+
+def _require_deletable(plan: _DeletionPlan, *, allow_unlinking: bool) -> None:
+    """Refuse the run (before anything is written) when a deletion would rest
+    on an older export or silently drop a link."""
+    problems = [f"Stapel from an older export: {stapel}" for stapel in plan.stale]
+    if not allow_unlinking:
+        problems += [
+            f"booking id {booking_id} is linked: {', '.join(linked)}"
+            for booking_id, linked in sorted(plan.links.items())
+        ]
+    if problems:
+        for problem in problems:
+            _LOGGER.error("Deletion refused -- %s", problem)
+        _LOGGER.error(
+            "Import refused: %d problem(s) with bookings DATEV no longer exports. "
+            "Re-export the Stapel, resolve the links, or run with --keep-deleted%s.",
+            len(problems),
+            "" if allow_unlinking else " / --allow-unlinking-deleted",
+        )
+        raise SystemExit(1)
+
+
+def _delete_bookings(conn, plan: _DeletionPlan, *, allow_unlinking: bool) -> None:
+    """Apply the deletion plan inside the import transaction: clear the links
+    first when allowed, then DELETE and log every deleted row in full."""
+    ids = [_typing.cast("int", row["id"]) for row in plan.rows]
+    if allow_unlinking and plan.links:
+        for table, column, meta in _BOOKING_LINKS:
+            clear_meta = f", {meta} = '{{}}'::jsonb" if meta else ""
+            conn.execute(
+                f"UPDATE {table} SET {column} = NULL{clear_meta}"
+                f" WHERE {column} = ANY(%s)",
+                (ids,),
+            )
+        for booking_id, linked in sorted(plan.links.items()):
+            _LOGGER.warning(
+                "Unlinked booking id %s before deleting it: %s",
+                booking_id,
+                ", ".join(linked),
+            )
+    deleted = conn.execute(
+        f"DELETE FROM {_BOOKINGS_TABLE} b WHERE b.id = ANY(%s)"
+        " RETURNING b.id, to_jsonb(b)",
+        (ids,),
+    ).fetchall()
+    if sorted(row[0] for row in deleted) != sorted(ids):
+        raise RuntimeError(
+            f"deleted {len(deleted)} booking(s), planned {len(ids)}: the stored "
+            "state changed during the run"
+        )
+    for booking_id, row in sorted(deleted, key=lambda row: row[0]):
+        _LOGGER.info(
+            "Deleted booking id %s: %s",
+            booking_id,
+            _json.dumps(row, ensure_ascii=False, sort_keys=True, default=str),
+        )
+
+
 def create_argument_parser():
     import argparse
 
@@ -957,6 +1218,21 @@ def create_argument_parser():
         help="Do not write updated_at: rows that change -- bookings, batches "
         "and the accounting entries the auto-linking touches -- keep the "
         "timestamp they have (new rows still get created_at).",
+    )
+    deletion = p.add_mutually_exclusive_group()
+    deletion.add_argument(
+        "--keep-deleted",
+        action="store_true",
+        default=False,
+        help="Report the bookings of this run's Stapel that DATEV no longer "
+        "exports, but keep them.",
+    )
+    deletion.add_argument(
+        "--allow-unlinking-deleted",
+        action="store_true",
+        default=False,
+        help="Delete those bookings even when linked: clear the links from "
+        "accounting entries, camt and Moss rows (with their link meta) first.",
     )
     return p
 
@@ -1047,8 +1323,11 @@ def main(argv=None):
     truncate = ctx.parsed_args.truncate
     auto_link = not ctx.parsed_args.no_auto_link
     no_updated_at = ctx.parsed_args.no_updated_at
+    keep_deleted = ctx.parsed_args.keep_deleted
+    allow_unlinking = ctx.parsed_args.allow_unlinking_deleted
     with ctx:
         bookings_plan = None
+        deletion_plan = _NO_DELETIONS
         if truncate:
             # A clean reload wipes both tables first, so the plans can only be
             # computed AFTER the truncate (inside the write transaction):
@@ -1135,6 +1414,13 @@ def main(argv=None):
                     "their INSERT (needs the new batch ids).",
                     len(batches_plan.inserts),
                 )
+            deletion_plan = _plan_deleted_bookings(plan_conn, per_file)
+            _log_deletion_plan(deletion_plan, keep_deleted=keep_deleted)
+            _log_missing_stapel(plan_conn, headers)
+            if keep_deleted:
+                deletion_plan = _NO_DELETIONS
+            elif deletion_plan.rows:
+                _require_deletable(deletion_plan, allow_unlinking=allow_unlinking)
             if ctx.dry_run:
                 _LOGGER.info(
                     "Each batch's source_file follows the newest file among its "
@@ -1169,10 +1455,13 @@ def main(argv=None):
         inserted, updated = bookings_plan.apply(
             rw_conn, now=ctx.start_time, touch=not no_updated_at
         )
+        if deletion_plan.rows:
+            _delete_bookings(rw_conn, deletion_plan, allow_unlinking=allow_unlinking)
         _LOGGER.info(
-            "Bookings: %d inserted, %d updated, %d untouched (identical).",
+            "Bookings: %d inserted, %d updated, %d deleted, %d untouched (identical).",
             len(inserted),
             len(updated),
+            len(deletion_plan.rows),
             len(bookings_plan.untouched_keys),
         )
 

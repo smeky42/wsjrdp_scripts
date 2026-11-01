@@ -2,7 +2,7 @@
 """Fake DATEV Buchungsstapel (DTVF) files from Primanota Excel exports.
 
 SUPERSEDED: a REAL 2025 DTVF export exists now
-(External_Data/DATEV_FY2025_Export_*/), and the
+(External_Data/DATEV_Exports/DATEV_FY2025_Export_*/), and the
 re-import runbook uses it. This script is kept for its history and as a fixture
 generator; its output is archived under External_Data/Fake_DATEV_Export_2025/.
 Do not feed the generated files into the database alongside the real export --
