@@ -525,6 +525,7 @@ def main(argv=None):
             _report_pain_message(pain_message)
             _report_df(df, pain_message=pain_message)
             wsjrdp2027.report_direct_debit_amount_differences(df, logger=_LOGGER)
+            wsjrdp2027.report_direct_debit_mandate_differences(df, logger=_LOGGER)
 
             #
             # ==============================================================================
