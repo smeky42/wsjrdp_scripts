@@ -47,3 +47,50 @@ class Test_split_off_credit_transfer_payers:
         split_off_credit_transfer_payers(df)
 
         assert list(df["payment_status"]) == ["ok", "skipped", "skipped"]
+
+
+class Test_find_direct_debit_mandate_differences:
+    def _df(self, **overrides) -> pd.DataFrame:
+        import datetime
+
+        row = {
+            "id": 115,
+            "payment_status": "ok",
+            "pn_mandate_id": "wsjrdp2027115",
+            "calculated_sepa_mandate_id": "wsjrdp2027115",
+            "pn_dbtr_iban": "DE02120300000000202051",
+            "calculated_sepa_iban": "DE02120300000000202051",
+            "pn_mandate_date": datetime.date(2025, 8, 28),
+            "calculated_sepa_mandate_date": datetime.date(2025, 8, 28),
+        }
+        row.update(overrides)
+        return pd.DataFrame([row])
+
+    def _ids(self, df) -> list:
+        from wsjrdp2027._payment import find_direct_debit_mandate_differences
+
+        return list(find_direct_debit_mandate_differences(df)["id"])
+
+    def test_same_mandate(self):
+        assert self._ids(self._df()) == []
+
+    def test_iban_compared_without_spaces_and_case(self):
+        assert self._ids(self._df(pn_dbtr_iban="de02 1203 0000 0000 2020 51")) == []
+
+    def test_new_mandate_reference_of_the_person(self):
+        assert self._ids(self._df(calculated_sepa_mandate_id="wsjrdp2027115b")) == [115]
+
+    def test_new_iban_of_the_person(self):
+        assert self._ids(self._df(calculated_sepa_iban="DE89370400440532013000")) == [
+            115
+        ]
+
+    def test_skipped_debit_is_no_hint(self):
+        df = self._df(
+            payment_status="skipped", calculated_sepa_mandate_id="wsjrdp2027115b"
+        )
+        assert self._ids(df) == []
+
+    def test_without_pre_notification_data(self):
+        df = pd.DataFrame([{"id": 1, "payment_status": "ok"}])
+        assert self._ids(df) == []

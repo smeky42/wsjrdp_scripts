@@ -1142,6 +1142,111 @@ def report_direct_debit_amount_differences(
     print(flush=True)
 
 
+# The mandate fields a debit is sent with (its pre-notification) and the
+# person's current ones they are compared with.
+_MANDATE_DIFFERENCE_COLUMNS = {
+    "pn_mandate_id": "calculated_sepa_mandate_id",
+    "pn_dbtr_iban": "calculated_sepa_iban",
+    "pn_mandate_date": "calculated_sepa_mandate_date",
+}
+
+
+def _compact_iban(value) -> str | None:
+    from . import _util
+
+    value = _util.nan_to_none(value)
+    return str(value).replace(" ", "").upper() if value else None
+
+
+def find_direct_debit_mandate_differences(df: _pandas.DataFrame) -> _pandas.DataFrame:
+    """The debits to collect (``payment_status`` ok) whose pre-notification
+    names another mandate reference, IBAN or mandate date than the person
+    has now -- e.g. a new account saved without carrying its mandate into the
+    announced debit. The collection sends the pre-notification's values.
+    Empty for a dataframe without pre-notification data.
+
+    >>> import datetime, pandas
+    >>> df = pandas.DataFrame({
+    ...     "id": [1, 2],
+    ...     "payment_status": ["ok", "ok"],
+    ...     "pn_mandate_id": ["wsjrdp20271", "wsjrdp20272"],
+    ...     "calculated_sepa_mandate_id": ["wsjrdp20271", "wsjrdp20272b"],
+    ...     "pn_dbtr_iban": ["DE02 1203 0000 0000 2020 51", "DE89370400440532013000"],
+    ...     "calculated_sepa_iban": ["DE02120300000000202051", "DE89370400440532013000"],
+    ...     "pn_mandate_date": [datetime.date(2025, 7, 31)] * 2,
+    ...     "calculated_sepa_mandate_date": [datetime.date(2025, 7, 31)] * 2,
+    ... })
+    >>> list(find_direct_debit_mandate_differences(df)["id"])
+    [2]
+    """
+    if not set(_MANDATE_DIFFERENCE_COLUMNS) | set(
+        _MANDATE_DIFFERENCE_COLUMNS.values()
+    ) <= set(df.columns):
+        return df.iloc[0:0]
+
+    from . import _util
+
+    def differs(row) -> bool:
+        if row["payment_status"] != "ok":
+            return False
+        if _compact_iban(row["pn_dbtr_iban"]) != _compact_iban(
+            row["calculated_sepa_iban"]
+        ):
+            return True
+        return any(
+            _util.nan_to_none(row[pn_col]) != _util.nan_to_none(row[person_col])
+            for pn_col, person_col in _MANDATE_DIFFERENCE_COLUMNS.items()
+            if pn_col != "pn_dbtr_iban"
+        )
+
+    return df[df.apply(differs, axis=1)] if len(df) else df
+
+
+def report_direct_debit_mandate_differences(
+    df: _pandas.DataFrame,
+    *,
+    logger: _logging.Logger | _logging.LoggerAdapter | None = None,
+) -> _pandas.DataFrame:
+    """Logs, as a hint, the debits whose pre-notification differs from the
+    person's current mandate (find_direct_debit_mandate_differences); asks
+    nothing. Returns their rows."""
+    logger = logger or _LOGGER
+    needed = set(_MANDATE_DIFFERENCE_COLUMNS) | set(
+        _MANDATE_DIFFERENCE_COLUMNS.values()
+    )
+    if not needed <= set(df.columns):
+        logger.info(
+            "No pre-notification data in dataframe; skipping mandate difference report"
+        )
+        return df.iloc[0:0]
+    rows = find_direct_debit_mandate_differences(df)
+    if rows.empty:
+        logger.info("All mandates are the same between pre notification and person")
+        return rows
+    logger.warning(
+        "==== HINT: %s debits are sent with a mandate other than the person's current one"
+        " (the pre-notification's values are used):",
+        len(rows),
+    )
+    for _, row in rows.iterrows():
+        logger.warning(
+            "  %s %s %s\n"
+            "    mandate_id:   %s (used) / %s (person)\n"
+            "    mandate_date: %s (used) / %s (person)\n"
+            "    IBAN:         …%s (used) / …%s (person)",
+            _short_role_name_or_placeholder(row),
+            row["id"],
+            row.get("short_full_name", ""),
+            row["pn_mandate_id"],
+            row["calculated_sepa_mandate_id"],
+            row["pn_mandate_date"],
+            row["calculated_sepa_mandate_date"],
+            (_compact_iban(row["pn_dbtr_iban"]) or "")[-4:],
+            (_compact_iban(row["calculated_sepa_iban"]) or "")[-4:],
+        )
+    return rows
+
+
 def load_payment_dataframe(
     conn: _psycopg.Connection,
     *,
