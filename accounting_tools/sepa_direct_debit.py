@@ -89,6 +89,7 @@ def _upsert_payment_initiation_and_df_and_create_payment_infos(
         number_of_transactions=pain_message.number_of_transactions,
         control_sum_cents=pain_message.control_sum_cents,
         initiating_party_name=pain_message.initiating_party_name,
+        updated_at=datetime.datetime.now().astimezone(),
     )
     if pain_id is None:
         pain_id = wsjrdp2027.pg_insert_payment_initiation(conn, **pain_updates)  # type: ignore
@@ -119,6 +120,13 @@ def _upsert_payment_initiation_and_df_and_create_payment_infos(
         lambda id: endtoend_id2pmt_inf_id.get(id)
     )
     df["sepa_dd_direct_debit_payment_info_id"] = df["pn_direct_debit_payment_info_id"]
+    linked = int(df["pn_direct_debit_payment_info_id"].notna().sum())
+    _LOGGER.info("Linked %s debits to their payment infos", linked)
+    if linked != pain_message.number_of_transactions:
+        raise RuntimeError(
+            f"Linked {linked} debits to payment infos,"
+            f" but the PAIN message has {pain_message.number_of_transactions}"
+        )
 
 
 def _report_pain_message(pain_message):
@@ -527,11 +535,13 @@ def main(argv=None):
             #
 
             if args.accounting:
-                wsjrdp2027.write_payment_dataframe_to_db(
-                    conn, df, print_progress_message=ctx.print_progress_message
-                )
+                # Payment infos first: the accounting entries and the
+                # pre-notification updates carry their ids along.
                 _upsert_payment_initiation_and_df_and_create_payment_infos(
                     conn, pain_id=pain_id, df=df, pain_message=pain_message
+                )
+                wsjrdp2027.write_payment_dataframe_to_db(
+                    conn, df, print_progress_message=ctx.print_progress_message
                 )
             else:
                 _LOGGER.info("")

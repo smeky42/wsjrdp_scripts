@@ -735,8 +735,16 @@ def write_payment_dataframe_to_db(
                     )
                     continue
                 else:
+                    # The Sammler (payment info) the debit went into, in the
+                    # same UPDATE -- no extra round trip per debit.
+                    pn_updates: dict = {"payment_status": "xml_generated"}
+                    payment_info_id = _util.to_int_or_none(
+                        row.get("pn_direct_debit_payment_info_id")
+                    )
+                    if payment_info_id is not None:
+                        pn_updates["direct_debit_payment_info_id"] = payment_info_id
                     _pg.pg_update_direct_debit_pre_notification(
-                        cursor, id=pn_id, updates={"payment_status": "xml_generated"}
+                        cursor, id=pn_id, updates=pn_updates
                     )
 
             count += 1
