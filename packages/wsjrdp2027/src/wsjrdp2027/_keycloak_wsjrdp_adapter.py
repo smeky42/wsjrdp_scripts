@@ -17,6 +17,14 @@ if _typing.TYPE_CHECKING:
 _LOGGER = __import__("logging").getLogger(__name__)
 
 
+class PersonInconsistencyIgnored(Exception):
+    """The user chose to skip a person with inconsistent attributes."""
+
+
+class PersonInconsistencyAborted(Exception):
+    """The user chose to abort because of a person with inconsistent attributes."""
+
+
 class WsjRdpKeycloakAdapter:
     _ctx = _weakref_util.WeakrefAttr["_context.WsjRdpContext"]()
     _dry_run: bool | None = None
@@ -362,17 +370,31 @@ class WsjRdpKeycloakAdapter:
         additional_info_updates: list[dict] | None = None,
         autofix_role_consistency: bool | None = None,
     ) -> None:
+        from . import _util
+
         updates = person.find_role_consistency_updates()
         if not updates:
             return
         msg = f"Found inconsistent attributes for {person.role_id_name}:\n"
         for key, (old, new) in updates.items():
             msg += f"  {key}: {old} -> {new}\n"
-        if autofix_role_consistency or self._ctx.console_confirm(
-            f"{msg}Adjust {person.role_id_name}?"
-        ):
-            if additional_info_updates is None:
-                additional_info_updates = []
-            for key, old_new in updates.items():
-                setattr(person, key, old_new[1])
-                additional_info_updates.append({"id": person.id, key: old_new})
+        if autofix_role_consistency:
+            choice = "y"
+        else:
+            choice = _util.console_choice(
+                f"{msg}Adjust {person.role_id_name}?"
+                " (y = adjust, n = abort, i = ignore and skip this person)",
+                choices={"y": "yes", "n": "no", "i": "ignore"},
+                default="i",
+            )
+        match choice:
+            case "y":
+                if additional_info_updates is None:
+                    additional_info_updates = []
+                for key, old_new in updates.items():
+                    setattr(person, key, old_new[1])
+                    additional_info_updates.append({"id": person.id, key: old_new})
+            case "i":
+                raise PersonInconsistencyIgnored(person.role_id_name)
+            case _:
+                raise PersonInconsistencyAborted(person.role_id_name)

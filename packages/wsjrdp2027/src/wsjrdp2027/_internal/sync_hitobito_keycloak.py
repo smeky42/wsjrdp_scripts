@@ -6,12 +6,12 @@ import typing as _typing
 
 import pandas as _pandas
 
-from .. import _context
+from .. import _context, _keycloak_wsjrdp_adapter
 from .._models import person as _person
 
 
 if _typing.TYPE_CHECKING:
-    from .. import _keycloak_wsjrdp_adapter, _mailcow_client
+    from .. import _mailcow_client
 
 
 _LOGGER = _logging.getLogger(__name__)
@@ -96,7 +96,7 @@ def _check_for_keycloak_user(
             f"  first_name: {person.first_name}\n"
             f"  last_name: {person.last_name}\n"
             f"  attributes:\n"
-            f"    mossEmail: {person.moss_email}\n"
+            f"    mossEmail: {person.keycloak_moss_email}\n"
             f"    hitobitoId: {person.id}\n"
             f"Create missing Keycloak user {keycloak_username} "
             f"for group {keycloak_groupname}{kc_dry_run_suffix}?",
@@ -152,6 +152,10 @@ def _create_keycloak_user(
 
     password = _util.generate_password()
 
+    attributes = {"hitobitoId": [str(person.id)]}
+    if keycloak_moss_email := person.keycloak_moss_email:
+        attributes["mossEmail"] = [keycloak_moss_email]
+
     _LOGGER.info(
         f"Create keycloak user {keycloak_username} with email {keycloak_email}"
     )
@@ -161,10 +165,7 @@ def _create_keycloak_user(
         first_name=person.first_name,
         last_name=person.last_name,
         password=password,
-        attributes={
-            "mossEmail": [person.moss_email],
-            "hitobitoId": [str(person.id)],
-        },
+        attributes=attributes,
     )
     keycloak_adapter.add_user_to_group(
         username=keycloak_username, groupname=keycloak_groupname
@@ -212,10 +213,11 @@ def _create_keycloak_user(
             f"Create/Update mailcow alias {keycloak_email} -> {person.email}{mc_dry_run_suffix}"
         )
         mailcow_client.add_alias(keycloak_email, add_goto=person.email)
-        _LOGGER.info(
-            f"Create/Update mailcow alias {person.moss_email} -> {person.email}{mc_dry_run_suffix}"
-        )
-        mailcow_client.add_alias(person.moss_email, add_goto=person.email)
+        if not person.moss_login_without_sso:
+            _LOGGER.info(
+                f"Create/Update mailcow alias {person.moss_email} -> {person.email}{mc_dry_run_suffix}"
+            )
+            mailcow_client.add_alias(person.moss_email, add_goto=person.email)
 
     if new_mailbox:
         content = _NEW_ACCOUNT_AND_MAILBOX_MAIL_CONTENT
@@ -411,18 +413,26 @@ def sync(
             continue
         email2row[p.wsjrdp_email] = p
 
-        if not _check_for_keycloak_user(
-            ctx,
-            person=p,
-            keycloak_adapter=keycloak_adapter,
-            keycloak_groupname=keycloak_groupname,
-            errors=errors,
-            additional_info_updates=additional_info_updates,
-            create_missing_keycloak_user=create_missing_keycloak_user,
-            self_name=self_name,
-            batch_name_suffix=batch_name_suffix,
-            is_role_change=is_role_change,
-        ):
+        try:
+            has_keycloak_user = _check_for_keycloak_user(
+                ctx,
+                person=p,
+                keycloak_adapter=keycloak_adapter,
+                keycloak_groupname=keycloak_groupname,
+                errors=errors,
+                additional_info_updates=additional_info_updates,
+                create_missing_keycloak_user=create_missing_keycloak_user,
+                self_name=self_name,
+                batch_name_suffix=batch_name_suffix,
+                is_role_change=is_role_change,
+            )
+        except _keycloak_wsjrdp_adapter.PersonInconsistencyIgnored:
+            _LOGGER.warning(f"Skip {p.role_id_name}, inconsistent attributes ignored")
+            continue
+        except _keycloak_wsjrdp_adapter.PersonInconsistencyAborted:
+            errors.append(f"{p.role_id_name}: Aborted due to inconsistent attributes")
+            break
+        if not has_keycloak_user:
             _LOGGER.info(f"Skip {p.role_id_name}, no keycloak user found")
             continue
 
@@ -432,14 +442,8 @@ def sync(
         keycloak_username = keycloak_user["username"]
         keycloak_attributes = keycloak_user.get("attributes", {})
 
-        for k_key, p_key, k_val, p_val, fix_if_lower_equal in [
-            (
-                "mossEmail",
-                "moss_email",
-                keycloak_attributes.get("mossEmail", [None])[0],
-                p.moss_email,
-                True,
-            ),
+        k_moss_email = keycloak_attributes.get("mossEmail", [None])[0]
+        attributes_to_check: list[tuple[str, str, str | None, str | None, bool]] = [
             (
                 "hitobitoId",
                 "id",
@@ -447,7 +451,18 @@ def sync(
                 str(p.id),
                 False,
             ),
-        ]:
+        ]
+        if not p.moss_login_without_sso:
+            attributes_to_check.append(
+                ("mossEmail", "moss_email", k_moss_email, p.moss_email, True)
+            )
+        elif k_moss_email is not None:
+            _LOGGER.warning(
+                f"{p.role_id_name}: Keycloak mossEmail={k_moss_email!r} is set, "
+                "but the person has no SSO login in Moss"
+            )
+
+        for k_key, p_key, k_val, p_val, fix_if_lower_equal in attributes_to_check:
             if p_val is None:
                 errors.append(f"{p.role_id_name}: Missing {p_key}")
                 continue
