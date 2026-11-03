@@ -146,6 +146,39 @@ def console_confirm(
             print(f"{yn_msg}\n", flush=True)
 
 
+def console_choice(
+    question: str, *, choices: _collections_abc.Mapping[str, str], default: str
+) -> str:
+    """Ask for one of *choices* and return the letter of the answer.
+
+    *choices* maps a lowercase letter to its word; both are accepted as
+    input.  An empty answer selects *default*.
+    """
+    word_to_letter = {word: letter for letter, word in choices.items()}
+    allowed_choices = "/".join(
+        letter.upper() if letter == default else letter for letter in choices
+    )
+    prompt = f"{question} [{allowed_choices}] "
+    retry_msg = "Please respond with " + " or ".join(
+        f"'{letter}' ({word})" for letter, word in choices.items()
+    )
+    clear_stdin()
+    while True:
+        raw_user_input = input(prompt)
+        user_input = raw_user_input.strip().lower()
+        if not user_input:
+            _LOGGER.debug(f"{prompt}(no user input, default {default})")
+            return default
+        _LOGGER.debug(f"{prompt}{raw_user_input.strip()}")
+        if user_input in choices:
+            return user_input
+        elif user_input in word_to_letter:
+            return word_to_letter[user_input]
+        else:
+            _LOGGER.debug(retry_msg)
+            print(f"{retry_msg}\n", flush=True)
+
+
 def create_dir(
     path_pattern: str,
     *,

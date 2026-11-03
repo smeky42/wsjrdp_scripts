@@ -623,6 +623,24 @@ class Person:
     def moss_email(self, value: str | None) -> None:
         self.set_additional_info("moss_email", value)
 
+    @property
+    def moss_login_without_sso(self) -> bool:
+        """`True` if this person logs in to Moss directly by e-mail, not via SSO.
+
+        The Moss account of such a person may use any address and is
+        independent of Keycloak and Mailcow.
+        """
+        return bool(self.additional_info.get("moss_login_without_sso"))
+
+    @moss_login_without_sso.setter
+    def moss_login_without_sso(self, value: bool) -> None:
+        self.set_additional_info("moss_login_without_sso", True if value else None)
+
+    @property
+    def keycloak_moss_email(self) -> str | None:
+        """The expected value of the Keycloak attribute ``mossEmail``."""
+        return None if self.moss_login_without_sso else self.moss_email
+
     def get_moss_email_default(self, wsjrdp_role: str | None = None) -> str | None:
         from .. import _util
 
@@ -646,12 +664,17 @@ class Person:
     def get_moss_email_expected(self, wsjrdp_role: str | None = None) -> str | None:
         wsjrdp_role = wsjrdp_role or self.wsjrdp_role
         moss_email = self.moss_email_or_none
-        if moss_email and self.get_moss_email_regex(wsjrdp_role).fullmatch(moss_email):
+        if moss_email and (
+            self.moss_login_without_sso
+            or self.get_moss_email_regex(wsjrdp_role).fullmatch(moss_email)
+        ):
             return moss_email
         else:
             return self.get_moss_email_default()
 
     def moss_email_expected_goto(self, wsjrdp_role: str | None = None) -> str | None:
+        if self.moss_login_without_sso:
+            return None
         wsjrdp_role = wsjrdp_role or self.wsjrdp_role
         match wsjrdp_role:
             case "CMT":

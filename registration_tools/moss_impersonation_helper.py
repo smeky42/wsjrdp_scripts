@@ -44,6 +44,9 @@ def main(argv=None):
     ctx.configure_log_file(log_filename)
     with ctx.psycopg_connect() as conn:
         p = ctx.load_person_for_id(ctx.parsed_args.person_id, conn=conn)
+    if p.moss_login_without_sso:
+        _LOGGER.error(f"{p.role_id_name} has no SSO login in Moss, cannot impersonate")
+        return 1
     assert p.keycloak_username
     assert p.moss_email
     keycloak_user = ctx.keycloak().get_user_by_username(p.keycloak_username)
