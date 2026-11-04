@@ -1,0 +1,52 @@
+# Run with:
+# uv run tools/mailing_from_yml.py mailings/2026-11-04__Alle-Datenabfrage-Erinnerung.yml
+# WSJRDP_SCRIPTS_CONFIG=config-prod.yml uv run tools/mailing_from_yml.py mailings/2026-11-04__Alle-Datenabfrage-Erinnerung.yml
+updates:
+  add_tags: 'Datenabfrage-Mail-II'
+query:
+  where:
+    role: [CMT, UL, YP, IST]
+    contract_status: ['confirmed']
+    exclude_deregistered: true
+    jamboree_data_confirmed: false
+email_subject: "Erinnerung: Datenabfrage zur Anmeldung beim Jamboree Veranstalter - Deadline 15.11.! (id {{ row.id }})"
+email_reply_to: info@worldscoutjamboree.de
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  vor knapp drei Wochen haben wir dich gebeten, im Anmeldetool die Daten für deine Anmeldung beim Jamboree Veranstalter in Polen einzutragen.
+
+  Bei dir fehlt bisher noch die Bestätigung, dass deine Angaben vollständig und wahrheitsgetreu sind.
+  Ohne diese Bestätigung können wir deine Daten nicht an den Veranstalter weitergeben.
+
+  Die Deadline ist der 15.11.2026 – es bleiben also nur noch wenige Tage!
+
+  Bitte öffne {% if row.wsjrdp_role == 'YP' %}(gemeinsam mit deinen Eltern) {% endif %}den folgenden Link:
+  https://anmeldung.worldscoutjamboree.de/people/{{ row.id }}/jamboree_data
+
+  1. Fülle alle noch offenen Felder aus bzw. prüfe deine bisherigen Angaben. 
+  2. Gib deine Kluftgröße an und wähle deine bevorzugte Kopfbedeckung aus, falls noch nicht geschehen.
+  3. Setze ganz unten im Abschnitt „Rechtliche Bestätigung & Vollständigkeit“ beide Häkchen (Datenschutzbestimmungen und Versicherung, dass deine Angaben vollständig und wahrheitsgetreu sind) und speichere.
+
+  Freitextantworten solltest du bitte auf Englisch verfassen, damit sie auch internationale Pfadfinder (z.B. bei medizinischen Notfällen) lesen und verstehen können.
+  {% if row.wsjrdp_role == 'IST' %}
+
+  Wenn du noch nicht weißt, wann und wie du anreist, ist das in Ordnung.
+  Bitte trage diese Informationen nach, sobald sie dir vorliegen.
+  {% endif %}
+
+  {% if row.wsjrdp_role == 'YP' %}
+  Bei Fragen wende dich gern an deine ULs oder antworte direkt auf diese E-Mail.
+  {% elif row.wsjrdp_role == 'IST' %}
+  Bei Fragen wende dich gern an Micha und Henny.
+  {% else %}
+  Bei Fragen antworte gern direkt auf diese E-Mail.
+  {% endif %}
+
+  Viele Grüße und Gut Pfad!
+
+  Peter für das Orga-Team
+
+  {{ EMAIL_SIGNATURE_CMT }}

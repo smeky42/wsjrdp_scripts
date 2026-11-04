@@ -207,6 +207,7 @@ class PeopleWhere:
     exclude_primary_group: _collections_abc.Sequence[str | int] | None = None
     early_payer: bool | None = None
     foto_permission: bool | None = None
+    jamboree_data_confirmed: bool | None = None
     max_print_at: _datetime.date | None = None
     unit_code: _collections_abc.Sequence[str | _types.NullOrNotType] | None = None
     exclude_unit_code: _collections_abc.Sequence[str | _types.NullOrNotType] | None = (
@@ -250,6 +251,7 @@ class PeopleWhere:
         exclude_primary_group: _StrIntOrIterable | None = None,
         early_payer: bool | None = None,
         foto_permission: bool | None = None,
+        jamboree_data_confirmed: bool | None = None,
         max_print_at: _datetime.date | str | None = None,
         unit_code: _StrOrNullIterable | None = None,
         exclude_unit_code: _StrOrNullIterable | None = None,
@@ -314,6 +316,8 @@ class PeopleWhere:
             self.early_payer = early_payer
         if foto_permission is not None:
             self.foto_permission = foto_permission
+        if jamboree_data_confirmed is not None:
+            self.jamboree_data_confirmed = jamboree_data_confirmed
         if max_print_at is not None:
             self.max_print_at = _util.to_date(max_print_at)
         self.unit_code = _to_str_or_null_list(unit_code)
@@ -464,6 +468,7 @@ class PeopleWhere:
             "role": to_out(self.role, map=str),
             "early_payer": self.early_payer,
             "foto_permission": self.foto_permission,
+            "jamboree_data_confirmed": self.jamboree_data_confirmed,
             "max_print_at": iso_or_none(self.max_print_at),
             "not": recursive_to_dict(self.not_),
             "or": recursive_to_dict(self.or_),
@@ -527,6 +532,11 @@ class PeopleWhere:
             ),
             self.__boolean_where(
                 "foto_permission", self.foto_permission, people_table=people_table
+            ),
+            self.__boolean_where(
+                "jamboree_data_confirmed",
+                self.jamboree_data_confirmed,
+                people_table=people_table,
             ),
         )
         if self.max_print_at is not None:

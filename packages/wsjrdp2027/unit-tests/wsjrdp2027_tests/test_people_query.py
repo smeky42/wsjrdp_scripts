@@ -78,6 +78,19 @@ class Test_PeopleWhere__as_where_condition:
         where_str = where.as_where_condition()
         assert where_str == expected
 
+    @pytest.mark.parametrize(
+        "jamboree_data_confirmed,expected",
+        [
+            (True, "people.jamboree_data_confirmed = TRUE"),
+            (False, "COALESCE(people.jamboree_data_confirmed, FALSE) = FALSE"),
+            (None, ""),
+        ],
+    )
+    def test_jamboree_data_confirmed(self, jamboree_data_confirmed, expected):
+        where = PeopleWhere(jamboree_data_confirmed=jamboree_data_confirmed)
+        assert where.as_where_condition() == expected
+        assert PeopleWhere.from_dict(where.to_dict()).as_where_condition() == expected
+
     def test_status(self):
         where_str = PeopleWhere(status="confirmed").as_where_condition()
         assert where_str == "people.status = 'confirmed'"
