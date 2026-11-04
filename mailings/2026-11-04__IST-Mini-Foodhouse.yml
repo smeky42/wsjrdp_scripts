@@ -1,0 +1,37 @@
+# Aufruf an alle aktiv angemeldeten IST (inkl. Warteliste, ohne BMT) für das Mini-Foodhouse.
+#
+# Run with:
+# uv run tools/mailing_from_yml.py mailings/2026-11-04__IST-Mini-Foodhouse.yml
+# WSJRDP_SCRIPTS_CONFIG=config-prod.yml uv run tools/mailing_from_yml.py mailings/2026-11-04__IST-Mini-Foodhouse.yml
+updates:
+  add_tags: 'Mini-Foodhouse-Mail'
+query:
+  where:
+    role: [IST, CMT]
+    status: ['registered', 'printed', 'upload', 'in_review', 'reviewed', 'confirmed']
+    exclude_deregistered: true
+    exclude_waiting_lists: false  # IST-Warteliste (Gruppe 7) einschließen
+    exclude_primary_group_id: [45]  # BMT
+email_subject: Mini-Foodhouse sucht Foodhouse-ISTs (id {{ row.id }})
+email_reply_to: ist@worldscoutjamboree.de
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; group: {{ row.primary_group_id }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_HOC }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  mit Eva Olschimke und Jörg Zender hat das Kontingent eine Leitung für ein Mini-Foodhouse gefunden.
+
+  Doch alleine ist nicht gut Kirschkuchen backen: Wir brauchen ein Team, das ein kleines feines Lagercafé auf der zentralen Plaza mit Kaffee- und Kuchenangebot bespielen wird.
+
+  Ob Du ein Schwarzzelt aufbauen und hübsch einrichten kannst, internationalen Café-Gästen gerne über die Theke ein Lächeln ins Gesicht zauberst oder Kuchen und Kaffee herstellst - Du wirst gebraucht.
+
+  Die Rolle Foodhouse-IST ordnet dir eine Rolle im Kontingentsgeschehen zu, sodass die Jobsuche für das Jamboree entfällt (wie für pre-allocated IST). Wenn Du Fragen hast oder Du Dir direkt einen Platz im Team sichern willst, melde Dich asap über ist@worldscoutjamboree.de.  
+
+  Bis 15.11.2026 wollen wir das Team gefunden haben - daher fühlt bei Euren Buddys vor und meldet Euch! 
+
+
+  Gut Pfad
+
+  Ines, Mitglied HOC Team 
+
+  {{ EMAIL_SIGNATURE_HOC }}
