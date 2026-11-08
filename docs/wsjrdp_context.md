@@ -149,6 +149,33 @@ in production:
    connections unobtainable altogether.
 5. Read-only connections are enforced by PostgreSQL itself.
 
+## Hitobito API tokens
+
+Scripts that call the Hitobito API authenticate with an API key of the
+app, sent as the `X-Token` header -- never as a `?token=` query
+parameter, which would end up in server logs. There is one API key per
+purpose, so every key has only the scopes its script needs, can be
+rotated on its own, and the app's PaperTrail shows which script wrote.
+
+* **Config keys**: `hitobito_api_token_<purpose>` (flat, snake_case,
+  like `hitobito_url`). `<purpose>` matches `[a-z][a-z0-9_]*` and is
+  also the **name of the API key in Hitobito**. The key's description
+  in Hitobito names the script(s) and this config key.
+* **Fallback**: `hitobito_api_token` answers for every purpose that has
+  no key of its own.
+* **Reading**: `ctx.get_hitobito_api_token(purpose)` returns the token,
+  or `""` when neither key is set -- a caller then skips its API step
+  and says which key is missing. An invalid purpose raises
+  `ValueError`. The context logs at DEBUG level which config key
+  answered, never the value.
+* **One config per environment**: API keys in Hitobito are bound to a
+  stage -- a development key works only against development, a
+  production key only against production. `config-dev.yml` therefore
+  holds the development keys and **never a production token**;
+  `config-prod.yml` holds the production keys.
+* **Least privilege**: give each API key as few scopes as possible and
+  an acting person whose rights fit the task.
+
 ## Contrast: the legacy `ctx.psycopg_connect()`
 
 Older scripts use `with ctx.psycopg_connect() as conn:`. That helper

@@ -143,6 +143,29 @@ class Person:
             self._index = index
         return self
 
+    @classmethod
+    def from_hitobito_resource(
+        cls, resource: _collections_abc.Mapping[str, _typing.Any]
+    ) -> _typing.Self:
+        """A person from a JSON:API resource object of the Hitobito API.
+
+        It carries only what the API returns (``id`` and the ``attributes``,
+        e.g. names, address, e-mail, ``primary_group_id``) -- not the database
+        columns of :func:`load_people_dataframe` such as ``status`` or the fee.
+        Methods that need those raise :class:`AttributeError`.
+
+        >>> person = Person.from_hitobito_resource({
+        ...     "id": "7", "type": "people",
+        ...     "attributes": {"first_name": "Test", "birthday": "2010-05-04"},
+        ... })
+        >>> person.id, person.first_name, person.birthday
+        (7, 'Test', datetime.date(2010, 5, 4))
+        """
+        attributes = dict(resource.get("attributes") or {})
+        if isinstance(birthday := attributes.get("birthday"), str):
+            attributes["birthday"] = _datetime.date.fromisoformat(birthday)
+        return cls(**{**attributes, "id": int(resource["id"])})
+
     id: int
     primary_group_id: int
     status: str
