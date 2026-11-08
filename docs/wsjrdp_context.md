@@ -176,6 +176,10 @@ rotated on its own, and the app's PaperTrail shows which script wrote.
 * **Least privilege**: give each API key as few scopes as possible and
   an acting person whose rights fit the task.
 
+| purpose | config key | used by | scope / acting person |
+|---|---|---|---|
+| `finance_import` | `hitobito_api_token_finance_import` | `HitobitoClient.link_internal_transfers` after `accounting_tools/import_camt_bank_statements.py` and `accounting_tools/import_moss_transactions.py` | `finance:write`, a person on the finance write tier |
+
 ## Contrast: the legacy `ctx.psycopg_connect()`
 
 Older scripts use `with ctx.psycopg_connect() as conn:`. That helper

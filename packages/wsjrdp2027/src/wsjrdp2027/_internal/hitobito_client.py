@@ -230,6 +230,41 @@ class HitobitoClient:
             else _person.Person.from_hitobito_resource(resource)
         )
 
+    # ==================================================================================
+    # Finance: Umbuchungen (internal transfers)
+    # ==================================================================================
+
+    LINK_INTERNAL_TRANSFERS_PATH = "fin/acc/internal_transfers/link_unique.json"
+
+    def link_internal_transfers(self) -> dict[str, _typing.Any] | None:
+        """Ask the app to link every Umbuchung suggestion that is unique.
+
+        The app works out which bank and Moss transactions are transfers between
+        the contingent's own accounts (``Fin::InternalTransferDetection`` in the
+        wagon), so the detection rule lives in one place only. The import scripts
+        call this after a committed import, with the client of the purpose
+        ``finance_import`` (scope ``finance:write``, acting person on the
+        finance write tier).
+
+        Returns the app's counts (``linked``, ``ambiguous``, ``waiting``,
+        ``without_counterpart``) and logs them, or ``None`` in a dry run (the
+        POST is skipped). An HTTP error raises :class:`requests.HTTPError`;
+        what a caller does about it is its own business (the importers only log
+        it -- their import is committed already).
+        """
+        response = self.post(self.LINK_INTERNAL_TRANSFERS_PATH)
+        if response is None:
+            return None
+        response.raise_for_status()
+        result = response.json()
+        self._logger.info(
+            f"Umbuchungen: {result.get('linked')} linked, "
+            f"{result.get('ambiguous')} ambiguous, "
+            f"{result.get('waiting')} waiting for their counterpart, "
+            f"{result.get('without_counterpart')} without counterpart."
+        )
+        return result
+
     def _get_json_api(self, path: str, params: dict[str, _typing.Any]) -> dict:
         response = self.get(
             path, params=params, headers={"Accept": _JSON_API_MEDIA_TYPE}

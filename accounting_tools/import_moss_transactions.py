@@ -3495,6 +3495,8 @@ def main(argv=None):
     _verify_sum_invariant(transactions, expenses, bookings)
     source_files = _source_file_by_transaction(by_kind)
 
+    committed = False
+    hitobito_client = ctx.get_hitobito_client(purpose="finance_import")
     with ctx:
         ro_conn = ctx.hitobito_psycopg_connection(read_only=True)
         _require_wagon_schema(ro_conn)
@@ -3629,8 +3631,19 @@ def main(argv=None):
                 "ROLLBACK (--rollback-for-testing given) - nothing committed."
             )
             rw_conn.rollback()
-        # The commit happens when the `with ctx:` block exits cleanly; an
-        # exception before that leaves the database untouched.
+        else:
+            rw_conn.commit()
+            committed = True
+
+    if committed:
+        try:
+            hitobito_client.link_internal_transfers()
+        except Exception as exc:
+            _LOGGER.warning(
+                "Linking internal transfers in Hitobito failed: %s",
+                str(exc),
+                exc_info=exc,
+            )
     return 0
 
 
