@@ -431,3 +431,91 @@ class Test_merge_dicts:
         assert result is base  # returns the same object
         assert base["a"] is nested  # nested dict mutated in place
         assert base == {"a": {"x": 1, "y": 2}}
+
+
+class Test_HitobitoApiTokens:
+    """The per-purpose Hitobito API tokens: loading and get_hitobito_api_token."""
+
+    def _write_config(self, path: _pathlib.Path, extra: str) -> _pathlib.Path:
+        # Made-up values only: this is a test config, not a real one.
+        return _touch(
+            path,
+            "is_production: false\n"
+            "use_ssh_tunnel: false\n"
+            "db_host: localhost\n"
+            "db_port: 5432\n"
+            "db_username: test\n"
+            "db_password: test\n"
+            "db_name: test\n"
+            "smtp_server: localhost\n"
+            "smtp_port: 1025\n" + extra,
+        )
+
+    def test_loader_collects_the_purpose_keys(self, tmp_path):
+        path = self._write_config(
+            tmp_path / "config-unit-test.yml",
+            "hitobito_api_token_finance_import: test-token\n"
+            "hitobito_api_token_mailing: ''\n"
+            "hitobito_api_token_Bad-Purpose: test-token\n"
+            "hitobito_api_token: test-fallback\n"
+            "hitobito_url: https://hitobito.example\n",
+        )
+        config = WsjRdpContextConfig.from_file(path, local_overrides=False)
+
+        assert config.hitobito_api_tokens == {"finance_import": "test-token"}
+        assert config.hitobito_api_token == "test-fallback"
+
+    def test_loader_without_any_token(self, tmp_path):
+        path = self._write_config(tmp_path / "config-unit-test.yml", "")
+        config = WsjRdpContextConfig.from_file(path, local_overrides=False)
+
+        assert config.hitobito_api_tokens == {}
+        assert config.hitobito_api_token == ""
+
+    @staticmethod
+    def _ctx(**config_kwargs) -> WsjRdpContext:
+        config = WsjRdpContextConfig(
+            is_production=False, keycloak_url="", helpdesk_url="", **config_kwargs
+        )
+        return WsjRdpContext(config, parse_arguments=False, setup_logging=False)
+
+    def test_purpose_key_wins_over_the_fallback(self, caplog):
+        ctx = self._ctx(
+            hitobito_api_tokens={"finance_import": "test-token"},
+            hitobito_api_token="test-fallback",
+        )
+        with caplog.at_level(logging.DEBUG, logger="wsjrdp2027._context"):
+            assert ctx.get_hitobito_api_token("finance_import") == "test-token"
+            assert ctx.get_hitobito_api_token("finance_import") == "test-token"
+
+        messages = [
+            r.getMessage() for r in caplog.records if "API token" in r.getMessage()
+        ]
+        expected = (
+            "[config] Hitobito API token for finance_import: "
+            "hitobito_api_token_finance_import"
+        )
+        assert messages == [expected]
+        assert "test-token" not in caplog.text
+
+    def test_fallback(self, caplog):
+        ctx = self._ctx(hitobito_api_token="test-fallback")
+        with caplog.at_level(logging.DEBUG, logger="wsjrdp2027._context"):
+            assert ctx.get_hitobito_api_token("finance_import") == "test-fallback"
+
+        assert "hitobito_api_token (fallback)" in caplog.text
+        assert "test-fallback" not in caplog.text
+
+    def test_none_configured(self, caplog):
+        ctx = self._ctx()
+        with caplog.at_level(logging.DEBUG, logger="wsjrdp2027._context"):
+            assert ctx.get_hitobito_api_token("finance_import") == ""
+
+        assert "Hitobito API token for finance_import: none" in caplog.text
+
+    @pytest.mark.parametrize(
+        "purpose", ["", "Finance", "finance-import", "1st", "_x", "finance_import\n"]
+    )
+    def test_invalid_purpose(self, purpose):
+        with pytest.raises(ValueError, match="invalid Hitobito API token purpose"):
+            self._ctx().get_hitobito_api_token(purpose)

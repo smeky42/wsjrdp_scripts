@@ -9,6 +9,7 @@ import logging as _logging
 import logging.handlers as _logging_handlers
 import os as _os
 import pathlib as _pathlib
+import re as _re
 import sys as _sys
 import typing as _typing
 import weakref as _weakref
@@ -39,6 +40,7 @@ if _typing.TYPE_CHECKING:
         _psycopg_client,
         _ssh_tunnel,
     )
+    from ._internal import hitobito_client as _hitobito_client
     from ._models import person as _person
 
 
@@ -49,6 +51,11 @@ __all__ = [
 
 
 _LOGGER = _logging.getLogger(__name__)
+
+# The config keys of the per-purpose Hitobito API tokens:
+# ``hitobito_api_token_<purpose>`` (see WsjRdpContext.get_hitobito_api_token).
+_HITOBITO_API_TOKEN_PREFIX = "hitobito_api_token_"
+_HITOBITO_API_TOKEN_PURPOSE_RE = _re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 @_dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
@@ -79,6 +86,12 @@ class WsjRdpContextConfig:
 
     geo_api_key: str = ""
     hitobito_url: str = ""
+    # The Hitobito API tokens, one per purpose (config keys
+    # ``hitobito_api_token_<purpose>``), and the general fallback
+    # ``hitobito_api_token``. Read them through
+    # WsjRdpContext.get_hitobito_api_token(purpose).
+    hitobito_api_tokens: dict[str, str] = _dataclasses.field(default_factory=dict)
+    hitobito_api_token: str = ""
 
     mail_api_url: str = ""
     mail_api_key: str = ""
@@ -193,6 +206,8 @@ class WsjRdpContextConfig:
             hitobito_url=str(
                 config.get("hitobito_url", "https://anmeldung.worldscoutjamboree.de")
             ),
+            hitobito_api_tokens=_hitobito_api_tokens_from_config(config),
+            hitobito_api_token=str(config.get("hitobito_api_token", "") or ""),
             mail_accounts=mail_accounts,
             mail_api_url=config.get("mail_api_url", ""),
             mail_api_key=config.get("mail_api_key", ""),
@@ -359,6 +374,7 @@ class WsjRdpContext:
     _out_dir: _pathlib.Path = _typing.cast("_pathlib.Path", None)
     _dry_run: bool | None = None
     _keycloak_dry_run: bool | None = None
+    _hitobito_api_token_logged: set[str]
     _mailcow_dry_run: bool | None = None
     _skip_email: bool | None = None
     _skip_db_updates: bool | None = None
@@ -465,6 +481,7 @@ class WsjRdpContext:
         elif not isinstance(config, WsjRdpContextConfig):
             config = WsjRdpContextConfig.from_file(config)
         self._config = config
+        self._hitobito_api_token_logged = set()
         self._kind = (
             WsjRdpContextKind.PRODUCTION
             if self._config.is_production
@@ -704,6 +721,55 @@ class WsjRdpContext:
     def is_production(self) -> bool:
         """`True` in production config, `False` otherwise."""
         return self._config.is_production
+
+    def get_hitobito_api_token(self, purpose: str) -> str:
+        """The Hitobito API token for *purpose* -- empty when none is configured.
+
+        Every script purpose has its own API key in Hitobito (own scopes, own
+        acting person, rotated on its own), configured as
+        ``hitobito_api_token_<purpose>``; *purpose* is at the same time the
+        name of the API key in Hitobito (``[a-z][a-z0-9_]*``, e.g.
+        ``finance_import``). Without such a key the general
+        ``hitobito_api_token`` is the fallback. The token goes into the
+        ``X-Token`` header only.
+
+        Which config key answered is logged once per purpose at DEBUG level --
+        the key's name, never its value.
+
+        >>> config = WsjRdpContextConfig(
+        ...     is_production=False,
+        ...     keycloak_url="",
+        ...     helpdesk_url="",
+        ...     hitobito_api_tokens={"finance_import": "test-token"},
+        ...     hitobito_api_token="test-fallback",
+        ... )
+        >>> ctx = WsjRdpContext(config, parse_arguments=False, setup_logging=False)
+        >>> ctx.get_hitobito_api_token("finance_import")
+        'test-token'
+        >>> ctx.get_hitobito_api_token("mailing")
+        'test-fallback'
+        >>> ctx.get_hitobito_api_token("Finance-Import")
+        Traceback (most recent call last):
+        ValueError: invalid Hitobito API token purpose 'Finance-Import' (expected ^[a-z][a-z0-9_]*$)
+        """
+        if not isinstance(purpose, str) or not _HITOBITO_API_TOKEN_PURPOSE_RE.fullmatch(
+            purpose
+        ):
+            raise ValueError(
+                f"invalid Hitobito API token purpose {purpose!r} "
+                f"(expected {_HITOBITO_API_TOKEN_PURPOSE_RE.pattern})"
+            )
+        config = self._config
+        if token := config.hitobito_api_tokens.get(purpose, ""):
+            source = f"{_HITOBITO_API_TOKEN_PREFIX}{purpose}"
+        elif token := config.hitobito_api_token:
+            source = "hitobito_api_token (fallback)"
+        else:
+            token, source = "", "none"
+        if purpose not in self._hitobito_api_token_logged:
+            self._hitobito_api_token_logged.add(purpose)
+            _LOGGER.debug("[config] Hitobito API token for %s: %s", purpose, source)
+        return token
 
     @property
     def hitobito_time_zone(self) -> _zoneinfo.ZoneInfo:
@@ -1152,6 +1218,49 @@ class WsjRdpContext:
             server=self._config.mail_api_url, api_key=self._config.mail_api_key
         )
         return _mailcow_client.MailcowClient(
+            config, dry_run=dry_run, audithook=audithook
+        )
+
+    def get_hitobito_client(
+        self,
+        purpose: str,
+        *,
+        force_new: bool = False,
+        dry_run: bool | None = None,
+        audithook: _hitobito_client.HitobitoAudithook | bool | None = None,
+    ) -> _hitobito_client.HitobitoClient:
+        """The Hitobito API client of *purpose*, with that purpose's token
+        (:meth:`get_hitobito_api_token`); one per purpose and context level.
+        Raises ``ValueError`` when no token is configured for *purpose*."""
+        dry_run = self._dry_run or dry_run or False
+        return self._get_or_create_resource(
+            f"hitobito_api_{purpose}",
+            create=self._create_hitobito_client,
+            force_new=force_new,
+            dry_run=dry_run,
+            audithook=audithook,
+            create_kwargs={"purpose": purpose},
+        )
+
+    def _create_hitobito_client(
+        self,
+        *,
+        purpose: str,
+        dry_run: bool,
+        audithook: _collections_abc.Callable | None = None,
+    ) -> _hitobito_client.HitobitoClient:
+        from ._internal import hitobito_client as _hitobito_client
+
+        token = self.get_hitobito_api_token(purpose)
+        if not token:
+            raise ValueError(
+                f"no Hitobito API token for {purpose!r}: set "
+                f"{_HITOBITO_API_TOKEN_PREFIX}{purpose} (or hitobito_api_token)"
+            )
+        config = _hitobito_client.HitobitoConfig(
+            hitobito_url=self._config.hitobito_url, purpose=purpose, token=token
+        )
+        return _hitobito_client.HitobitoClient(
             config, dry_run=dry_run, audithook=audithook
         )
 
@@ -2001,6 +2110,34 @@ class _UnlimitedBufferingHandler(_logging_handlers.MemoryHandler):
 
     def shouldFlush(self, record) -> bool:
         return False
+
+
+def _hitobito_api_tokens_from_config(
+    config: _collections_abc.Mapping[str, _typing.Any],
+) -> dict[str, str]:
+    """The per-purpose Hitobito API tokens of a loaded config: every key
+    ``hitobito_api_token_<purpose>`` with a valid purpose and a non-empty value.
+
+    >>> _hitobito_api_tokens_from_config({
+    ...     "hitobito_api_token_finance_import": "test-token",
+    ...     "hitobito_api_token_empty": "",
+    ...     "hitobito_api_token_Bad-Name": "test-token",
+    ...     "hitobito_api_token": "test-fallback",
+    ...     "hitobito_url": "https://hitobito.example",
+    ... })
+    {'finance_import': 'test-token'}
+    """
+    tokens: dict[str, str] = {}
+    for key, value in config.items():
+        if not isinstance(key, str) or not key.startswith(_HITOBITO_API_TOKEN_PREFIX):
+            continue
+        purpose = key.removeprefix(_HITOBITO_API_TOKEN_PREFIX)
+        if not _HITOBITO_API_TOKEN_PURPOSE_RE.fullmatch(purpose):
+            _LOGGER.warning("[config] Ignore %s: not a valid token purpose", key)
+            continue
+        if token := str(value or ""):
+            tokens[purpose] = token
+    return tokens
 
 
 def _to_bool(name: str, value: bool | str) -> bool:

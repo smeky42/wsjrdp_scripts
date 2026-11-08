@@ -114,7 +114,9 @@ integration tests (e.g. `INTEGRATION_TESTING_DB_NAME`). Scripts in
 
 - **`WsjRdpContext`** — loads the config and encapsulates `dry_run`,
   start time, database connections, mail login, the output directory
-  (`ctx.make_out_path(...)`) and logging.
+  (`ctx.make_out_path(...)`), logging and the Hitobito API tokens (one
+  per purpose, `ctx.get_hitobito_api_token(purpose)`, see
+  [docs/wsjrdp_context.md](docs/wsjrdp_context.md)).
   **`ctx.require_approval_to_run_in_prod(...)`** is the safety brake:
   in production an interactive confirmation is required. Never bypass
   these confirmations. The canonical CLI `main()` pattern — `with
