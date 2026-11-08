@@ -314,6 +314,73 @@ def _send_missing_installment_notification(
     )
     ctx.send_mailing(prepared, zip_eml=False)
 
+    _record_notice(
+        ctx,
+        prepared,
+        person=person,
+        collection_month=estimated_collection_date.strftime("%Y-%m"),
+        retoure_cents=retoure_cents,
+        missing_installment_cents=missing_installment_cents,
+        bank_fees_cents=bank_fees_cents,
+        upcoming_collection_date=upcoming_collection_date,
+        accounting_entry_id=(int(ae_row["id"]) if ae_row is not None else None),
+        camt_transaction_id=(int(tx_row["id"]) if tx_row is not None else None),
+    )
+
+
+def _record_notice(
+    ctx: wsjrdp2027.WsjRdpContext,
+    prepared: wsjrdp2027.PreparedBatch,
+    *,
+    person: wsjrdp2027.Person,
+    **notice_kwargs,
+) -> None:
+    """After the mail went out: a note in the person's log and, if the return's
+    accounting entry is known, a line in its additional_info
+    (wsjrdp2027.debit_return_notices). Committed with the rest of the run."""
+    notices = wsjrdp2027.debit_return_notices
+    messages = [pm.message for pm in prepared.messages if pm.message is not None]
+    if len(messages) != 1:
+        _LOGGER.warning(
+            "Skip log note: %d e-mail messages, expected exactly 1", len(messages)
+        )
+        return
+    notice = notices.DebitReturnNotice.from_email_message(
+        messages[0],
+        person_id=person.id,
+        upcoming_amount_cents=person.open_amount_cents,
+        debit_return_issue=person.debit_return_issue or None,
+        sent_at=_datetime.datetime.now(_datetime.UTC),
+        script=f"accounting_tools/{_SELF_NAME}.py",
+        **notice_kwargs,
+    )
+    if notice.accounting_entry_id is None:
+        _LOGGER.warning(
+            "No unique return accounting entry: the log note is written,"
+            " the entry gets no notification."
+        )
+    _LOGGER.info("Log note: %s", notices.log_message(notice))
+
+    if skip_reasons := _truish_list(
+        *prepared.get_skip_email_reasons(dry_run=ctx.dry_run),
+        "skip_db_updates set" if ctx.skip_db_updates else None,
+    ):
+        _LOGGER.info(
+            "Skip writing log note and entry notification: %s", ",".join(skip_reasons)
+        )
+        return
+
+    version_id = notices.record(
+        ctx.hitobito_psycopg_connection(read_only=False), notice
+    )
+    _LOGGER.info(
+        "Wrote log note (versions.id %s)%s",
+        version_id,
+        f" and notification on accounting_entry {notice.accounting_entry_id}"
+        if notice.accounting_entry_id is not None
+        else "",
+    )
+
 
 def main(argv=None):
     with wsjrdp2027.WsjRdpContext(
