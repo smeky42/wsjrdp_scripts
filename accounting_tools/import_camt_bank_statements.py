@@ -875,6 +875,8 @@ def main(argv=None):
         len(account_idents),
     )
 
+    committed = False
+    hitobito_client = ctx.get_hitobito_client(purpose="finance_import")
     with ctx:
         ro_conn = ctx.hitobito_psycopg_connection(read_only=True)
 
@@ -1081,8 +1083,19 @@ def main(argv=None):
                 "ROLLBACK (--rollback-for-testing given) - no changes committed"
             )
             rw_conn.rollback()
-        # The commit happens implicitly when the `with ctx:` block exits
-        # cleanly; an exception before that leaves the database untouched.
+        else:
+            rw_conn.commit()
+            committed = True
+
+    if committed:
+        try:
+            hitobito_client.link_internal_transfers()
+        except Exception as exc:
+            _LOGGER.warning(
+                "Linking internal transfers in Hitobito failed: %s",
+                str(exc),
+                exc_info=exc,
+            )
 
 
 if __name__ == "__main__":

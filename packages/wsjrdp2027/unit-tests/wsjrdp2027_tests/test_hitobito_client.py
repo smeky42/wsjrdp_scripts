@@ -134,6 +134,30 @@ class Test_HitobitoClient:
         assert "test-token" not in repr(client._config)
 
 
+class Test_HitobitoClient_link_internal_transfers:
+    def test_posts_and_returns_the_counts(self):
+        counts = {"linked": 2, "ambiguous": 1, "waiting": 0, "without_counterpart": 0}
+        _FakeSession.replies = [_FakeResponse(counts)]
+
+        assert _client().link_internal_transfers() == counts
+        ((method, url, _kwargs),) = _FakeSession.instances[0].calls
+        assert method == "POST"
+        assert (
+            url
+            == "https://hitobito.example/fin/acc/internal_transfers/link_unique.json"
+        )
+
+    def test_dry_run_sends_nothing(self):
+        assert _client(dry_run=True).link_internal_transfers() is None
+        assert _FakeSession.instances == []
+
+    def test_raises_on_an_http_error(self):
+        _FakeSession.replies = [_FakeResponse(status_code=403)]
+
+        with pytest.raises(requests.HTTPError, match="403"):
+            _client().link_internal_transfers()
+
+
 def _people(*ids):
     return {"data": [{"id": str(i), "type": "people", "attributes": {}} for i in ids]}
 
