@@ -749,21 +749,69 @@ def _apply_links(conn, links: _Links, *, now, stamp_updated_at) -> None:
                 )
 
 
+_DD_SUB_FAMILIES = ("UPDD", "RCDD", "PRDD")
+_RETURN_SUB_FAMILIES = ("RRTN", "XRTN")
+
+
+def _return_kind(
+    bank_transaction_code: str | None, return_reason: str | None, mandate_id: str | None
+) -> str | None:
+    """The kind of a return -- the same rule as the wagon's generated column
+    ``wsjrdp_camt_transactions.return_kind``, for rows not stored yet. Only a
+    ``direct_debit`` return (a Rücklastschrift) has a debit of ours to link.
+
+    >>> _return_kind("PMNT+IDDT+UPDD", "MD06", "M1")
+    'direct_debit'
+    >>> _return_kind("PMNT+ICDT+RRTN", "MS03", None)
+    'credit_transfer'
+    >>> _return_kind("PMNT+RCDT+RRTN", "AC04", None)
+    'received_credit_transfer'
+    >>> _return_kind("PMNT+RDDT+UPDD", "MD06", None)
+    'received_direct_debit'
+    >>> _return_kind("PMNT+ICDT+UPCT", None, None)
+    'other'
+    >>> _return_kind(None, "AC04", "M1"), _return_kind("PMNT+NTAV+NTAV", "AC04", None)
+    ('direct_debit', 'other')
+    >>> _return_kind("PMNT+ICDT+ESCT", None, None) is None
+    True
+    """
+    parts = (bank_transaction_code or "").split("+")
+    family = (parts[1] if len(parts) > 1 else "") or None
+    sub_family = (parts[2] if len(parts) > 2 else "") or None
+    if family == "IDDT" and sub_family in _DD_SUB_FAMILIES:
+        return "direct_debit"
+    if family in ("ICDT", "IRCT") and sub_family in _RETURN_SUB_FAMILIES:
+        return "credit_transfer"
+    if family in ("RCDT", "RRCT") and sub_family in _RETURN_SUB_FAMILIES:
+        return "received_credit_transfer"
+    if family == "RDDT" and sub_family in _DD_SUB_FAMILIES:
+        return "received_direct_debit"
+    if sub_family in ("UPCT", "UPCQ", *_RETURN_SUB_FAMILIES):
+        return "other"
+    if return_reason and family in (None, "NTAV"):
+        return "direct_debit" if mandate_id else "other"
+    return "other" if return_reason else None
+
+
 def _log_unlinked(conn, value_rows: dict, insert_keys: set, links: _Links) -> None:
-    """Warns about what stays without a link: returns without their debit,
-    and Sammler whose SEPA file went to the bank without their credit (the
-    planned links counted as written)."""
+    """Warns about what stays without a link: Rücklastschriften (direct-debit
+    returns) without their debit, and Sammler whose SEPA file went to the bank
+    without their credit (the planned links counted as written). A returned
+    credit transfer has no debit of ours and is left out."""
     linked = {key for key, _, _ in links.debits}
     for key in sorted(insert_keys):
         row = value_rows[key]
-        if row["return_reason"] and key not in linked:
+        kind = _return_kind(
+            row["bank_transaction_code"], row["return_reason"], row["mandate_id"]
+        )
+        if kind == "direct_debit" and key not in linked:
             _LOGGER.warning(
                 "Return without its debit: %s: %s", _key_label(key), _tx_line(row)
             )
     with conn.cursor() as cur:
         cur.execute(
             "SELECT camt_type, account_identification, account_servicer_reference, transaction_details_index"
-            " FROM wsjrdp_camt_transactions WHERE return_reason IS NOT NULL"
+            " FROM wsjrdp_camt_transactions WHERE return_kind = 'direct_debit'"
             " AND direct_debit_pre_notification_id IS NULL AND deleted_at IS NULL AND replaced_by_id IS NULL"
         )
         for row in cur.fetchall():

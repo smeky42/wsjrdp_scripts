@@ -164,10 +164,14 @@ rotated on its own, and the app's PaperTrail shows which script wrote.
 * **Fallback**: `hitobito_api_token` answers for every purpose that has
   no key of its own.
 * **Reading**: `ctx.get_hitobito_api_token(purpose)` returns the token,
-  or `""` when neither key is set -- a caller then skips its API step
-  and says which key is missing. An invalid purpose raises
+  or `""` when neither key is set. An invalid purpose raises
   `ValueError`. The context logs at DEBUG level which config key
   answered, never the value.
+* **Client**: `ctx.get_hitobito_client(purpose)` returns a
+  `HitobitoClient` for the purpose, a context resource like the database
+  connections. Without a token it raises `ValueError` naming the missing
+  config key. A script that needs the API therefore fetches its client
+  at the start, so a missing key stops it before it changes anything.
 * **One config per environment**: API keys in Hitobito are bound to a
   stage -- a development key works only against development, a
   production key only against production. `config-dev.yml` therefore
@@ -178,7 +182,7 @@ rotated on its own, and the app's PaperTrail shows which script wrote.
 
 | purpose | config key | used by | scope / acting person |
 |---|---|---|---|
-| `finance_import` | `hitobito_api_token_finance_import` | `HitobitoClient.link_internal_transfers` after `accounting_tools/import_camt_bank_statements.py` and `accounting_tools/import_moss_transactions.py` | `finance:write`, a person on the finance write tier |
+| `finance_import` | `hitobito_api_token_finance_import` | `HitobitoClient.link_internal_transfers` after a committed import in `accounting_tools/import_camt_bank_statements.py` and `accounting_tools/import_moss_transactions.py` -- both fetch the client at the start and do not run without the key, not even with `--rollback-for-testing` | `finance:write`, a person on the finance write tier |
 
 ## Contrast: the legacy `ctx.psycopg_connect()`
 
