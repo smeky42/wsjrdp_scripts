@@ -265,6 +265,82 @@ class HitobitoClient:
         )
         return result
 
+    # ==================================================================================
+    # Abmeldung (Person::DeregistrationController in the wagon)
+    # ==================================================================================
+
+    # The API key needs the scopes people and people:log and an acting person
+    # who may :log the person (purpose ``deregistration``). The app builds the
+    # Abmelde-Formular and answers what its mail needs, so the form and the
+    # mail say the same (doc/wsjrdp/deregistration.md in the wagon).
+
+    @staticmethod
+    def deregistration_path(person_id: int, action: str | None = None) -> str:
+        """
+        >>> HitobitoClient.deregistration_path(12)
+        'people/12/deregistration.json'
+        >>> HitobitoClient.deregistration_path(12, "form.pdf")
+        'people/12/deregistration/form.pdf'
+        """
+        base = f"people/{int(person_id)}/deregistration"
+        return f"{base}.json" if action is None else f"{base}/{action}"
+
+    def get_deregistration(self, person_id: int) -> dict[str, _typing.Any]:
+        """The person's deregistration as the app answers it: ``kind``,
+        ``available``, ``not_available_reason``, ``issue``, ``status``,
+        ``contract_status``, ``role_id_name``, ``contract_names``, ``form``
+        (``created_date``, ``reply_due_date``, ``file_name``), ``mail``
+        (``from``, ``bcc``, ``unit``) and ``form_mailings``."""
+        response = self.get(self.deregistration_path(person_id))
+        assert response is not None  # a dry run sends GET too
+        _raise_for_status(response)
+        return response.json()
+
+    def create_deregistration_form(
+        self, person_id: int
+    ) -> dict[str, _typing.Any] | None:
+        """Have the app make the Abmelde-Formular -- like "PDF erzeugen" on the
+        page: its day, its deadline and the captured data are fixed. A form
+        made already stays as it is. Answers the deregistration as it then
+        stands, ``None`` in a dry run (the POST is skipped)."""
+        response = self.post(self.deregistration_path(person_id, "create_form.json"))
+        if response is None:
+            return None
+        _raise_for_status(response)
+        return response.json()
+
+    def get_deregistration_form_pdf(self, person_id: int) -> bytes:
+        """The made Abmelde-Formular as PDF bytes, built by the app on request."""
+        response = self.get(
+            self.deregistration_path(person_id, "form.pdf"),
+            headers={"Accept": "application/pdf"},
+        )
+        assert response is not None
+        _raise_for_status(response)
+        if not response.content.startswith(b"%PDF"):
+            raise ValueError(
+                f"expected a PDF, got {response.headers.get('Content-Type')!r}"
+            )
+        return response.content
+
+    def report_deregistration_form_sent(
+        self, person_id: int, report: _collections_abc.Mapping[str, _typing.Any]
+    ) -> dict[str, _typing.Any] | None:
+        """Tell the app the form went out by e-mail: it writes a person note, a
+        log entry and an element of the person's form_mailings. *report* holds
+        ``email_sent_at``, ``email_to``, ``email_cc``, ``email_bcc``,
+        ``email_subject``, ``email_message_id``, ``script`` and
+        ``deregistration`` (the answer the mail was built from). A Message-ID
+        reported before writes nothing again. Answers the deregistration with
+        ``form_mailing`` and ``duplicate``, ``None`` in a dry run."""
+        response = self.post(
+            self.deregistration_path(person_id, "form_sent.json"), json=dict(report)
+        )
+        if response is None:
+            return None
+        _raise_for_status(response)
+        return response.json()
+
     def _get_json_api(self, path: str, params: dict[str, _typing.Any]) -> dict:
         response = self.get(
             path, params=params, headers={"Accept": _JSON_API_MEDIA_TYPE}
@@ -289,6 +365,24 @@ class HitobitoClient:
         response = self._session.request(method, url, **kwargs)
         self._logger.debug(f"{method} {url} => {response.status_code}")
         return response
+
+
+def _raise_for_status(response: _requests.Response) -> None:
+    """:meth:`requests.Response.raise_for_status`, with the reason the app gives
+    in a JSON answer (``{"error": ...}``) in the message."""
+    import requests as _requests
+
+    try:
+        response.raise_for_status()
+    except _requests.HTTPError as exc:
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        reason = body.get("error") if isinstance(body, dict) else None
+        if reason:
+            raise _requests.HTTPError(f"{exc}: {reason}", response=response) from exc
+        raise
 
 
 def _json_api_params(
