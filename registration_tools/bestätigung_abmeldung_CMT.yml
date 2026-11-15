@@ -1,6 +1,6 @@
 from_addr: anmeldung@worldscoutjamboree.de
 email_from: info@worldscoutjamboree.de
-email_subject: "WSJ27 Bestätigung der Abmeldung {{ row.role_id_name }}"
+# The subject comes from Hitobito (deregistration.mail.confirmation_subject).
 signature: "{{ EMAIL_SIGNATURE_DAVID_FRITZSCHE }}"
 content: |
   {% for name in row.contract_names %}Hallo {{ name }}{% if not loop.last %}, {% endif %}{% endfor %},

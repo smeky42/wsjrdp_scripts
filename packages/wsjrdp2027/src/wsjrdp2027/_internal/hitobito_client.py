@@ -17,6 +17,7 @@ if _typing.TYPE_CHECKING:
 
 
 __all__ = [
+    "HitobitoApiError",
     "HitobitoAudithook",
     "HitobitoClient",
     "HitobitoConfig",
@@ -301,16 +302,37 @@ class HitobitoClient:
     ) -> dict[str, _typing.Any] | None:
         """Have the app make the Abmelde-Formular -- like "PDF erzeugen" on the
         page: its day, its deadline and the captured data are fixed. A form
-        made already stays as it is. Answers the deregistration as it then
-        stands, ``None`` in a dry run (the POST is skipped)."""
+        made already stays as it is. Answers ``{"deregistration", "errors",
+        "warnings"}``, ``None`` in a dry run (the POST is skipped); an
+        incomplete form raises :class:`HitobitoApiError` (422) with every
+        error and warning, and nothing is written."""
         response = self.post(self.deregistration_path(person_id, "create_form.json"))
         if response is None:
             return None
         _raise_for_status(response)
         return response.json()
 
+    def prepare_deregistration_form(
+        self, person_id: int
+    ) -> dict[str, _typing.Any] | None:
+        """Have the app get the deregistration ready for the form's mail, in
+        one go: the person's registration status moves on to
+        ``deregistration_noted`` (unless it is that or ``deregistered``
+        already; PaperTrail writes it down with the API key), the form is made
+        where it is not yet. Answers ``{"deregistration", "errors",
+        "warnings"}`` (the deregistration as it then stands), ``None`` in a
+        dry run (the POST is skipped). A form that would not be complete
+        raises :class:`HitobitoApiError` (422) with every error and warning,
+        and nothing is written."""
+        response = self.post(self.deregistration_path(person_id, "prepare_form.json"))
+        if response is None:
+            return None
+        _raise_for_status(response)
+        return response.json()
+
     def get_deregistration_form_pdf(self, person_id: int) -> bytes:
-        """The made Abmelde-Formular as PDF bytes, built by the app on request."""
+        """The made Abmelde-Formular as PDF bytes: built by the app on request,
+        or -- once the form went out -- the PDF that was sent, as stored."""
         response = self.get(
             self.deregistration_path(person_id, "form.pdf"),
             headers={"Accept": "application/pdf"},
@@ -335,6 +357,24 @@ class HitobitoClient:
         ``form_mailing`` and ``duplicate``, ``None`` in a dry run."""
         response = self.post(
             self.deregistration_path(person_id, "form_sent.json"), json=dict(report)
+        )
+        if response is None:
+            return None
+        _raise_for_status(response)
+        return response.json()
+
+    def report_deregistration_confirmation_sent(
+        self, person_id: int, report: _collections_abc.Mapping[str, _typing.Any]
+    ) -> dict[str, _typing.Any] | None:
+        """Tell the app the confirmation of the deregistration went out by
+        e-mail: it writes a log entry and an event, and the deregistration
+        moves on to ``confirmation_sent`` (no person note -- the confirmation
+        script writes its own). *report* as for
+        :meth:`report_deregistration_form_sent`. Answers the deregistration
+        with ``confirmation_mailing`` and ``duplicate``, ``None`` in a dry run."""
+        response = self.post(
+            self.deregistration_path(person_id, "confirmation_sent.json"),
+            json=dict(report),
         )
         if response is None:
             return None
@@ -367,22 +407,54 @@ class HitobitoClient:
         return response
 
 
-def _raise_for_status(response: _requests.Response) -> None:
-    """:meth:`requests.Response.raise_for_status`, with the reason the app gives
-    in a JSON answer (``{"error": ...}``) in the message."""
-    import requests as _requests
+class HitobitoApiError(Exception):
+    """An answer of the Hitobito API with an error status. The wagon's answers
+    carry ``errors`` and ``warnings`` (``{"code", "message"}`` each) and, for
+    the deregistration API, the ``deregistration`` as it stands; a script can
+    log them all (:meth:`problems`).
 
+    >>> e = HitobitoApiError(422, {"errors": [{"code": "no_birthday", "message": "Geburtsdatum fehlt."}],
+    ...                            "warnings": [{"code": "no_issue", "message": "Kein Ticket."}]})
+    >>> str(e)
+    'HTTP 422: Geburtsdatum fehlt. (no_birthday)'
+    >>> e.problems()
+    [('error', 'no_birthday', 'Geburtsdatum fehlt.'), ('warning', 'no_issue', 'Kein Ticket.')]
+    """
+
+    def __init__(self, status: int, body: _typing.Any = None, *, url: str = "") -> None:
+        self.status = status
+        self.body = body if isinstance(body, dict) else {}
+        self.url = url
+        self.errors: list[dict] = list(self.body.get("errors") or [])
+        self.warnings: list[dict] = list(self.body.get("warnings") or [])
+        self.deregistration: dict | None = self.body.get("deregistration")
+        reasons = "; ".join(
+            f"{e.get('message')} ({e.get('code')})" for e in self.errors
+        )
+        super().__init__(
+            f"HTTP {status}"
+            + (f": {reasons}" if reasons else (f" {url}" if url else ""))
+        )
+
+    def problems(self) -> list[tuple[str, str, str]]:
+        """Every error and warning as (kind, code, message), errors first."""
+        return [
+            ("error", e.get("code", ""), e.get("message", "")) for e in self.errors
+        ] + [
+            ("warning", w.get("code", ""), w.get("message", "")) for w in self.warnings
+        ]
+
+
+def _raise_for_status(response: _requests.Response) -> None:
+    """Raise :class:`HitobitoApiError` for an error status, with the errors and
+    warnings the app answered with."""
+    if response.status_code < 400:
+        return
     try:
-        response.raise_for_status()
-    except _requests.HTTPError as exc:
-        try:
-            body = response.json()
-        except ValueError:
-            body = None
-        reason = body.get("error") if isinstance(body, dict) else None
-        if reason:
-            raise _requests.HTTPError(f"{exc}: {reason}", response=response) from exc
-        raise
+        body = response.json()
+    except ValueError:
+        body = None
+    raise HitobitoApiError(response.status_code, body, url=str(response.url))
 
 
 def _json_api_params(

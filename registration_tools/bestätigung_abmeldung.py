@@ -1,8 +1,18 @@
 #!/usr/bin/env -S uv run
-"""Tool to produce a cancellation request letter."""
+"""Confirm a deregistration by e-mail: the letter with the account statement.
+
+The ticket and the day the deregistration takes effect come from Hitobito
+(``deregistration.json``, API key of purpose ``deregistration``); once the mail
+went out the script reports it (``confirmation_sent.json``), which leaves a log
+entry and moves the deregistration on to ``confirmation_sent``. The status
+``deregistered``, the person note and the group move it writes itself, as
+before. If the report fails, it is kept next to the EML; ``--report-sent FILE``
+sends it again.
+"""
 
 from __future__ import annotations
 
+import datetime as _datetime
 import json
 import logging
 import pathlib as _pathlib
@@ -13,6 +23,8 @@ import wsjrdp2027
 
 SELFDIR = _pathlib.Path(__file__).parent.resolve()
 _SELF_NAME = _pathlib.Path(__file__).stem
+_SCRIPT = f"registration_tools/{_SELF_NAME}.py"
+_API_PURPOSE = "deregistration"
 
 
 _LOGGER = logging.getLogger()
@@ -37,12 +49,22 @@ def create_argument_parser():
         default=None,
         help="""Name or id of the group the deregistered person should be moved to.""",
     )
+    p.add_argument(
+        "--report-sent",
+        metavar="FILE",
+        type=_pathlib.Path,
+        default=None,
+        help="Only report a confirmation that went out already: FILE is the "
+        "report a failed run kept (…confirmation_sent.json).",
+    )
     p.add_argument("person_id")
     return p
 
 
 def attach_cancellation_confirmation(
-    ctx: wsjrdp2027.WsjRdpContext, prepared: wsjrdp2027.PreparedEmailMessage
+    ctx: wsjrdp2027.WsjRdpContext,
+    prepared: wsjrdp2027.PreparedEmailMessage,
+    deregistration: dict,
 ) -> None:
     import textwrap
 
@@ -70,7 +92,7 @@ def attach_cancellation_confirmation(
     accounting_entry_sum_cents = sum(acc.amount_cents for acc in acc_entries)
 
     cancellation_date = wsjrdp2027.to_date_or_none(
-        person.additional_info.get("deregistration_effective_date")
+        deregistration.get("deregistration_effective_date")
     )
     cancellation_date_de = (
         cancellation_date.strftime("%d.%m.%Y") if cancellation_date else None
@@ -180,15 +202,53 @@ def _contract_change_line(mailing: wsjrdp2027.PreparedBatch) -> str:
     )
 
 
+def report_sent(
+    client, person_id: int, report: dict, *, report_path: _pathlib.Path
+) -> None:
+    """Report the confirmation; keep the report in *report_path* if that fails."""
+    wsjrdp2027.deregistration_mails.send_report(
+        lambda r: client.report_deregistration_confirmation_sent(person_id, r),
+        report,
+        report_path=report_path,
+        person_id=person_id,
+        mailing_key="confirmation_mailing",
+    )
+
+
 def main(argv=None):
     with wsjrdp2027.WsjRdpContext(
         argument_parser=create_argument_parser(), argv=argv, __file__=__file__
     ) as ctx:
         person_id = int(ctx.parsed_args.person_id)
         new_group_id: str | int | None = ctx.parsed_args.group
+        # Fetched first: without the API key nothing else is done.
+        client = ctx.get_hitobito_client(_API_PURPOSE)
+
+        if report_file := ctx.parsed_args.report_sent:
+            report_sent(
+                client,
+                person_id,
+                json.loads(report_file.read_text()),
+                report_path=report_file,
+            )
+            return 0
+
+        deregistration = client.get_deregistration(person_id)
+        if deregistration.get("deregistration_id") is None:
+            _LOGGER.error("%s: no deregistration is recorded in Hitobito", person_id)
+            return 1
 
         # conn = ctx.hitobito_psycopg_connection()
         person = ctx.load_person_for_id(person_id)
+        person.deregistration_issue = deregistration.get("issue")
+        _LOGGER.info(
+            "Deregistration %s Nr. %s: %s, kind %s, effective %s",
+            deregistration["role_id_name"],
+            deregistration["number"],
+            deregistration["deregistration_status"],
+            deregistration["kind"],
+            deregistration.get("deregistration_effective_date") or "-",
+        )
         if reasons := _rerun_reasons(person):
             for reason in reasons:
                 _LOGGER.warning("%s: %s", person.id_and_name, reason)
@@ -221,8 +281,12 @@ def main(argv=None):
             batch_config.extend_extra_email_bcc(
                 primary_group.support_cmt_mail_addresses
             )
+        # The subject is Hitobito's (deregistration.mail.confirmation_subject),
+        # taken as it is -- the ticket is in it already.
+        batch_config.email_subject = wsjrdp2027.deregistration_mails.literal_subject(
+            deregistration["mail"]["confirmation_subject"]
+        )
         if person.deregistration_issue:
-            batch_config.email_subject += f" {person.deregistration_issue}"
             batch_config.extend_extra_email_bcc(person.helpdesk_email)
         if new_group_id:
             new_group = wsjrdp2027.Group.db_load(
@@ -248,7 +312,9 @@ def main(argv=None):
 
         mailing = batch_config.prepare(
             person.df,
-            msg_cb=lambda prepared: attach_cancellation_confirmation(ctx, prepared),
+            msg_cb=lambda prepared: attach_cancellation_confirmation(
+                ctx, prepared, deregistration
+            ),
             out_dir=ctx.out_dir,
             open_editor=ctx.parsed_args.open_editor,
             report_all_updates=True,
@@ -260,6 +326,26 @@ def main(argv=None):
             conn=ctx.hitobito_psycopg_connection(read_only=False),
             zip_eml=False,
         )
+
+        if skip := mailing.get_skip_email_reasons(dry_run=ctx.dry_run):
+            _LOGGER.info("Nothing reported to Hitobito (%s)", ", ".join(skip))
+            return 0
+        msg = mailing.messages[0].message
+        assert msg is not None
+        report = wsjrdp2027.deregistration_mails.build_report(
+            msg,
+            deregistration,
+            sent_at=_datetime.datetime.now().astimezone(),
+            script=_SCRIPT,
+        )
+        out_base = ctx.make_out_path(batch_config.name)
+        report_sent(
+            client,
+            person_id,
+            report,
+            report_path=out_base.with_name(out_base.name + ".confirmation_sent.json"),
+        )
+        return 0
 
 
 if __name__ == "__main__":

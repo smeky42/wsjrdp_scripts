@@ -1,7 +1,6 @@
 from_addr: anmeldung@worldscoutjamboree.de
-# Sender and Bcc come from Hitobito (deregistration.mail), and so do the role,
-# the name, the ticket, the deadline and who signs (create_deregistration_form.py).
-email_subject: "WSJ27 Abmeldung {{ deregistration.role_id_name }}{% if deregistration.issue %} {{ deregistration.issue }}{% endif %}"
+# Sender, recipients and subject come from Hitobito (deregistration.mail), and
+# so do the deadline and who signs (create_deregistration_form.py).
 signature: "{{ EMAIL_SIGNATURE_DAVID_FRITZSCHE }}"
 content: |
   {% for name in deregistration.contract_names %}Hallo {{ name }}{% if not loop.last %}, {% endif %}{% endfor %},

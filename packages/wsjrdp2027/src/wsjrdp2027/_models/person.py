@@ -541,11 +541,24 @@ class Person:
 
     @property
     def deregistration_issue(self) -> str | None:
-        return self.additional_info.get("deregistration_issue")
+        """The helpdesk ticket of the person's deregistration, as a script set
+        it: from Hitobito (``deregistration.json``, ``issue``) or from its
+        command line. Since the wagon's migration 20261115000100 the
+        deregistration lives in its own table, so the value is no longer in
+        ``additional_info`` -- and is never written back to the database.
+
+        >>> p = Person(id=1, additional_info={"deregistration_issue": "OLD-1"})
+        >>> p.deregistration_issue is None
+        True
+        >>> p.deregistration_issue = "HELP-1"
+        >>> p.deregistration_issue, p.additional_info
+        ('HELP-1', {'deregistration_issue': 'OLD-1'})
+        """
+        return self._data.get("_deregistration_issue")
 
     @deregistration_issue.setter
     def deregistration_issue(self, value: str | None) -> None:
-        self.set_additional_info("deregistration_issue", value)
+        self._data["_deregistration_issue"] = value or None
 
     @property
     def late_confirmation_issue(self) -> str | None:
