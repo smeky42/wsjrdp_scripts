@@ -183,6 +183,7 @@ rotated on its own, and the app's PaperTrail shows which script wrote.
 | purpose | config key | used by | scope / acting person |
 |---|---|---|---|
 | `finance_import` | `hitobito_api_token_finance_import` | `HitobitoClient.link_internal_transfers` after a committed import in `accounting_tools/import_camt_bank_statements.py` and `accounting_tools/import_moss_transactions.py` -- both fetch the client at the start and do not run without the key, not even with `--rollback-for-testing` | `finance:write`, a person on the finance write tier |
+| `deregistration` | `hitobito_api_token_deregistration` | `registration_tools/create_deregistration_form.py`: `HitobitoClient.get_deregistration`, `create_deregistration_form`, `get_deregistration_form_pdf`, `report_deregistration_form_sent` -- fetches the client at the start and does not run without the key | `people`, `people:log`, a person who may see the person's log |
 
 ## Contrast: the legacy `ctx.psycopg_connect()`
 
