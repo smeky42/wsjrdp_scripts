@@ -1,0 +1,54 @@
+# Letzte, dringende Erinnerung am Deadline-Tag (15.11.2026) an alle,
+# die people.jamboree_data_confirmed noch nicht gesetzt haben.
+# Kluftdaten werden am 16.11.2026 gemeldet und anschließend gesperrt.
+#
+# Run with:
+# uv run tools/mailing_from_yml.py mailings/2026-11-15__Alle-Datenabfrage-Letzte-Erinnerung.yml
+# WSJRDP_SCRIPTS_CONFIG=config-prod.yml uv run tools/mailing_from_yml.py mailings/2026-11-15__Alle-Datenabfrage-Letzte-Erinnerung.yml
+updates:
+  add_tags: 'Datenabfrage-Mail-III'
+query:
+  where:
+    role: [CMT, UL, YP, IST]
+    contract_status: ['confirmed']
+    exclude_deregistered: true
+    jamboree_data_confirmed: false
+email_subject: "DRINGEND: Heute letzter Tag für deine Jamboree-Daten und Kluftgröße! (id {{ row.id }})"
+email_reply_to: info@worldscoutjamboree.de
+summary: "{{ row.id }} {{ row.short_full_name }}; role: {{ row.payment_role }}; status: {{ row.status }}; To: {{ msg.to }}; Cc: {{ msg.cc }}"
+signature: "{{ EMAIL_SIGNATURE_CMT }}"
+content: |
+  Hallo {{ row.greeting_name }},
+
+  heute, am 15.11.2026, endet die Frist für die Datenabfrage – und bei dir fehlt immer noch die Bestätigung deiner Angaben im Anmeldetool.
+
+  ‼️ Besonders wichtig: deine Kluft- bzw. Hemdgröße ‼️
+  Wir melden die Größen bereits morgen (16.11.2026) an unseren Ausstatter und sperren die Eingabe danach.
+  Was bis heute Abend nicht eingetragen ist, können wir nicht mehr berücksichtigen – dann können wir dir leider keine passende Kluft garantieren.
+
+  Bitte nimm dir jetzt {% if row.wsjrdp_role == 'YP' %}(gemeinsam mit deinen Eltern) {% endif %}fünf Minuten Zeit und öffne diesen Link:
+  https://anmeldung.worldscoutjamboree.de/people/{{ row.id }}/jamboree_data
+
+  1. Im Abschnitt „Kleidung & Kopfbedeckung“: Trage deine Tracht- bzw. Klufthemdgröße  ein und wähle deine Kopfbedeckung aus.
+  2. Fülle alle weiteren noch offenen Felder aus bzw. prüfe deine bisherigen Angaben.
+  3. Setze ganz unten im Abschnitt „Rechtliche Bestätigung & Vollständigkeit“ deinen Haken und speichere.
+
+  Freitextantworten bitte auf Englisch, damit sie auch internationale Pfadfinder (z.B. bei medizinischen Notfällen) verstehen.
+  {% if row.wsjrdp_role == 'IST' %}
+
+  Wenn du noch nicht weißt, wann und wie du anreist, ist das in Ordnung – trage diese Informationen nach, sobald sie dir vorliegen. Die Kluftgröße brauchen wir aber heute!
+  {% endif %}
+
+  {% if row.wsjrdp_role == 'YP' %}
+  Bei Fragen wende dich gern an deine ULs oder antworte direkt auf diese E-Mail.
+  {% elif row.wsjrdp_role == 'IST' %}
+  Bei Fragen wende dich gern an Micha und Henny.
+  {% else %}
+  Bei Fragen antworte gern direkt auf diese E-Mail.
+  {% endif %}
+
+  Viele Grüße und Gut Pfad!
+
+  Peter für das Orga-Team
+
+  {{ EMAIL_SIGNATURE_CMT }}
