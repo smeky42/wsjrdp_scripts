@@ -172,17 +172,22 @@ class Test_load_pre_notifications_for_people:
 
 
 class Test_Person_sepa_mandate_date:
-    def test_from_additional_info(self):
+    def test_from_column(self):
+        p = Person(
+            sepa_mandate_date=_datetime.date(2026, 11, 3),
+            additional_info={"sepa_mandate_date": "2026-10-20"},
+            print_at=_datetime.date(2025, 6, 1),
+        )
+        assert p.sepa_mandate_date == _datetime.date(2026, 11, 3)
+
+    def test_empty_column_means_none(self):
+        p = Person(sepa_mandate_date=None, print_at=_datetime.date(2025, 6, 1))
+        assert p.sepa_mandate_date is None
+
+    def test_unknown_without_the_key(self):
         p = Person(
             additional_info={"sepa_mandate_date": "2026-10-20"},
             print_at=_datetime.date(2025, 6, 1),
         )
-        assert p.sepa_mandate_date == _datetime.date(2026, 10, 20)
-
-    def test_falls_back_to_print_at(self):
-        p = Person(additional_info={}, print_at=_datetime.date(2025, 6, 1))
-        assert p.sepa_mandate_date == _datetime.date(2025, 6, 1)
-
-    def test_none_without_additional_info_and_print_at(self):
-        assert Person(additional_info={}, print_at=None).sepa_mandate_date is None
-        assert Person().sepa_mandate_date is None
+        with pytest.raises(AttributeError):
+            _ = p.sepa_mandate_date

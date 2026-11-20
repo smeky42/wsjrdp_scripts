@@ -129,6 +129,7 @@ class Test_Skip_Payments_Not_To_Collect:
         defaults = {
             "installments_payment_method": "direct_debit",
             "sepa_status": "ok",
+            "sepa_mandate_date": datetime.date(2025, 6, 1),
             "contract_status": "confirmed",
             "status": "confirmed",
             "payment_status": "ok",
@@ -154,6 +155,7 @@ class Test_Skip_Payments_Not_To_Collect:
             ),
             ({"installments_payment_method": None}, "payment_method=None"),
             ({"sepa_status": "in_review"}, "sepa_status=in_review"),
+            ({"sepa_mandate_date": None}, "sepa_mandate_date=None"),
             ({"contract_status": "none"}, "contract_status=none"),
             ({"contract_status": "ended"}, "contract_status=ended"),
             ({"status": "deregistration_noted"}, "status=deregistration_noted"),
