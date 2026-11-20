@@ -429,9 +429,14 @@ def _confirm_person(
 
         _LOGGER.debug(person.role_id_name)
         if batch_config.updates:
-            _LOGGER.debug("Updates Input (w/o derived updates):\n%s", pprint.pformat(batch_config.updates))
+            _LOGGER.debug(
+                "Updates Input (w/o derived updates):\n%s",
+                pprint.pformat(batch_config.updates),
+            )
         else:
-            _LOGGER.debug("Updates Input (w/o derived updates): %r", batch_config.updates)
+            _LOGGER.debug(
+                "Updates Input (w/o derived updates): %r", batch_config.updates
+            )
 
         print(flush=True)
         prepared_batch = ctx.load_people_and_prepare_batch(
