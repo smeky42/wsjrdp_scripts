@@ -492,14 +492,28 @@ class Person:
 
     @property
     def sepa_mandate_date(self) -> _datetime.date | None:
-        """The date the SEPA mandate was signed:
-        ``additional_info["sepa_mandate_date"]``, else ``print_at``, else
-        None."""
+        """The date of the SEPA mandate.
+
+        Data without the key, e.g., a person from a query that did not select it raises
+        `AttributeError`.
+
+        >>> import datetime
+        >>> Person(sepa_mandate_date=datetime.date(2026, 10, 20)).sepa_mandate_date
+        datetime.date(2026, 10, 20)
+        >>> Person(sepa_mandate_date=None, print_at=datetime.date(2025, 6, 1)).sepa_mandate_date is None
+        True
+        >>> Person(print_at=datetime.date(2025, 6, 1)).sepa_mandate_date
+        Traceback (most recent call last):
+        ...
+        AttributeError
+        """
         from .. import _util
 
-        return _util.sepa_mandate_date_from_additional_info_or_print_at(
-            self.additional_info, self.get("print_at")
-        )
+        if "sepa_mandate_date" not in self._data:
+            raise AttributeError(name="sepa_mandate_date", obj=self)
+        else:
+            date = _util.nan_to_none(self._data["sepa_mandate_date"])
+            return date.date() if isinstance(date, _datetime.datetime) else date
 
     def del_additional_info(self, key: str) -> None:
         self.set_additional_info(key, None)

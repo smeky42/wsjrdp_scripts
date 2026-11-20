@@ -376,10 +376,14 @@ def _skip_payments_not_to_collect(df: _pandas.DataFrame) -> None:
 
     - the plan in effect is not paid by direct debit (credit transfer: they
       pay themselves);
-    - the SEPA mandate is not ok (sepa_status);
+    - the SEPA mandate is not ok (sepa_status) or has no date
+      (sepa_mandate_date)
     - no contract in force (contract_status), or a deregistration noted.
+
+    Skipped rows keep ``payment_status`` ``skipped`` with the reasons in
+    ``payment_status_reason`` -- the run's overview of skipped people.
     """
-    from . import _people
+    from . import _people, _util
 
     for idx, row in df.iterrows():
         reasons = []
@@ -389,6 +393,11 @@ def _skip_payments_not_to_collect(df: _pandas.DataFrame) -> None:
         sepa_status = row.get("sepa_status") or "ok"
         if sepa_status != "ok":
             reasons.append(f"sepa_status={sepa_status}")
+        if (
+            "sepa_mandate_date" in row
+            and _util.nan_to_none(row["sepa_mandate_date"]) is None
+        ):
+            reasons.append("sepa_mandate_date=None")
         contract_status = row.get("contract_status")
         if contract_status != "confirmed":
             reasons.append(f"contract_status={contract_status}")

@@ -430,9 +430,9 @@ def _row_to_sepa_mandat_id(row: _pandas.Series) -> str:
 
 
 def _row_to_sepa_mandate_date(row: _pandas.Series) -> _datetime.date | None:
-    return _util.sepa_mandate_date_from_additional_info_or_print_at(
-        row.get("additional_info"), row["print_at"]
-    )
+    """The mandate date as the query computed it (load_people_dataframe)."""
+    date = _util.nan_to_none(row.get("sepa_mandate_date"))
+    return date.date() if isinstance(date, _datetime.datetime) else date
 
 
 # The payment methods of an installment plan (Hitobito
@@ -852,6 +852,7 @@ SELECT
   people.accounting_entries_amounts_cents,
   COALESCE(people.sepa_status, 'ok') AS sepa_status,
   people.sepa_name, people.sepa_address, people.sepa_mail, people.sepa_iban, people.sepa_bic,
+  people.sepa_mandate_date,
   COALESCE(people.early_payer, FALSE) AS early_payer,
   people.additional_info{extra_cols_clause}
 FROM people
