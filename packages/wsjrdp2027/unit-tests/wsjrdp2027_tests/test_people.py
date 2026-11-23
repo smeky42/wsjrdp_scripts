@@ -1,5 +1,9 @@
+import pandas as pd
 import pytest
+from wsjrdp2027 import _people
+from wsjrdp2027._payment_role import PaymentRole
 from wsjrdp2027._people import update_dataframe_for_updates
+from wsjrdp2027._people_query import PeopleQuery
 
 
 def _create_df():
@@ -107,3 +111,49 @@ class Test_Update_DataFrame_For_Updates:
             {"tag_list": [["baz"], ["bar", "baz"]]},
             {"tag_list": [["bar", "foo"], ["bar", "baz"]]},
         ]
+
+
+@pytest.mark.parametrize(
+    "role, sepa_mail, expected",
+    [
+        (PaymentRole.REGULAR_PAYER_UL, "s@x.de", ["p@x.de", "w@wsj.de"]),
+        (PaymentRole.EARLY_PAYER_CMT, "s@x.de", ["p@x.de", "w@wsj.de"]),
+        (PaymentRole.REGULAR_PAYER_IST, "s@x.de", ["p@x.de"]),
+        (None, "s@x.de", ["p@x.de"]),
+        (PaymentRole.REGULAR_PAYER_UL, "w@wsj.de", ["p@x.de"]),
+    ],
+)
+def test_row_to_sepa_cc_wsjrdp_email(role, sepa_mail, expected):
+    row = pd.Series(
+        {
+            "payment_role": role,
+            "age": 30,
+            "email": "p@x.de",
+            "additional_emails_for_mailings": [],
+            "additional_info": {"wsjrdp_email": "w@wsj.de"},
+            "sepa_mailing_to": [sepa_mail],
+        }
+    )
+    assert _people.row_to_sepa_cc(row) == expected
+
+
+@pytest.mark.parametrize(
+    "role, include_sepa_mail, expected",
+    [
+        (PaymentRole.REGULAR_PAYER_UL, False, ["p@x.de", "w@wsj.de"]),
+        (PaymentRole.EARLY_PAYER_CMT, True, ["p@x.de", "w@wsj.de", "s@x.de"]),
+        (PaymentRole.REGULAR_PAYER_IST, True, ["p@x.de", "s@x.de"]),
+        (None, False, ["p@x.de"]),
+    ],
+)
+def test_row_to_mailing_to_wsjrdp_email(role, include_sepa_mail, expected):
+    row = pd.Series(
+        {
+            "payment_role": role,
+            "email": "p@x.de",
+            "additional_info": {"wsjrdp_email": "w@wsj.de"},
+            "sepa_mail": "s@x.de",
+        }
+    )
+    query = PeopleQuery(include_sepa_mail_in_mailing_to=include_sepa_mail)
+    assert _people._row_to_mailing_to(row, query) == expected

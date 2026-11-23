@@ -22,7 +22,7 @@ _SELFDIR = _pathlib.Path(__file__).parent.resolve()
 _LOGGER = logging.getLogger(__name__)
 
 
-COLLECTION_DATE = datetime.date(2026, 11, 5)
+COLLECTION_DATE = datetime.date(2026, 12, 7)
 
 
 def _create_argument_parser():
@@ -142,6 +142,7 @@ def _insert_pre_notifications_into_db(
         # _LOGGER.info("direct debit payment info id: %s", pymnt_inf_id)
 
         pre_notification_ids = []
+        pre_notification_id_by_person: dict[int, int] = {}
         sum_open_amount_cents = 0
         for _, row in df.iterrows():
             if wsjrdp2027.nan_to_none(row.get("skip_db_updates")):
@@ -160,13 +161,59 @@ def _insert_pre_notifications_into_db(
                 sepa_dd_config=sepa_dd_config,
             )
             pre_notification_ids.append(pre_note_id)
+            pre_notification_id_by_person[int(row["id"])] = pre_note_id
     return {
         "payment_initiation_id": pain_id,
         # "direct_debit_payment_info_id": pymnt_inf_id,
         "direct_debit_pre_notification_ids": pre_notification_ids,
         "sum_open_amount_cents": sum_open_amount_cents,
         "skipped_ids": sorted(skipped_ids),
+        "_pre_notification_id_by_person": pre_notification_id_by_person,
     }
+
+
+def _set_log_note_data(prepared_batch: wsjrdp2027.PreparedBatch, results: dict) -> None:
+    """The data of each mail's log entry: its pre-notification -- the item
+    of the entry -- and what the mail announces, so the entry reads on its
+    own also where no pre-notification was written."""
+    pn_ids = results.get("_pre_notification_id_by_person") or {}
+    pain_id = results.get("payment_initiation_id")
+    for prep_msg in prepared_batch.messages:
+        row = prep_msg.row
+        if row is None:
+            continue
+        pn_id = pn_ids.get(int(row["id"]))
+        data: dict = {"pre_notification_recorded": pn_id is not None}
+        if pn_id is not None:
+            data["pre_notification_id"] = pn_id
+            prep_msg.log_note_item = ("WsjrdpDirectDebitPreNotification", pn_id)
+        else:
+            data["pre_notification_skip_reason"] = (
+                "skip_db_updates"
+                if wsjrdp2027.nan_to_none(row.get("skip_db_updates"))
+                else "not_written"
+            )
+        if pain_id is not None:
+            data["payment_initiation_id"] = int(pain_id)
+        payment_role = row.get("payment_role")
+        if hasattr(payment_role, "get_db_payment_role"):
+            payment_role = payment_role.get_db_payment_role(
+                early_payer=row.get("early_payer")
+            )
+        data |= {
+            "collection_date": wsjrdp2027.to_date(row["collection_date"]),
+            "amount": int(row["open_amount_cents"]) / 100,
+            "currency": "EUR",
+            "dbtr_name": wsjrdp2027.nan_to_none(row.get("sepa_name")),
+            "dbtr_iban": wsjrdp2027.nan_to_none(row.get("sepa_iban")),
+            "mandate_id": wsjrdp2027.nan_to_none(row.get("sepa_mandate_id")),
+            "description": wsjrdp2027.nan_to_none(row.get("sepa_dd_description")),
+            "debit_sequence_type": wsjrdp2027.nan_to_none(
+                row.get("sepa_dd_sequence_type")
+            ),
+            "payment_role": None if payment_role is None else str(payment_role),
+        }
+        prep_msg.log_note_data = data
 
 
 def _report_df(df: pd.DataFrame, /, *, title: str, condition: str) -> None:
@@ -444,12 +491,18 @@ def main(argv=None):
             dry_run=prepared_batch.dry_run,
             skip_db_updates=prepared_batch.skip_db_updates,
         )
+        _set_log_note_data(prepared_batch, results)
+        prepared_batch.insert_log_notes(conn)
+        results.pop("_pre_notification_id_by_person", None)
         prepared_batch.results.update(results)
     prepared_batch.results.update(df_results)
 
     prepared_batch.write_results(json_indent=2)
-    with ctx.mail_login(from_addr=prepared_batch.from_addr) as mail_client:
-        prepared_batch.send(mail_client)
+    with (
+        ctx.mail_login(from_addr=prepared_batch.from_addr) as mail_client,
+        ctx.psycopg_connect() as log_conn,
+    ):
+        prepared_batch.send(mail_client, log_conn=log_conn)
 
     # ======================================================================
 

@@ -715,10 +715,17 @@ class PeopleQueryDict(_typing.TypedDict, total=False):
     now: _datetime.datetime | None
     collection_date: _datetime.date | None
     include_sepa_mail_in_mailing_to: bool | None
+    use_sepa_mailing: bool | None
 
 
 @_dataclasses.dataclass(kw_only=True)
 class PeopleQuery:
+    """Selects people and how they are mailed.
+
+    With `use_sepa_mailing` a batch mails by the `sepa_mailing_*` columns instead of
+    `mailing_*`.
+    """
+
     where: PeopleWhere | None = None
     email_only_where: PeopleWhere | None = None
     limit: int | None = None
@@ -726,6 +733,7 @@ class PeopleQuery:
     now: _datetime.datetime
     collection_date: _datetime.date | None = None
     include_sepa_mail_in_mailing_to: bool | None = None
+    use_sepa_mailing: bool | None = None
 
     def __init__(
         self,
@@ -737,8 +745,15 @@ class PeopleQuery:
         now: _datetime.datetime | _datetime.date | str | float | None = None,
         collection_date: _datetime.date | str | None = None,
         include_sepa_mail_in_mailing_to: bool | None = None,
+        use_sepa_mailing: bool | None = None,
     ) -> None:
         from . import _util
+
+        if use_sepa_mailing and include_sepa_mail_in_mailing_to:
+            raise ValueError(
+                "Only one of use_sepa_mailing and include_sepa_mail_in_mailing_to"
+                " must be set"
+            )
 
         self.where = PeopleWhere.normalize_or_none(where)
         self.email_only_where = PeopleWhere.normalize_or_none(email_only_where)
@@ -749,6 +764,7 @@ class PeopleQuery:
         self.now = _util.to_datetime(now)
         self.collection_date = _util.to_date_or_none(collection_date)
         self.include_sepa_mail_in_mailing_to = include_sepa_mail_in_mailing_to
+        self.use_sepa_mailing = use_sepa_mailing
 
     @classmethod
     def from_dict(cls, d: PeopleQueryDict | None, /) -> _typing.Self:
