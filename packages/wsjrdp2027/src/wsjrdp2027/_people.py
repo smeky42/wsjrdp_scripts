@@ -193,16 +193,21 @@ def get_contract_names(row: _pandas.Series) -> list[str]:
     ]
 
 
+def _cmt_ul_wsjrdp_email(row) -> str | None:
+    """The contingent address of a CMT or UL, else None."""
+    short_role_name = getattr(row.get("payment_role"), "short_role_name", None)
+    if short_role_name in ("CMT", "UL"):
+        return row.get("additional_info", {}).get("wsjrdp_email")
+    else:
+        return None
+
+
 def _row_to_mailing_to(
     row: _pandas.Series, query: _people_query.PeopleQuery
 ) -> list[str] | None:
     from . import _util
 
-    short_role_name = getattr(row.get("payment_role"), "short_role_name", None)
-    if short_role_name in ("CMT", "UL"):
-        wsjrdp_email = row.get("additional_info", {}).get("wsjrdp_email")
-    else:
-        wsjrdp_email = None
+    wsjrdp_email = _cmt_ul_wsjrdp_email(row)
     if query.include_sepa_mail_in_mailing_to:
         candidates = [row.get("email"), wsjrdp_email, row.get("sepa_mail")]
     else:
@@ -223,6 +228,8 @@ def row_to_sepa_cc(row) -> list[str] | None:
     other = set(row["additional_emails_for_mailings"])
     if email := row["email"]:
         other.add(email)
+    if wsjrdp_email := _cmt_ul_wsjrdp_email(row):
+        other.add(wsjrdp_email)
     other.update(get_contract_additional_emails(row))
     for s in row["sepa_mailing_to"] or []:
         other.discard(s)
@@ -639,20 +646,6 @@ def _enrich_people_dataframe(
     df["birthday_de"] = df["birthday"].map(
         lambda d: d.strftime("%d.%m.%Y") if d is not None else None
     )
-    df["mailing_from"] = "anmeldung@worldscoutjamboree.de"
-    df["mailing_to"] = df.apply(lambda r: _row_to_mailing_to(r, query), axis=1)  # ty: ignore
-    df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)  # ty: ignore
-    df["mailing_bcc"] = df["id"].map(
-        lambda _: _util.merge_mail_addresses(extra_mailing_bcc)
-    )
-    df["mailing_reply_to"] = None
-    df["sepa_mailing_from"] = "anmeldung@worldscoutjamboree.de"
-    df["sepa_mailing_to"] = df["sepa_mail"].map(lambda s: [s] if s else None)
-    df["sepa_mailing_cc"] = df.apply(row_to_sepa_cc, axis=1)  # ty: ignore
-    df["sepa_mailing_bcc"] = df["id"].map(
-        lambda _: _util.merge_mail_addresses(extra_mailing_bcc)
-    )
-    df["sepa_mailing_reply_to"] = None
 
     df["sepa_bank_name"] = df["sepa_iban"].map(_iban_to_bank_name)
     df["sepa_mandate_id"] = df.apply(_row_to_sepa_mandat_id, axis=1)
@@ -660,6 +653,21 @@ def _enrich_people_dataframe(
 
     df["early_payer"] = df["early_payer"].map(lambda x: bool(x))
     df["payment_role"] = df.apply(_compute_payment_role, axis=1)  # ty: ignore
+    # mailing_to and sepa_mailing_cc need payment_role as a PaymentRole
+    df["mailing_from"] = "anmeldung@worldscoutjamboree.de"
+    df["mailing_to"] = df.apply(lambda r: _row_to_mailing_to(r, query), axis=1)  # ty: ignore
+    df["mailing_cc"] = df.apply(row_to_mailing_cc, axis=1)  # ty: ignore
+    df["mailing_bcc"] = df["id"].map(
+        lambda _: _util.merge_mail_addresses(extra_mailing_bcc)
+    )
+    df["mailing_reply_to"] = None
+    df["sepa_mailing_from"] = "finanzen@worldscoutjamboree.de"
+    df["sepa_mailing_to"] = df["sepa_mail"].map(lambda s: [s] if s else None)
+    df["sepa_mailing_cc"] = df.apply(row_to_sepa_cc, axis=1)  # ty: ignore
+    df["sepa_mailing_bcc"] = df["id"].map(
+        lambda _: _util.merge_mail_addresses(extra_mailing_bcc)
+    )
+    df["sepa_mailing_reply_to"] = None
     df["role_id_name"] = df.apply(_compute_role_id_name, axis=1)
     df["regular_full_fee_cents"] = df.apply(_compute_regular_full_fee_cents, axis=1)
     df["total_fee_cents"] = df.apply(_compute_total_fee_cents, axis=1)

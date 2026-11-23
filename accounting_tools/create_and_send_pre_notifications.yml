@@ -1,6 +1,7 @@
 name: pre_notification
-updates:
-  add_note: "Pre-Notification für SEPA Einzug {{ row.collection_date | month_year_de }} verschickt"
+log_note:
+  category: pre_notification
+  message: "Pre-Notification zum Einzug am {{ row.collection_date | date_de }} über {{ row.open_amount_cents | format_cents_as_eur_de(zero_cents=',00') }} {{ email_status_text }}"
 query:
   where:
     sepa_status: ['ok']
@@ -10,12 +11,11 @@ query:
     exclude_status: ['deregistration_noted', 'deregistered']
     role: ['CMT', 'UL', 'YP', 'IST']
     exclude_primary_group_id: [5, 6, 7, 46]
-  include_sepa_mail_in_mailing_to: true
+  use_sepa_mailing: true
   email_only_where:
     id: [482]
 from_addr: "anmeldung@worldscoutjamboree.de"
-email_from: "info@worldscoutjamboree.de"
-email_reply_to: "finanzen@worldscoutjamboree.de"
+email_from: "finanzen@worldscoutjamboree.de"
 email_subject: "WSJ 2027 Ankündigung SEPA Lastschrifteinzug {{ row.collection_date | date_de }} - {{ row.payment_role.short_role_name }} {{ row.id_and_name }}"
 signature: "{{ EMAIL_SIGNATURE_DEBIT_PRE_NOTIFICATION }}"
 content: |

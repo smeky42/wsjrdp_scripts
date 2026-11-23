@@ -49,6 +49,11 @@ class PreparedEmailMessage:
     summary: str
     eml_name: str
     _eml: bytes | None = None
+    # The log entry of this mail (``log_note`` of the batch): its item, the
+    # data a script adds to it, and the id of its versions row once written.
+    log_note_item: tuple[str, int] | None = None
+    log_note_data: dict[str, _typing.Any]
+    log_version_id: int | None = None
 
     def __init__(
         self,
@@ -61,6 +66,8 @@ class PreparedEmailMessage:
         summary: str,
         eml_name: str | None = None,
         eml: bytes | None = None,
+        log_note_item: tuple[str, int] | None = None,
+        log_note_data: dict[str, _typing.Any] | None = None,
     ) -> None:
         self.mailing_name = mailing_name
         self.message = message
@@ -70,6 +77,9 @@ class PreparedEmailMessage:
         self.summary = summary
         self.eml_name = eml_name if eml_name else f"{self.mailing_name}.eml"
         self._eml = eml
+        self.log_note_item = log_note_item
+        self.log_note_data = dict(log_note_data or {})
+        self.log_version_id = None
 
     @property
     def eml(self) -> bytes:
@@ -155,10 +165,20 @@ class PreparedBatch:
     skip_db_updates: bool = False
     results: dict = _dataclasses.field(default_factory=dict)
     person_updates_logged: bool = False
+    # ``category`` and ``message`` of the log entry each mail gets (see
+    # insert_log_notes); None for none.
+    log_note: dict | None = None
+    # The script named in the log entries; the running one by default.
+    script: str | None = None
+    eml_zip_name: str | None = None
 
     def __post_init__(self) -> None:
+        import sys
+
         if self.now is None:
             self.now = _datetime.datetime.now().astimezone()
+        if self.script is None:
+            self.script = _pathlib.Path(sys.argv[0]).name or None
 
     def iter_people(self) -> _typing.Generator[_person.Person]:
         for msg in self.messages:
@@ -291,6 +311,7 @@ class PreparedBatch:
             eml_zip_path = out_dir / f"{self.name}.zip"
             with open(eml_zip_path, "wb") as f:
                 f.write(zip_buf.getvalue())
+            self.eml_zip_name = eml_zip_path.name
             _LOGGER.info("  wrote eml zip %s", eml_zip_path)
         else:
             for prep_msg in prepared_messages:
@@ -321,9 +342,161 @@ class PreparedBatch:
             reasons.append("no message")
         return reasons
 
-    def send(self, mail_client: _mail_client.MailClient, /) -> None:
+    @property
+    def writes_log_notes(self) -> bool:
+        """Whether the mails get log entries: with ``log_note``, unless
+        nothing is sent or nothing written to the DB."""
+        return bool(self.log_note) and not (
+            self.dry_run or self.skip_email or self.skip_db_updates
+        )
+
+    def insert_log_notes(self, conn: _psycopg.Connection, /) -> list[int]:
+        """INSERTs the log entry of every mail, ``email_status`` ``prepared``.
+
+        One entry per mail with a message: a note (``log_note``) in the log
+        of the person, whose item is ``log_note_item`` of the message (the
+        person by default). Its data: the script, run and batch, what the
+        script put into ``log_note_data`` and what the mail says
+        (:func:`wsjrdp2027._mail_log.prepared_data`). :meth:`send` adds
+        the outcome. Never commits: the entries belong to the transaction
+        of the change they log. Returns the ids of the versions rows."""
+        from . import _log_entry, _mail_log
+
+        if not self.writes_log_notes:
+            _LOGGER.info("Skip log entries of the mails")
+            return []
+        assert self.log_note is not None
+        prepared = [pm for pm in self.messages if pm.message and pm.person is not None]
+        entries = []
+        for prep_msg in prepared:
+            assert prep_msg.message is not None and prep_msg.person is not None
+            data = {
+                "script": self.script,
+                "run_started_at": self.now,
+                "batch_name": self.name,
+                **prep_msg.log_note_data,
+                **_mail_log.prepared_data(
+                    prep_msg.message,
+                    eml=prep_msg.eml,
+                    eml_name=prep_msg.eml_name,
+                    eml_zip_name=self.eml_zip_name,
+                    envelope_from=self.from_addr,
+                ),
+            }
+            item = (
+                {
+                    "item_type": prep_msg.log_note_item[0],
+                    "item_id": prep_msg.log_note_item[1],
+                }
+                if prep_msg.log_note_item
+                else {}
+            )
+            entries.append(
+                _log_entry.LogEntry.note(
+                    main_id=int(prep_msg.person.id),
+                    category=self.log_note["category"],
+                    message=self._log_note_message(prep_msg, _mail_log.PREPARED, data),
+                    data=data,
+                    **item,
+                )
+            )
+        ids = _log_entry.insert_log_entries(
+            conn, entries, now=_datetime.datetime.now().astimezone()
+        )
+        for prep_msg, version_id in zip(prepared, ids, strict=True):
+            prep_msg.log_version_id = version_id
+        _LOGGER.info("  wrote %s log entries (email_status: prepared)", len(ids))
+        return ids
+
+    def _log_note_message(
+        self, prep_msg: PreparedEmailMessage, status: str, data: dict
+    ) -> str:
+        from . import _mail_log
+
+        assert self.log_note is not None
+        person = prep_msg.person
+        return " ".join(
+            _util.render_template(
+                self.log_note["message"],
+                {
+                    "p": person,
+                    "person": person,
+                    "row": person,
+                    "msg": prep_msg.message,
+                    "data": data,
+                    "email_status": status,
+                    "email_status_text": _mail_log.status_text(status),
+                },
+            ).split()
+        )
+
+    def send(
+        self,
+        mail_client: _mail_client.MailClient,
+        /,
+        *,
+        log_conn: _psycopg.Connection | None = None,
+        log_flush_every: int = 100,
+    ) -> None:
+        """Sends the mails. A mail with a log entry (:meth:`insert_log_notes`)
+        gets its outcome added to it, through ``log_conn``: in blocks of
+        ``log_flush_every`` mails, each block committed, the last one also
+        when sending fails."""
+        if log_conn is None and any(m.log_version_id for m in self.messages):
+            raise RuntimeError("send: log entries written, but no log_conn given")
+        pending: list[dict] = []
+        try:
+            self._send(
+                mail_client,
+                pending=pending,
+                log_conn=log_conn,
+                flush_every=log_flush_every,
+            )
+        finally:
+            if log_conn is not None:
+                self._flush_log_updates(log_conn, pending)
+
+    def _flush_log_updates(
+        self, conn: _psycopg.Connection, pending: list[dict]
+    ) -> None:
+        from . import _pg
+
+        if not pending:
+            return
+        _pg.pg_table_updatemany(conn, "versions", pending, touch=False)
+        conn.commit()
+        _LOGGER.debug("  updated %s log entries", len(pending))
+        pending.clear()
+
+    def _log_update(
+        self, prep_msg: PreparedEmailMessage, sent: dict, pending: list[dict]
+    ) -> None:
+        if prep_msg.log_version_id is None:
+            return
+        status = sent["email_status"]
+        pending.append(
+            {
+                "id": prep_msg.log_version_id,
+                "wsjrdp_data": {
+                    **sent,
+                    "message": self._log_note_message(prep_msg, status, sent),
+                },
+            }
+        )
+
+    def _send(
+        self,
+        mail_client: _mail_client.MailClient,
+        /,
+        *,
+        pending: list[dict],
+        log_conn: _psycopg.Connection | None,
+        flush_every: int,
+    ) -> None:
         import pprint
         import textwrap
+
+        from . import _mail_client as _mail_client_mod, _mail_log
 
         num_messages = len(self.messages)
         if self.dry_run:
@@ -350,14 +523,74 @@ class PreparedBatch:
                 )
             if prep_msg.message is None:
                 _LOGGER.debug("  Skip: No actual email message")
-            else:
-                try:
-                    mail_client.send_message(prep_msg.message, from_addr=self.from_addr)
-                except Exception as exc:
-                    _LOGGER.error(
-                        "  Exception raised during email sending: %s", str(exc)
-                    )
-                    raise
+                continue
+            if not _mail_client_mod.get_to_addrs(prep_msg.message):
+                _LOGGER.info("  Skip: No recipients")
+                self._log_update(
+                    prep_msg, _mail_log.sent_data(_mail_log.NO_RECIPIENTS), pending
+                )
+                continue
+            try:
+                smtp_result, imap_result = mail_client.send_message(
+                    prep_msg.message, from_addr=self.from_addr
+                )
+            except Exception as exc:
+                _LOGGER.error("  Exception raised during email sending: %s", str(exc))
+                self._log_update(
+                    prep_msg,
+                    _mail_log.sent_data(
+                        _mail_log.FAILED, error=f"{type(exc).__name__}: {exc}"
+                    ),
+                    pending,
+                )
+                raise
+            sent = _mail_log.sent_data(
+                _mail_log.SENT,
+                sent_at=_datetime.datetime.now().astimezone(),
+                smtp_refused=smtp_result,
+                imap_mailbox=_sent_mailbox_name(mail_client) if imap_result else None,
+                imap_result=imap_result,
+            )
+            self._log_update(prep_msg, sent, pending)
+            if log_conn is not None and len(pending) >= flush_every:
+                self._flush_log_updates(log_conn, pending)
+
+
+def _normalize_log_note(
+    log_note: _collections_abc.Mapping | None,
+) -> dict | None:
+    """``log_note`` of a batch: ``category`` and ``message`` (a template
+    with ``row``, ``msg``, ``data``, ``email_status`` and
+    ``email_status_text``), both required.
+
+    >>> _normalize_log_note({"category": "c", "message": "m"})
+    {'category': 'c', 'message': 'm'}
+    >>> _normalize_log_note(None) is None
+    True
+    >>> _normalize_log_note({"category": "c"})
+    Traceback (most recent call last):
+    ...
+    ValueError: log_note needs 'category' and 'message', got ['category']
+    """
+    if not log_note:
+        return None
+    log_note = dict(log_note)
+    if not (log_note.get("category") and log_note.get("message")) or set(log_note) - {
+        "category",
+        "message",
+    }:
+        raise ValueError(
+            f"log_note needs 'category' and 'message', got {sorted(log_note)}"
+        )
+    return log_note
+
+
+def _sent_mailbox_name(mail_client: _mail_client.MailClient) -> str | None:
+    try:
+        mailbox = mail_client.get_imap_sent_mailbox()
+    except Exception:
+        return None
+    return mailbox[0] if mailbox else None
 
 
 _DEFAULT_SUMMARY = "{{ row.role_id_name }}; status: {{ row.status }}{% if msg %}; To: {{ msg.to }}; Cc: {{ msg.cc }}{% if msg.bcc %}; Bcc: {{msg.bcc }}{% endif %}{% endif %}"
@@ -383,6 +616,7 @@ class BatchConfig:
     jinja_extra_globals: dict | None = None
     action_arguments: dict
     updates: dict
+    log_note: dict | None = None
     dry_run: bool = False
     skip_email: bool
     skip_db_updates: bool | None = None
@@ -413,6 +647,7 @@ class BatchConfig:
         jinja_extra_globals: dict | None = None,
         action_arguments: dict | None = None,
         updates: _collections_abc.Mapping | None = None,
+        log_note: _collections_abc.Mapping | None = None,
         dry_run: bool | None = None,
         skip_email: bool | None = None,
         skip_db_updates: bool | None = None,
@@ -502,6 +737,7 @@ class BatchConfig:
             else:
                 updates[key] = val
         self.updates = updates
+        self.log_note = _normalize_log_note(log_note)
 
         if raw_yaml is None:
             self.raw_yaml = self.__to_yaml__().encode("utf-8")
@@ -720,6 +956,7 @@ class BatchConfig:
             "skip_email": self.skip_email,
             "action_arguments": (self.action_arguments or None),
             "updates": (self.updates or None),
+            "log_note": self.log_note,
             "query": (self.query.__to_dict__() if self.query is not None else None),
             "summary": self.summary,
             "email_subject": self.email_subject,
@@ -981,6 +1218,12 @@ class BatchConfig:
             df = self.update_dataframe_for_updates(df, now=now, inplace=False)
         if unfiltered_df_is_df:
             unfiltered_df = df
+        if self.query.use_sepa_mailing:
+            no_sepa_mail = [int(p["id"]) for p in people if not p["sepa_mailing_to"]]
+            if no_sepa_mail:
+                raise ValueError(
+                    f"use_sepa_mailing: no SEPA mail address for {no_sepa_mail}"
+                )
         if len(people) > 1:
             _LOGGER.info("Prepare mailing...")
         tic = time.monotonic()
@@ -1012,6 +1255,7 @@ class BatchConfig:
             config_yaml=config_yaml,
             action_arguments=self.action_arguments,
             updates=self.updates,
+            log_note=self.log_note,
             email_from=self.email_from,
             from_addr=self.from_addr,
             out_dir=out_dir,
@@ -1036,23 +1280,24 @@ class BatchConfig:
     ) -> PreparedEmailMessage:
         from . import _util
 
+        prefix = "sepa_mailing" if self.query.use_sepa_mailing else "mailing"
         msg_for_row = _email_message_from_person(
             person,
             content=self.content,
             html_content=self.html_content,
             signature=self.signature,
             email_subject=self.email_subject,
-            email_from=self.email_from or person["mailing_from"],
+            email_from=self.email_from or person[f"{prefix}_from"],
             email_to=_util.merge_mail_addresses(
-                person["mailing_to"], self.extra_email_to
+                person[f"{prefix}_to"], self.extra_email_to
             ),
             email_cc=_util.merge_mail_addresses(
-                person["mailing_cc"], self.extra_email_cc
+                person[f"{prefix}_cc"], self.extra_email_cc
             ),
             email_bcc=_util.merge_mail_addresses(
-                person["mailing_bcc"], self.extra_email_bcc
+                person[f"{prefix}_bcc"], self.extra_email_bcc
             ),
-            email_reply_to=self.email_reply_to or person["mailing_reply_to"],
+            email_reply_to=self.email_reply_to or person[f"{prefix}_reply_to"],
             policy=policy,
             msgid_idstring=msgid_idstring,
             msgid_domain=msgid_domain,

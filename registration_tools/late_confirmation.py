@@ -71,7 +71,7 @@ def create_argument_parser():
 
 
 _FULLY_PAID = """
-Herzlichen Dank, dass du den Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} bereits vollständig bezahlt hast. Das ist keine Kleinigkeit und wir wollen uns dafür bei dir bedanken! Ohne deine Unterstützung wäre das Jamboree für alle noch teurer geworden.
+Herzlichen Dank, dass du den Teilnahmebetrag in Höhe von {{ row.total_fee_cents | format_cents_as_eur_de }} bereits vollständig bezahlt hast.
 """
 
 _SEPA_STATUS_NOT_OK = """
