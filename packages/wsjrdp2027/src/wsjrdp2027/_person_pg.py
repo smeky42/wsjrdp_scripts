@@ -101,6 +101,7 @@ PERSON_VERSION_COLS = [
     "upload_photo_permission_pdf",
     "upload_recommendation_pdf",
     "upload_sepa_pdf",
+    "wsj_role",
     "zip_code",
 ]
 
