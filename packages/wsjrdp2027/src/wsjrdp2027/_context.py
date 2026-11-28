@@ -1519,6 +1519,7 @@ class WsjRdpContext:
         dump_path: str | _pathlib.Path,
         restore_into_production: bool = False,
         terminate_other_clients: bool = False,
+        restore_privileges: bool | None = None,
     ) -> None:
         import contextlib
         import os as _os
@@ -1534,6 +1535,10 @@ class WsjRdpContext:
             raise RuntimeError(
                 "No restore into a production config unless 'restore_into_production' is True"
             )
+
+        # Roles referenced by GRANTs (e.g. 'logistic') usually only exist in production
+        if restore_privileges is None:
+            restore_privileges = is_production
 
         env = _os.environ.copy()
         env["PGPASSWORD"] = self._config.db_password
@@ -1598,9 +1603,10 @@ class WsjRdpContext:
                 )
             run_psql(f"DROP DATABASE IF EXISTS {quoted_db_name};")
             run_psql(f"CREATE DATABASE {quoted_db_name};")
-            run_pg_restore(
-                "--format=custom", "--clean", "--if-exists", "--no-owner", rel_dump_path
-            )
+            restore_args = ["--format=custom", "--clean", "--if-exists", "--no-owner"]
+            if not restore_privileges:
+                restore_args.append("--no-privileges")
+            run_pg_restore(*restore_args, rel_dump_path)
             _LOGGER.info("[pg_restore] Finished restore")
 
     @staticmethod
